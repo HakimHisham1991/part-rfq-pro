@@ -1,0 +1,51 @@
+# Deploy to Monster ASP.NET via Web Deploy.
+# Monster guide: https://help.monsterasp.net/books/github/page/how-to-deploy-website-via-github-actions
+#
+# GitHub: Settings → Secrets and variables → Actions → New repository secret:
+#   WEBSITE_NAME           — from Monster hosting control panel (e.g. site1234)
+#   SERVER_COMPUTER_NAME   — e.g. https://site1234.siteasp.net:8172 (Web Deploy endpoint + port from panel)
+#   SERVER_USERNAME        — Web Deploy username (often same site prefix as in the panel)
+#   SERVER_PASSWORD        — Web Deploy password
+#
+# This workflow publishes Framework-Dependent Deployment (net10.x, no `--runtime`).
+# Requires .NET 10 ASP.NET Core Runtime on Monster for the site pool. OCCT/native DLL must be copied in publish
+# on the runner if USE_OCCT is required in production.
+
+name: Deploy to MonsterASP.NET
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build_and_deploy:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run tests
+        run: dotnet test tests/ThreeDAnalyzer.Tests/ThreeDAnalyzer.Tests.csproj -c Release --verbosity minimal
+
+      - name: Publish web app
+        run: >-
+          dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj
+          -c Release
+          -o "${{ github.workspace }}/publish"
+
+      - name: Deploy via Web Deploy
+        uses: rasmusbuchholdt/simply-web-deploy@2.1.0
+        with:
+          website-name: ${{ secrets.WEBSITE_NAME }}
+          server-computer-name: ${{ secrets.SERVER_COMPUTER_NAME }}
+          server-username: ${{ secrets.SERVER_USERNAME }}
+          server-password: ${{ secrets.SERVER_PASSWORD }}
+          source-path: publish
