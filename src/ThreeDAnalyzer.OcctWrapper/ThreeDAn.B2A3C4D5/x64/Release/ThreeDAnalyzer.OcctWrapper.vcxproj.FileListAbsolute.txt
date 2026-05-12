@@ -1,0 +1,4 @@
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.OcctWrapper\x64\Release\Ijwhost.dll
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.deps.json
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.runtimeconfig.json
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.OcctWrapper\ThreeDAn.B2A3C4D5\x64\Release\ThreeDAnalyzer.OcctWrapper.genruntimeconfig.cache

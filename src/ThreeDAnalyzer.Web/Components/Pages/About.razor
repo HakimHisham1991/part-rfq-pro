@@ -1,0 +1,76 @@
+@page "/about"
+@rendermode InteractiveServer
+
+<PageTitle>About — 3D Part Analyzer</PageTitle>
+
+<div class="container py-4" style="max-width:780px;">
+    <h4 class="mb-1">3D Part Analyzer</h4>
+    <p class="text-muted mb-4">STEP/STP analysis tool for aerospace manufacturing environments.</p>
+
+    <h5 class="mb-3">Third-Party Libraries &amp; Licenses</h5>
+
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered">
+            <thead class="table-dark">
+                <tr>
+                    <th>Library</th>
+                    <th>Version</th>
+                    <th>License</th>
+                    <th>Source / Notice</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>OpenCascade Technology (OCCT)</strong></td>
+                    <td>7.8.x</td>
+                    <td>LGPL 2.1</td>
+                    <td>
+                        <a href="https://dev.opencascade.org" target="_blank" rel="noopener">dev.opencascade.org</a><br />
+                        <small class="text-muted">
+                            OCCT is linked <em>dynamically</em> (as .dll files). You may replace the
+                            OpenCascade DLLs with your own build in compliance with LGPL 2.1.
+                            See <code>LGPL-2.1.txt</code> in the project root.
+                        </small>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Three.js</strong></td>
+                    <td>r165 (0.165.0)</td>
+                    <td>MIT</td>
+                    <td>
+                        <a href="https://threejs.org" target="_blank" rel="noopener">threejs.org</a><br />
+                        <small class="text-muted">Copyright © 2010–2024 three.js authors. See <code>wwwroot/js/LICENSE</code>.</small>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Three.js — OrbitControls</strong></td>
+                    <td>r165</td>
+                    <td>MIT</td>
+                    <td>Bundled with Three.js examples</td>
+                </tr>
+                <tr>
+                    <td><strong>Microsoft .NET 10 / ASP.NET Core / Blazor</strong></td>
+                    <td>10.0</td>
+                    <td>MIT</td>
+                    <td><a href="https://github.com/dotnet/aspnetcore" target="_blank" rel="noopener">github.com/dotnet/aspnetcore</a></td>
+                </tr>
+                <tr>
+                    <td><strong>Bootstrap</strong></td>
+                    <td>5.x</td>
+                    <td>MIT</td>
+                    <td><a href="https://getbootstrap.com" target="_blank" rel="noopener">getbootstrap.com</a></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="alert alert-info mt-3" style="font-size:13px;">
+        <strong>LGPL 2.1 Notice (OpenCascade):</strong><br />
+        This application uses OpenCascade Technology linked dynamically as shared libraries (.dll).
+        You have the right to replace these libraries with a modified version of OpenCascade under
+        the terms of LGPL 2.1. The full license text is available in <code>LGPL-2.1.txt</code>
+        in the project root directory and on the
+        <a href="https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html" target="_blank" rel="noopener">
+        GNU website</a>.
+    </div>
+</div>

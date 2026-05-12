@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "gdHTAdbGlLg=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Web\\ThreeDAnalyzer.Web.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\User\\.nuget\\packages\\microsoft.aspnetcore.app.internal.assets\\10.0.7\\microsoft.aspnetcore.app.internal.assets.10.0.7.nupkg.sha512"
+  ],
+  "logs": []
+}

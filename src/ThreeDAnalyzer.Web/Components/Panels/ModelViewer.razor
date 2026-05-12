@@ -1,0 +1,290 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject OcctService Occt
+@inject ThreeJsInterop ThreeJs
+@implements IAsyncDisposable
+@using Microsoft.JSInterop
+@using System.Threading
+
+<div class="viewer-wrap" style="position:relative;">
+    <canvas id="@_canvasId"
+            style="width:100%;height:100%;display:block;background:#1c1c2e;border-radius:6px;"
+            tabindex="0">
+    </canvas>
+
+    @if (_loading)
+    {
+        <div class="viewer-overlay">
+            <div class="spinner-border text-info" role="status"></div>
+            <span class="ms-2 text-info">@_loadingMessage</span>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="viewer-overlay-err alert alert-danger m-3">@_error</div>
+    }
+
+    <div class="viewer-hint" style="@(_snapMode ? "display:none" : "")">
+        Siemens NX-style (Z+ up) · Gnomon axes = world X/Y/Z (RGB); cube turns with view & snap · Middle-drag rotate &nbsp;|&nbsp; Shift + middle-drag pan &nbsp;|&nbsp; Scroll zoom &nbsp;|&nbsp; <kbd>F</kbd> reset isometric view
+    </div>
+    @if (_snapMode)
+    {
+        <div class="viewer-snap-hint">
+            Snap mode — click a surface point to pick P@(_snapIndex + 1)
+        </div>
+    }
+</div>
+
+@code {
+    private readonly string _canvasId = $"vp_{Guid.NewGuid():N}";
+    private DotNetObjectReference<ModelViewer>? _selfRef;
+    private bool _loading;
+    private string _loadingMessage = "";
+    private string? _error;
+    private bool _snapMode;
+    private int _snapIndex;
+    /// <summary>True only after <see cref="ThreeJsInterop.InitViewerAsync"/> completed successfully.</summary>
+    private bool _jsViewerInitialized;
+    private readonly SemaphoreSlim _viewerInitLock = new(1, 1);
+
+    [Parameter] public EventCallback<(int Index, Point3D Hit)> SnapPointPicked { get; set; }
+    [Parameter] public EventCallback<string> ErrorOccurred { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _jsViewerInitialized) return;
+        try
+        {
+            await EnsureViewerGateInitializedAsync();
+        }
+        catch (JSException ex)
+        {
+            _error =
+                $"Viewer JavaScript failed: {ex.Message}. Refresh the page; check DevTools Console and Network (/js/*.js loads with status 200).";
+        }
+        catch (InvalidOperationException)
+        {
+            // Static render / no interactive circuit yet — skip init; user can refresh.
+        }
+        catch (Exception ex)
+        {
+            _error = $"Viewer init failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>Serializes viewer init so <see cref="LoadModelAsync"/> cannot call JS before ThreeDViewer is ready.</summary>
+    private async Task EnsureViewerGateInitializedAsync()
+    {
+        if (_jsViewerInitialized) return;
+
+        await _viewerInitLock.WaitAsync();
+        try
+        {
+            if (_jsViewerInitialized) return;
+            _selfRef ??= DotNetObjectReference.Create(this);
+            await ThreeJs.InitViewerAsync(_canvasId, _selfRef);
+            _jsViewerInitialized = true;
+        }
+        finally
+        {
+            _viewerInitLock.Release();
+        }
+    }
+
+    public async Task LoadModelAsync(IBrowserFile file)
+    {
+        _error = null;
+        _loading = true;
+        _loadingMessage = "Reading STEP file…";
+        StateHasChanged();
+
+        try
+        {
+            await EnsureViewerGateInitializedAsync();
+
+            bool ok = await Occt.LoadFileAsync(file);
+            if (!ok)
+            {
+                _error = "Failed to parse the STEP file. Ensure it is valid AP203/AP214 format.";
+                await ErrorOccurred.InvokeAsync(_error);
+                return;
+            }
+
+            _loadingMessage = "Tessellating geometry…";
+            StateHasChanged();
+
+            var mesh = await Occt.GetMeshAsync();
+            if (mesh.IsEmpty || mesh.Vertices.Length < 9 || mesh.Indices.Length < 3)
+            {
+                _error = "STEP loaded and volume computed, but tessellation produced no drawable triangles. Try re-exporting the solid or use a Closed_Shell/AP214 solid.";
+                await ErrorOccurred.InvokeAsync(_error);
+                return;
+            }
+
+            await ThreeJs.LoadMeshAsync(mesh.Vertices, mesh.Indices);
+
+            if (Occt.BoundingBox is { } bb)
+                await ShowWorldStockBoundingBoxAsync(bb, new double[6]);
+        }
+        catch (JSException ex)
+        {
+            _error =
+                $"Viewer JavaScript failed: {ex.Message}. Refresh the page; check DevTools Console and Network (/js/*.js loads with status 200).";
+            await ErrorOccurred.InvokeAsync(_error);
+        }
+        catch (InvalidOperationException)
+        {
+            // Non-interactive circuit — cannot init viewer mid-load.
+            _error = "Viewer unavailable (circuit not interactive). Refresh and try again.";
+            await ErrorOccurred.InvokeAsync(_error);
+        }
+        catch (Exception ex)
+        {
+            _error = $"OCCT error: {ex.Message}";
+            await ErrorOccurred.InvokeAsync(_error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    public async Task UpdateBoundingBoxAsync(
+        double minX, double minY, double minZ,
+        double maxX, double maxY, double maxZ) =>
+        await ThreeJs.UpdateBoundingBoxAsync(minX, minY, minZ, maxX, maxY, maxZ);
+
+    public async Task RefreshStockBoundingBoxAsync(BoundingBoxData worldBbox, double[] o, CustomCS? customCs, BoundingBoxData? csBbox)
+    {
+        if (customCs is not null && csBbox is not null && customCs.IsComplete)
+            await ShowCustomCsStockBoundingBoxAsync(customCs, csBbox, o);
+        else
+            await ShowWorldStockBoundingBoxAsync(worldBbox, o);
+    }
+
+    private async Task ShowWorldStockBoundingBoxAsync(BoundingBoxData bb, double[] o)
+    {
+        await ThreeJs.UpdateBoundingBoxAsync(
+            bb.MinX - o[1], bb.MinY - o[3], bb.MinZ - o[5],
+            bb.MaxX + o[0], bb.MaxY + o[2], bb.MaxZ + o[4]);
+    }
+
+    private async Task ShowCustomCsStockBoundingBoxAsync(CustomCS cs, BoundingBoxData csBb, double[] o)
+    {
+        CustomCoordinateAxes.GetOrthonormalDirections(cs, out var ux, out var uy, out var uz);
+        var o0 = cs.Origin!;
+        double mx = csBb.MinX - o[1],
+            my = csBb.MinY - o[3],
+            mz = csBb.MinZ - o[5],
+            Mx = csBb.MaxX + o[0],
+            My = csBb.MaxY + o[2],
+            Mz = csBb.MaxZ + o[4];
+
+        await ThreeJs.ShowOrientedBoundingBoxAsync(
+            o0.X, o0.Y, o0.Z,
+            ux.X, ux.Y, ux.Z,
+            uy.X, uy.Y, uy.Z,
+            uz.X, uz.Y, uz.Z,
+            mx, my, mz, Mx, My, Mz);
+    }
+
+    public async Task EnterSnapModeAsync(int pointIndex)
+    {
+        _snapIndex = pointIndex;
+        _snapMode = true;
+        await ThreeJs.SetSnapModeAsync(true);
+        StateHasChanged();
+    }
+
+    public async Task ExitSnapModeAsync()
+    {
+        _snapMode = false;
+        await ThreeJs.SetSnapModeAsync(false);
+        StateHasChanged();
+    }
+
+    public async Task ClearSnapMarkersAsync()
+    {
+        await ThreeJs.ClearSnapMarkersAsync();
+    }
+
+    public async Task RefreshCsPickVisualAsync(Point3D?[] hits, int sphereVisibleIdx)
+    {
+        FlattenSnapHits(hits,
+            out var h0, out var x0, out var y0, out var z0,
+            out var h1, out var x1, out var y1, out var z1,
+            out var h2, out var x2, out var y2, out var z2);
+
+        await ThreeJs.SyncCsPickMarkersAsync(
+            h0, x0, y0, z0,
+            h1, x1, y1, z1,
+            h2, x2, y2, z2,
+            sphereVisibleIdx);
+    }
+
+    private static void FlattenSnapHits(Point3D?[]? hits,
+        out bool h0, out double x0, out double y0, out double z0,
+        out bool h1, out double x1, out double y1, out double z1,
+        out bool h2, out double x2, out double y2, out double z2)
+    {
+        hits ??= new Point3D?[3];
+        h0 = hits.Length > 0 && hits[0] is not null;
+        x0 = hits[0]?.X ?? 0;
+        y0 = hits[0]?.Y ?? 0;
+        z0 = hits[0]?.Z ?? 0;
+        h1 = hits.Length > 1 && hits[1] is not null;
+        x1 = hits[1]?.X ?? 0;
+        y1 = hits[1]?.Y ?? 0;
+        z1 = hits[1]?.Z ?? 0;
+        h2 = hits.Length > 2 && hits[2] is not null;
+        x2 = hits[2]?.X ?? 0;
+        y2 = hits[2]?.Y ?? 0;
+        z2 = hits[2]?.Z ?? 0;
+    }
+
+    /// <summary>Called by JavaScript when the user clicks the canvas in snap mode.</summary>
+    [JSInvokable]
+    public async Task OnRayPick(double ox, double oy, double oz, double dx, double dy, double dz)
+    {
+        if (!_snapMode) return;
+
+        var ray = new Ray(ox, oy, oz, dx, dy, dz);
+        if (!Occt.RayPick(ray, out var hit)) return;
+
+        var idx = _snapIndex;
+        _snapMode = false;
+        await ThreeJs.SetSnapModeAsync(false);
+        StateHasChanged();
+
+        await SnapPointPicked.InvokeAsync((idx, hit));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_jsViewerInitialized)
+        {
+            try
+            {
+                await ThreeJs.DisposeViewerAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit already torn down — nothing to clean up in the browser.
+            }
+            catch (InvalidOperationException)
+            {
+                // Still in static render or JS runtime not available during teardown.
+            }
+            catch (TaskCanceledException)
+            {
+                // Request aborted mid-flight.
+            }
+        }
+
+        _selfRef?.Dispose();
+        _selfRef = null;
+        _jsViewerInitialized = false;
+        _viewerInitLock.Dispose();
+    }
+}

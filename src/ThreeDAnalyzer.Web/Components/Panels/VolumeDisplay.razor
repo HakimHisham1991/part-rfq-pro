@@ -1,0 +1,65 @@
+@rendermode InteractiveServer
+
+<div class="panel-block">
+    <div class="panel-title">Volume Measurements</div>
+
+    <div class="vol-row">
+        <div class="vol-card">
+            <div class="vol-label">Part Volume</div>
+            @if (PartVolumeMm3 > 0)
+            {
+                <div class="vol-value">@PartVolumeMm3.ToString("N2") <span class="vol-unit">mm³</span></div>
+                <div class="vol-sub">@((PartVolumeMm3 / 1000.0).ToString("N4")) cm³</div>
+            }
+            else
+            {
+                <div class="vol-value text-muted">—</div>
+            }
+        </div>
+
+        <div class="vol-card @(RawVolumeMm3 > 0 && PartVolumeMm3 > 0 ? UtilClass : "")">
+            <div class="vol-label">Raw Material Volume</div>
+            @if (RawVolumeMm3 > 0)
+            {
+                <div class="vol-value">@RawVolumeMm3.ToString("N2") <span class="vol-unit">mm³</span></div>
+                <div class="vol-sub">@((RawVolumeMm3 / 1000.0).ToString("N4")) cm³</div>
+            }
+            else
+            {
+                <div class="vol-value text-muted">—</div>
+            }
+        </div>
+    </div>
+
+    @if (PartVolumeMm3 > 0 && RawVolumeMm3 > 0)
+    {
+        var util = PartVolumeMm3 / RawVolumeMm3 * 100.0;
+        <div class="util-bar-wrap mt-2">
+            <div class="d-flex justify-content-between mb-1">
+                <small class="text-muted">Material utilization</small>
+                <small class="@(util < 30 ? "text-warning" : "text-info") fw-semibold">
+                    @util.ToString("F1")%
+                </small>
+            </div>
+            <div class="progress" style="height:6px;">
+                <div class="progress-bar @(util < 30 ? "bg-warning" : "bg-info")"
+                     style="width:@Math.Min(util, 100).ToString("F1")%"></div>
+            </div>
+            @if (util < 30)
+            {
+                <div class="text-warning" style="font-size:11px;margin-top:4px;">
+                    Low utilization — consider a smaller stock size.
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public double PartVolumeMm3  { get; set; }
+    [Parameter] public double RawVolumeMm3   { get; set; }
+
+    private string UtilClass =>
+        PartVolumeMm3 > 0 && RawVolumeMm3 > 0 && (PartVolumeMm3 / RawVolumeMm3 * 100.0) < 30
+            ? "vol-card--warn" : "";
+}

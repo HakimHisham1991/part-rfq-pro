@@ -1,0 +1,151 @@
+@rendermode InteractiveServer
+
+<div class="panel-block">
+    <div class="panel-title">Custom Coordinate System</div>
+    <div class="text-muted mb-2" style="font-size:11px;">
+        Pick origin (P1), X+ (P2), and Y-plane (P3). Re‑picking a row replaces only that point. The viewer shows only the latest pick sphere until Apply.
+    </div>
+
+    @foreach (var pt in _points)
+    {
+        bool isActive = _activeIdx == pt.Index;
+        <div class="snap-row @(isActive ? "snap-row--active" : "")">
+            <span class="snap-dot @($"snap-dot--{pt.Color}")"></span>
+            <div class="snap-info">
+                <span class="snap-name">@pt.Label</span>
+                @if (pt.Hit is not null)
+                {
+                    <span class="snap-coord">@pt.Hit.ToString()</span>
+                }
+                else
+                {
+                    <span class="snap-coord text-muted">not set</span>
+                }
+            </div>
+            <button class="btn-icon-sm @(isActive ? "btn-icon-sm--active" : "")"
+                    disabled="@(!ModelLoaded)"
+                    @onclick="() => OnPickClicked(pt.Index)">
+                @(isActive ? "Cancel" : "Pick")
+            </button>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_validationError))
+    {
+        <div class="alert alert-warning py-1 px-2 mt-2" style="font-size:11px;">@_validationError</div>
+    }
+
+    <div class="d-flex gap-2 mt-3">
+        <button class="btn btn-sm btn-primary flex-fill"
+                disabled="@(!CanApply)"
+                @onclick="ApplyAsync">
+            Apply Custom CS
+        </button>
+        <button class="btn btn-sm btn-outline-secondary"
+                disabled="@(!HasAnyPoint)"
+                @onclick="ClearAsync">
+            Clear
+        </button>
+    </div>
+</div>
+
+@code {
+    private record SnapPoint(int Index, string Label, string Color)
+    {
+        public Point3D? Hit { get; set; }
+    }
+
+    private readonly SnapPoint[] _points =
+    [
+        new(0, "P1 — Custom Origin",       "red"),
+        new(1, "P2 — X+ Direction",        "green"),
+        new(2, "P3 — Y+ Direction (plane)", "blue"),
+    ];
+
+    // Authoritative coords for Apply, viewer axes, and each sidebar row.
+    private readonly Point3D?[] _committedHits = new Point3D?[3];
+
+    private int _activeIdx = -1;
+    private string? _validationError;
+
+    [Parameter] public bool ModelLoaded { get; set; }
+
+    [Parameter] public EventCallback<int> OnPickRequested { get; set; }
+
+    [Parameter] public EventCallback OnClearRequested { get; set; }
+
+    [Parameter] public EventCallback<CustomCS> OnCSApplied { get; set; }
+
+    private bool CanApply =>
+        _committedHits[0] is not null && _committedHits[1] is not null && _committedHits[2] is not null;
+
+    private bool HasAnyPoint =>
+        _committedHits.Any(static h => h is not null);
+
+    public Point3D?[] GetSnapHits() =>
+        [_committedHits[0], _committedHits[1], _committedHits[2]];
+
+    public void SetSnapPoint(int index, Point3D hit)
+    {
+        _committedHits[index] = hit;
+        _points[index].Hit = hit;
+
+        _activeIdx = -1;
+        _validationError = null;
+        StateHasChanged();
+    }
+
+    private async Task OnPickClicked(int index)
+    {
+        if (_activeIdx == index)
+        {
+            _activeIdx = -1;
+            await OnPickRequested.InvokeAsync(-1);
+        }
+        else
+        {
+            _activeIdx = index;
+            await OnPickRequested.InvokeAsync(index);
+        }
+    }
+
+    private async Task ApplyAsync()
+    {
+        var cs = new CustomCS
+        {
+            Origin = _committedHits[0],
+            XPoint = _committedHits[1],
+            YPoint = _committedHits[2],
+        };
+
+        var err = cs.Validate();
+        if (err is not null)
+        {
+            _validationError = err;
+            return;
+        }
+
+        _validationError = null;
+        await OnCSApplied.InvokeAsync(cs);
+
+        SyncPointHitsFromCommitted();
+        StateHasChanged();
+    }
+
+    private void SyncPointHitsFromCommitted()
+    {
+        foreach (var p in _points)
+            p.Hit = _committedHits[p.Index];
+    }
+
+    private async Task ClearAsync()
+    {
+        for (var i = 0; i < _committedHits.Length; i++)
+            _committedHits[i] = null;
+        foreach (var p in _points) p.Hit = null;
+        _activeIdx = -1;
+        _validationError = null;
+        await OnClearRequested.InvokeAsync();
+        StateHasChanged();
+    }
+}

@@ -1,0 +1,130 @@
+@rendermode InteractiveServer
+
+@using System.Globalization
+
+<div class="panel-block">
+    <div class="panel-title">
+        Raw Material Stock Size
+        <button class="btn-icon-sm ms-auto" @onclick="ResetAll" title="Reset all offsets to 0">Reset</button>
+    </div>
+
+    @if (BaseBbox is null)
+    {
+        <div class="text-muted" style="font-size:12px;">Load a STEP file to configure stock size.</div>
+    }
+    else
+    {
+        <div class="bbox-grid">
+            @foreach (var f in _faces)
+            {
+                <div class="bbox-row" @key="f.Idx">
+                    <span class="bbox-label">@f.Label</span>
+                    <input type="number"
+                           class="bbox-input"
+                           value="@GetDisplayValue(f)"
+                           min="0"
+                           step="0.5"
+                           @oninput="e => OnFaceInput(f, e.Value?.ToString())"
+                           @onkeydown="e => OnFaceKeyDownAsync(f, e)"
+                           @onblur="() => CommitFaceAsync(f)" />
+                    <span class="bbox-unit">mm</span>
+                </div>
+            }
+        </div>
+
+        <div class="bbox-dims mt-2">
+            <span class="text-muted" style="font-size:11px;">Expanded stock:</span>
+            <span class="ms-1" style="font-size:12px;font-weight:500;">
+                @ExpandedX.ToString("F2") &times; @ExpandedY.ToString("F2") &times; @ExpandedZ.ToString("F2") mm
+            </span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public BoundingBoxData? BaseBbox       { get; set; }
+    [Parameter] public EventCallback<double[]>  OnOffsetsChanged { get; set; }
+
+    // Offsets: [0]=+X  [1]=-X  [2]=+Y  [3]=-Y  [4]=+Z  [5]=-Z
+    private record FaceEntry(string Label, int Idx) { public double Offset { get; set; } }
+
+    private readonly FaceEntry[] _faces =
+    [
+        new("+X face", 0), new("-X face", 1),
+        new("+Y face", 2), new("-Y face", 3),
+        new("+Z face", 4), new("-Z face", 5),
+    ];
+
+    private readonly string?[] _draft = new string?[6];
+
+    private double ExpandedX => (BaseBbox?.SizeX ?? 0) + EffectiveOffset(_faces[0]) + EffectiveOffset(_faces[1]);
+    private double ExpandedY => (BaseBbox?.SizeY ?? 0) + EffectiveOffset(_faces[2]) + EffectiveOffset(_faces[3]);
+    private double ExpandedZ => (BaseBbox?.SizeZ ?? 0) + EffectiveOffset(_faces[4]) + EffectiveOffset(_faces[5]);
+
+    public double[] CurrentOffsets => _faces.Select(f => f.Offset).ToArray();
+
+    private string GetDisplayValue(FaceEntry f) =>
+        _draft[f.Idx] ?? f.Offset.ToString("F1", CultureInfo.InvariantCulture);
+
+    private double EffectiveOffset(FaceEntry f)
+    {
+        if (_draft[f.Idx] is { } d &&
+            TryParseDraft(d, out var v))
+            return v;
+        return f.Offset;
+    }
+
+    private static bool TryParseDraft(string raw, out double v)
+    {
+        v = 0;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            v = 0;
+            return true;
+        }
+
+        return double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out v) && v >= 0;
+    }
+
+    private void OnFaceInput(FaceEntry face, string? raw)
+    {
+        _draft[face.Idx] = raw ?? "";
+    }
+
+    private async Task OnFaceKeyDownAsync(FaceEntry f, KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter")
+            return;
+
+        await CommitFaceAsync(f);
+    }
+
+    private async Task CommitFaceAsync(FaceEntry f)
+    {
+        if (_draft[f.Idx] is not { } raw)
+            return;
+
+        if (!TryParseDraft(raw, out var v))
+        {
+            _draft[f.Idx] = null;
+            return;
+        }
+
+        _draft[f.Idx] = null;
+
+        if (Math.Abs(f.Offset - v) < 1e-9)
+            return;
+
+        f.Offset = v;
+        await OnOffsetsChanged.InvokeAsync(CurrentOffsets);
+    }
+
+    private async Task ResetAll()
+    {
+        for (var i = 0; i < _draft.Length; i++)
+            _draft[i] = null;
+
+        foreach (var f in _faces) f.Offset = 0;
+        await OnOffsetsChanged.InvokeAsync(CurrentOffsets);
+    }
+}

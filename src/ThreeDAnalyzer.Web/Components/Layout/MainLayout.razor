@@ -1,0 +1,29 @@
+﻿@inherits LayoutComponentBase
+
+<div class="app-shell">
+    <header class="app-header">
+        <div class="d-flex align-items-center gap-3 px-3 h-100">
+            <span class="app-logo">
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M11 2L20 7.5V14.5L11 20L2 14.5V7.5L11 2Z" stroke="#5588cc" stroke-width="1.5" fill="none"/>
+                    <path d="M11 2L11 20M2 7.5L20 14.5M20 7.5L2 14.5" stroke="#5588cc" stroke-width="0.8" opacity="0.5"/>
+                </svg>
+            </span>
+            <span class="app-title">3D Part Analyzer</span>
+            <nav class="ms-auto d-flex gap-2">
+                <NavLink href="/" class="nav-btn" Match="NavLinkMatch.All">Analyzer</NavLink>
+                <NavLink href="/about" class="nav-btn">About / Licenses</NavLink>
+            </nav>
+        </div>
+    </header>
+
+    <main class="app-main">
+        @Body
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">&#x2715;</span>
+</div>

@@ -1,0 +1,53 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "ThreeDAnalyzer.Web/1.0.0": {
+        "dependencies": {
+          "ThreeDAnalyzer.Core": "1.0.0",
+          "ThreeDAnalyzer.OcctWrapper": "0.0.0.0"
+        },
+        "runtime": {
+          "ThreeDAnalyzer.Web.dll": {}
+        }
+      },
+      "ThreeDAnalyzer.Core/1.0.0": {
+        "runtime": {
+          "ThreeDAnalyzer.Core.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "ThreeDAnalyzer.OcctWrapper/0.0.0.0": {
+        "runtime": {
+          "ThreeDAnalyzer.OcctWrapper.dll": {
+            "assemblyVersion": "0.0.0.0",
+            "fileVersion": "0.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "ThreeDAnalyzer.Web/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "ThreeDAnalyzer.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "ThreeDAnalyzer.OcctWrapper/0.0.0.0": {
+      "type": "reference",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

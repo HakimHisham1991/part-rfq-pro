@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": "net10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    "net10.0": {
+      "ThreeDAnalyzer.OcctWrapper/1.0.0": {
+        "runtime": {
+          "ThreeDAnalyzer.OcctWrapper.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "ThreeDAnalyzer.OcctWrapper/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

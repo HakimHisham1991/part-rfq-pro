@@ -1,0 +1,212 @@
+﻿@page "/"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject OcctService Occt
+@inject ThreeJsInterop ThreeJs
+
+<PageTitle>3D Part Analyzer</PageTitle>
+
+<div class="analyzer-layout">
+    <!-- ══ LEFT: 3-D Viewport ══════════════════════════════════════════════ -->
+    <div class="analyzer-viewport">
+        <ModelViewer @ref="_viewer"
+                     SnapPointPicked="OnSnapPointPicked"
+                     ErrorOccurred="OnViewerError" />
+    </div>
+
+    <!-- ══ RIGHT: Control Sidebar ════════════════════════════════════════ -->
+    <aside class="analyzer-sidebar">
+
+        <!-- File Upload -->
+        <div class="panel-block">
+            <div class="panel-title">Import STEP / STP File</div>
+            @if (!Occt.IsAvailable)
+            {
+                <div class="alert alert-warning py-2 px-3 mb-0" style="font-size:12px;">
+                    <strong>OCCT is not linked into this build</strong> (the web app was compiled without <code>ThreeDAnalyzer.OcctWrapper.dll</code>).<br />
+                    <span class="text-muted">After you fix it, run <code>dotnet build src\ThreeDAnalyzer.Web</code> again — the build log prints which paths were checked.</span><br /><br />
+                    <strong>1.</strong> Install OCCT 7.8 (Windows x64). Set <code>OCCT_ROOT</code> (headers/libs for the C++ project).<br />
+                    <strong>2.</strong> Build the native wrapper with <strong>MSVC</strong> (Visual Studio Code alone cannot compile C++/CLI). Install <strong>Build Tools for Visual Studio 2022</strong> (free) with workload <em>Desktop development with C++</em> and <em>C++/CLI</em>, then in a terminal: <code>.\scripts\Build-OcctWrapper.ps1</code> — or open <code>ThreeDAnalyzer.slnx</code> in full Visual Studio 2022 and build <code>ThreeDAnalyzer.OcctWrapper</code> (x64 Release).<br />
+                    <strong>3.</strong> The .NET app looks for the wrapper here (first match wins):<br />
+                    <code style="word-break:break-all;">src\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.dll</code><br />
+                    <code style="word-break:break-all;">src\ThreeDAnalyzer.OcctWrapper\x64\Debug\ThreeDAnalyzer.OcctWrapper.dll</code><br />
+                    <code style="word-break:break-all;">src\ThreeDAnalyzer.OcctWrapper\bin\x64\Release\net10.0\ThreeDAnalyzer.OcctWrapper.dll</code><br />
+                    <code style="word-break:break-all;">src\ThreeDAnalyzer.OcctWrapper\bin\x64\Debug\net10.0\ThreeDAnalyzer.OcctWrapper.dll</code><br />
+                    Or set env var <code>OCCT_WRAPPER_DLL</code> to the full path of that DLL, then rebuild the web project.<br />
+                    <strong>4.</strong> Copy every OCCT runtime <code>*.dll</code> from <code>%OCCT_ROOT%\win64\vc14\bin</code> into the same folder as <code>ThreeDAnalyzer.Web.exe</code> (e.g. <code>src\ThreeDAnalyzer.Web\bin\Debug\net10.0\</code>).<br />
+                    <span class="text-muted">Disable OCCT: </span><code>dotnet build -p:UseOcct=false</code>
+                </div>
+            }
+            else
+            {
+                <InputFile OnChange="OnFileSelected"
+                           accept=".step,.stp"
+                           class="form-control form-control-sm"
+                           disabled="@_busy" />
+                @if (!string.IsNullOrEmpty(_globalError))
+                {
+                    <div class="alert alert-danger py-1 px-2 mt-2 mb-0" style="font-size:12px;">@_globalError</div>
+                }
+            }
+        </div>
+
+        <hr class="panel-divider" />
+
+        <!-- Volume Display -->
+        <VolumeDisplay PartVolumeMm3="Occt.PartVolumeMm3"
+                       RawVolumeMm3="_rawVolumeMm3" />
+
+        <hr class="panel-divider" />
+
+        <!-- Bounding Box Controls -->
+        <BoundingBoxPanel @ref="_bboxPanel"
+                          BaseBbox="ActiveStockBoundingBox()"
+                          OnOffsetsChanged="OnOffsetsChanged" />
+
+        <hr class="panel-divider" />
+
+        <!-- Custom Coordinate System -->
+        <CoordinatePanel @ref="_csPanel"
+                         ModelLoaded="Occt.IsLoaded"
+                         OnPickRequested="OnPickRequested"
+                         OnClearRequested="OnClearRequested"
+                         OnCSApplied="OnCSApplied" />
+
+    </aside>
+</div>
+
+@code {
+    private ModelViewer?       _viewer;
+    private BoundingBoxPanel?  _bboxPanel;
+    private CoordinatePanel?   _csPanel;
+
+    private bool               _busy;
+    private string?            _globalError;
+    private double             _rawVolumeMm3;
+    private BoundingBoxData?   _csBbox;
+    private CustomCS?          _appliedCustomCs;
+
+    // ── File load ──────────────────────────────────────────────────────────
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _globalError = null;
+        _rawVolumeMm3 = 0;
+        _csBbox = null;
+        _appliedCustomCs = null;
+        _busy = true;
+        StateHasChanged();
+
+        try
+        {
+            if (_viewer is not null)
+                await _viewer.LoadModelAsync(e.File);
+
+            RecalcRawVolume();
+
+            if (_viewer != null && Occt.BoundingBox is { } wb)
+                await _viewer.RefreshStockBoundingBoxAsync(wb, _bboxPanel?.CurrentOffsets ?? new double[6], null, null);
+
+            if (_viewer != null && _csPanel is not null)
+                await _viewer.RefreshCsPickVisualAsync(_csPanel.GetSnapHits(), sphereVisibleIdx: -1);
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnViewerError(string err) => _globalError = err;
+
+    // ── Bounding box expansion ─────────────────────────────────────────────
+
+    private async Task OnOffsetsChanged(double[] offsets)
+    {
+        RecalcRawVolume(offsets);
+
+        if (_viewer != null && Occt.BoundingBox is { } wb)
+            await _viewer.RefreshStockBoundingBoxAsync(wb, offsets, _appliedCustomCs, _csBbox);
+    }
+
+    private void RecalcRawVolume(double[]? offsets = null)
+    {
+        offsets ??= _bboxPanel?.CurrentOffsets ?? new double[6];
+        var bb = ActiveStockBoundingBox();
+        if (bb is null) { _rawVolumeMm3 = 0; return; }
+
+        var dx = bb.SizeX + offsets[0] + offsets[1];
+        var dy = bb.SizeY + offsets[2] + offsets[3];
+        var dz = bb.SizeZ + offsets[4] + offsets[5];
+        _rawVolumeMm3 = dx * dy * dz;
+    }
+
+    private BoundingBoxData? ActiveStockBoundingBox() =>
+        _csBbox ?? Occt.BoundingBox;
+
+    // ── Custom coordinate system snap ─────────────────────────────────────
+
+    private async Task OnPickRequested(int pointIndex)
+    {
+        if (_viewer is null || _csPanel is null) return;
+        if (pointIndex < 0)
+        {
+            await _viewer.ExitSnapModeAsync();
+            await _viewer.RefreshCsPickVisualAsync(_csPanel.GetSnapHits(), sphereVisibleIdx: -1);
+            return;
+        }
+
+        // Hide prior pick spheres while aiming the next surface point.
+        await _viewer.RefreshCsPickVisualAsync(_csPanel.GetSnapHits(), sphereVisibleIdx: -1);
+        await _viewer.EnterSnapModeAsync(pointIndex);
+    }
+
+    private async Task OnSnapPointPicked((int Index, Point3D Hit) args)
+    {
+        _csPanel?.SetSnapPoint(args.Index, args.Hit);
+        if (_viewer is not null && _csPanel is not null)
+        {
+            await _viewer.ExitSnapModeAsync();
+            await _viewer.RefreshCsPickVisualAsync(_csPanel.GetSnapHits(), args.Index);
+        }
+    }
+
+    private async Task OnClearRequested()
+    {
+        _csBbox = null;
+        _appliedCustomCs = null;
+        RecalcRawVolume();
+
+        if (_viewer != null && Occt.BoundingBox is { } wb)
+            await _viewer.RefreshStockBoundingBoxAsync(wb, _bboxPanel?.CurrentOffsets ?? new double[6], null, null);
+
+        if (_viewer != null)
+            await _viewer.ClearSnapMarkersAsync();
+    }
+
+    private async Task OnCSApplied(CustomCS cs)
+    {
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            _csBbox = await Occt.GetBoundingBoxInCustomCSAsync(cs);
+            _appliedCustomCs = cs;
+            RecalcRawVolume();
+
+            if (_viewer != null && Occt.BoundingBox is { } wb)
+                await _viewer.RefreshStockBoundingBoxAsync(wb, _bboxPanel?.CurrentOffsets ?? new double[6], _appliedCustomCs, _csBbox);
+
+            if (_viewer != null && _csPanel is not null)
+                await _viewer.RefreshCsPickVisualAsync(_csPanel.GetSnapHits(), sphereVisibleIdx: -1);
+        }
+        catch (Exception ex)
+        {
+            _globalError = $"Custom CS error: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+}
