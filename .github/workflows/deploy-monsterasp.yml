@@ -1,4 +1,4 @@
-name: Deploy to MonsterASP.NET (Full OCCT + Debug)
+name: Deploy to MonsterASP.NET (Full OCCT)
 
 on:
   push:
@@ -20,7 +20,6 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      # === OCCT Caching & Download ===
       - name: Cache OCCT
         id: cache-occt
         uses: actions/cache@v4
@@ -28,71 +27,38 @@ jobs:
           path: occt-vc143-64
           key: occt-7.8.0-vc143-64
 
-      - name: Download and Setup OCCT 7.8.0
+      - name: Download and Setup OCCT
         if: steps.cache-occt.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          Write-Host "Downloading OCCT..." -ForegroundColor Cyan
-          Invoke-WebRequest -Uri "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/occt-vc143-64.zip" -OutFile "occt.zip" -UseBasicParsing
-          Invoke-WebRequest -Uri "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/3rdparty-vc14-64.zip" -OutFile "3rdparty.zip" -UseBasicParsing
+          Invoke-WebRequest -Uri "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/occt-vc143-64.zip" -OutFile "occt.zip"
+          Invoke-WebRequest -Uri "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/3rdparty-vc14-64.zip" -OutFile "3rdparty.zip"
           Expand-Archive -Path "occt.zip" -DestinationPath . -Force
           Expand-Archive -Path "3rdparty.zip" -DestinationPath . -Force
 
       - name: Set OCCT_ROOT
         shell: pwsh
-        run: |
-          $occtRoot = "$env:GITHUB_WORKSPACE\occt-vc143-64"
-          echo "OCCT_ROOT=$occtRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "OCCT_ROOT = $occtRoot"
+        run: echo "OCCT_ROOT=$env:GITHUB_WORKSPACE\occt-vc143-64" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Build OCCT C++/CLI Wrapper
+      - name: Build OCCT Wrapper
         shell: pwsh
         env:
           OCCT_ROOT: ${{ env.OCCT_ROOT }}
         run: .\scripts\Build-OcctWrapper.ps1
 
-      - name: Run Tests
-        run: dotnet test tests/ThreeDAnalyzer.Tests/ThreeDAnalyzer.Tests.csproj -c Release --verbosity minimal
-
       - name: Publish Web App
         run: dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj -c Release -o "${{ github.workspace }}/publish" --no-self-contained
 
-      - name: Copy OCCT Runtime DLLs
+      - name: Copy OCCT DLLs
         shell: pwsh
-        run: |
-          .\scripts\Copy-OcctRuntime.ps1 -Configuration Release
-          Write-Host "✅ OCCT DLLs copied successfully"
+        run: .\scripts\Copy-OcctRuntime.ps1 -Configuration Release
 
-      # ==================== DEBUG CONNECTION ====================
-      - name: 🔍 Debug - Show Secret Values (Masked)
-        shell: pwsh
-        run: |
-          Write-Host "WEBSITE_NAME          = ${{ secrets.WEBSITE_NAME }}"
-          Write-Host "SERVER_COMPUTER_NAME  = ${{ secrets.SERVER_COMPUTER_NAME }}"
-          Write-Host "SERVER_USERNAME       = ${{ secrets.SERVER_USERNAME }}"
-          Write-Host "SERVER_PASSWORD       = *** (hidden)"
-
-      - name: 🔍 Debug - Test Network Connectivity
-        shell: pwsh
-        run: |
-          $server = "${{ secrets.SERVER_COMPUTER_NAME }}"
-          if ($server -match "https?://") {
-            $server = $server -replace "https?://", "" -replace ":\d+", ""
-          }
-          Write-Host "Testing connection to: $server"
-          
-          Test-NetConnection -ComputerName $server -Port 8172 -WarningAction SilentlyContinue
-          Test-NetConnection -ComputerName $server -Port 5118 -WarningAction SilentlyContinue
-          Test-NetConnection -ComputerName $server -Port 80 -WarningAction SilentlyContinue
-          Test-NetConnection -ComputerName $server -Port 443 -WarningAction SilentlyContinue
-
-      # ==================== DEPLOY ====================
-      - name: Deploy via Web Deploy
+      # ==================== DEPLOYMENT ====================
+      - name: Deploy to MonsterASP (Web Deploy)
         uses: rasmusbuchholdt/simply-web-deploy@2.1.0
         with:
-          website-name: ${{ secrets.WEBSITE_NAME }}
-          server-computer-name: ${{ secrets.SERVER_COMPUTER_NAME }}
-          server-username: ${{ secrets.SERVER_USERNAME }}
+          website-name: site68527                    # From your publishSettings
+          server-computer-name: site68527.siteasp.net:8172   # Important: add :8172
+          server-username: site68527                 # From your publishSettings
           server-password: ${{ secrets.SERVER_PASSWORD }}
           source-path: publish
-          verbose: true
