@@ -2,97 +2,28 @@
 
   <!--
     OCCT: C++/CLI wrapper ThreeDAnalyzer.OcctWrapper.dll
-    Auto-linked when found at build time (see paths below), or set OCCT_WRAPPER_DLL to a full path.
-    Override: dotnet build -p:UseOcct=false | -p:UseOcct=true
+    Improved for reliable deployment on MonsterASP / GitHub Actions
   -->
-
-  <PropertyGroup>
-    <_OcctProjDir>$(MSBuildProjectDirectory)\..\ThreeDAnalyzer.OcctWrapper</_OcctProjDir>
-    <!-- MSVC /clr:netcore can emit to project\x64\... OR project\bin\x64\...\net10.0 -->
-    <_OcctRelR>$(_OcctProjDir)\x64\Release\ThreeDAnalyzer.OcctWrapper.dll</_OcctRelR>
-    <_OcctRelD>$(_OcctProjDir)\x64\Debug\ThreeDAnalyzer.OcctWrapper.dll</_OcctRelD>
-    <_OcctBinR>$(_OcctProjDir)\bin\x64\Release\net10.0\ThreeDAnalyzer.OcctWrapper.dll</_OcctBinR>
-    <_OcctBinD>$(_OcctProjDir)\bin\x64\Debug\net10.0\ThreeDAnalyzer.OcctWrapper.dll</_OcctBinD>
-  </PropertyGroup>
-
-  <!-- Auto UseOcct + HintPath when MSBuild property UseOcct not set on command line -->
-  <Choose>
-    <When Condition="'$(UseOcct)' == '' and Exists('$(OCCT_WRAPPER_DLL)')">
-      <PropertyGroup>
-        <UseOcct>true</UseOcct>
-        <OcctWrapperHintPath>$(OCCT_WRAPPER_DLL)</OcctWrapperHintPath>
-      </PropertyGroup>
-    </When>
-    <When Condition="'$(UseOcct)' == '' and Exists('$(_OcctRelR)')">
-      <PropertyGroup>
-        <UseOcct>true</UseOcct>
-        <OcctWrapperHintPath>..\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.dll</OcctWrapperHintPath>
-      </PropertyGroup>
-    </When>
-    <When Condition="'$(UseOcct)' == '' and Exists('$(_OcctRelD)')">
-      <PropertyGroup>
-        <UseOcct>true</UseOcct>
-        <OcctWrapperHintPath>..\ThreeDAnalyzer.OcctWrapper\x64\Debug\ThreeDAnalyzer.OcctWrapper.dll</OcctWrapperHintPath>
-      </PropertyGroup>
-    </When>
-    <When Condition="'$(UseOcct)' == '' and Exists('$(_OcctBinR)')">
-      <PropertyGroup>
-        <UseOcct>true</UseOcct>
-        <OcctWrapperHintPath>..\ThreeDAnalyzer.OcctWrapper\bin\x64\Release\net10.0\ThreeDAnalyzer.OcctWrapper.dll</OcctWrapperHintPath>
-      </PropertyGroup>
-    </When>
-    <When Condition="'$(UseOcct)' == '' and Exists('$(_OcctBinD)')">
-      <PropertyGroup>
-        <UseOcct>true</UseOcct>
-        <OcctWrapperHintPath>..\ThreeDAnalyzer.OcctWrapper\bin\x64\Debug\net10.0\ThreeDAnalyzer.OcctWrapper.dll</OcctWrapperHintPath>
-      </PropertyGroup>
-    </When>
-    <Otherwise>
-      <PropertyGroup Condition="'$(UseOcct)' == ''">
-        <UseOcct>false</UseOcct>
-      </PropertyGroup>
-    </Otherwise>
-  </Choose>
-
-  <!-- -p:UseOcct=true without prior HintPath: resolve from disk -->
-  <Choose>
-    <When Condition="'$(UseOcct)' == 'true' and '$(OcctWrapperHintPath)' == '' and Exists('$(OCCT_WRAPPER_DLL)')">
-      <PropertyGroup>
-        <OcctWrapperHintPath>$(OCCT_WRAPPER_DLL)</OcctWrapperHintPath>
-      </PropertyGroup>
-    </When>
-    <When Condition="'$(UseOcct)' == 'true' and '$(OcctWrapperHintPath)' == '' and Exists('$(_OcctRelR)')">
-      <PropertyGroup>
-        <OcctWrapperHintPath>..\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.dll</OcctWrapperHintPath>
-      </PropertyGroup>
-    </When>
-    <When Condition="'$(UseOcct)' == 'true' and '$(OcctWrapperHintPath)' == '' and Exists('$(_OcctRelD)')">
-      <PropertyGroup>
-        <OcctWrapperHintPath>..\ThreeDAnalyzer.OcctWrapper\x64\Debug\ThreeDAnalyzer.OcctWrapper.dll</OcctWrapperHintPath>
-      </PropertyGroup>
-    </When>
-    <When Condition="'$(UseOcct)' == 'true' and '$(OcctWrapperHintPath)' == '' and Exists('$(_OcctBinR)')">
-      <PropertyGroup>
-        <OcctWrapperHintPath>..\ThreeDAnalyzer.OcctWrapper\bin\x64\Release\net10.0\ThreeDAnalyzer.OcctWrapper.dll</OcctWrapperHintPath>
-      </PropertyGroup>
-    </When>
-    <When Condition="'$(UseOcct)' == 'true' and '$(OcctWrapperHintPath)' == '' and Exists('$(_OcctBinD)')">
-      <PropertyGroup>
-        <OcctWrapperHintPath>..\ThreeDAnalyzer.OcctWrapper\bin\x64\Debug\net10.0\ThreeDAnalyzer.OcctWrapper.dll</OcctWrapperHintPath>
-      </PropertyGroup>
-    </When>
-  </Choose>
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    
+    <!-- Important for native C++/CLI deployment -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+  <!-- OCCT Configuration -->
+  <PropertyGroup>
+    <!-- Default to true. You can override with -p:UseOcct=false -->
+    <UseOcct>true</UseOcct>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(UseOcct)' == 'true'">
     <DefineConstants>$(DefineConstants);USE_OCCT</DefineConstants>
-    <!-- C++/CLI netcore wrappers (OcctWrapper.dll) need ijwhost.dll beside them at runtime -->
     <UseIJWHost>true</UseIJWHost>
   </PropertyGroup>
 
@@ -100,23 +31,36 @@
     <ProjectReference Include="..\ThreeDAnalyzer.Core\ThreeDAnalyzer.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(UseOcct)' == 'true' and '$(OcctWrapperHintPath)' != ''">
+  <!-- Explicit Reference to OCCT Wrapper (more reliable) -->
+  <ItemGroup Condition="'$(UseOcct)' == 'true'">
     <Reference Include="ThreeDAnalyzer.OcctWrapper">
-      <HintPath>$(OcctWrapperHintPath)</HintPath>
+      <HintPath>..\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.dll</HintPath>
       <Private>true</Private>
+      <CopyLocalSatelliteAssemblies>true</CopyLocalSatelliteAssemblies>
     </Reference>
   </ItemGroup>
 
-  <Target Name="OcctWrapperLinkInfo" BeforeTargets="CoreCompile" Condition="'$(UseOcct)' == 'true' and '$(OcctWrapperHintPath)' != ''">
-    <Message Importance="high" Text="ThreeDAnalyzer: linking OCCT wrapper from $(OcctWrapperHintPath)" />
+  <!-- Force copy of OCCT wrapper and native DLLs during Publish -->
+  <Target Name="CopyOcctWrapperToPublish" AfterTargets="Publish" Condition="'$(UseOcct)' == 'true'">
+    <ItemGroup>
+      <OcctWrapperFiles Include="..\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.dll" />
+      <OcctNativeDlls Include="..\ThreeDAnalyzer.OcctWrapper\x64\Release\*.dll" />
+    </ItemGroup>
+    
+    <Message Importance="high" Text="Copying OCCT Wrapper and native DLLs to publish folder..." />
+    
+    <Copy SourceFiles="@(OcctWrapperFiles)" 
+          DestinationFolder="$(PublishDir)" 
+          SkipUnchangedFiles="false" />
+
+    <Copy SourceFiles="@(OcctNativeDlls)" 
+          DestinationFolder="$(PublishDir)" 
+          SkipUnchangedFiles="false" />
   </Target>
 
-  <Target Name="OcctWrapperMissing" BeforeTargets="CoreCompile" Condition="'$(UseOcct)' == 'true' and '$(OcctWrapperHintPath)' == ''">
-    <Error Text="UseOcct=true but no ThreeDAnalyzer.OcctWrapper.dll found. Build src\ThreeDAnalyzer.OcctWrapper (x64 Release/Debug), or set OCCT_WRAPPER_DLL to the full path of the DLL, then rebuild." />
-  </Target>
-
-  <Target Name="OcctWrapperNotLinked" AfterTargets="Build" Condition="'$(UseOcct)' != 'true'">
-    <Message Importance="high" Text="ThreeDAnalyzer: OCCT wrapper not linked (STEP disabled). Build ThreeDAnalyzer.OcctWrapper.vcxproj (x64), then rebuild this project. Searched: $(_OcctRelR) | $(_OcctRelD) | $(_OcctBinR) | $(_OcctBinD) | OCCT_WRAPPER_DLL=$(OCCT_WRAPPER_DLL)" />
+  <!-- Optional: Show info during build -->
+  <Target Name="OcctWrapperLinkInfo" BeforeTargets="CoreCompile" Condition="'$(UseOcct)' == 'true'">
+    <Message Importance="high" Text="ThreeDAnalyzer: linking OCCT wrapper from ..\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.dll" />
   </Target>
 
 </Project>
