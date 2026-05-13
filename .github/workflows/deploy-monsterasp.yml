@@ -54,11 +54,12 @@ jobs:
         run: .\scripts\Copy-OcctRuntime.ps1 -Configuration Release
 
       # ==================== DEPLOYMENT ====================
-      - name: Deploy to MonsterASP (Web Deploy)
+      - name: Deploy to MonsterASP (Web Deploy - HTTPS)
         uses: rasmusbuchholdt/simply-web-deploy@2.1.0
         with:
-          website-name: site68527                    # From your publishSettings
-          server-computer-name: site68527.siteasp.net:8172   # Important: add :8172
-          server-username: site68527                 # From your publishSettings
+          website-name: site68527
+          server-computer-name: https://site68527.siteasp.net:8172
+          server-username: site68527
           server-password: ${{ secrets.SERVER_PASSWORD }}
           source-path: publish
+          target-delete: false
