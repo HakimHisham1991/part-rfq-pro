@@ -32,6 +32,7 @@ jobs:
         if: steps.cache-occt.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
+          Write-Host "Downloading OCCT..." -ForegroundColor Cyan
           Invoke-WebRequest -Uri "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/occt-vc143-64.zip" -OutFile "occt.zip"
           Invoke-WebRequest -Uri "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/3rdparty-vc14-64.zip" -OutFile "3rdparty.zip"
           Expand-Archive -Path "occt.zip" -DestinationPath . -Force
@@ -57,25 +58,25 @@ jobs:
             --runtime win-x64 `
             --self-contained false
 
-      - name: Copy OCCT + Wrapper Files (Enhanced)
+      - name: Copy OCCT + Wrapper Files
         shell: pwsh
         run: |
           $publishPath = "${{ github.workspace }}/publish"
           
           Write-Host "=== Copying OCCT Wrapper and Runtime Files ==="
           
-          # Explicitly copy the main wrapper
+          # Explicit copy of main wrapper
           Copy-Item -Path "src\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.dll" `
                     -Destination $publishPath -Force -ErrorAction Stop
           
-          # Run official copy script
+          # Run your copy script
           .\scripts\Copy-OcctRuntime.ps1 -Configuration Release
           
-          # Extra safety copy from bin folder
+          # Extra safety copy
           Get-ChildItem -Path "src\ThreeDAnalyzer.Web\bin\Release\net10.0\win-x64" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue |
             Copy-Item -Destination $publishPath -Force -ErrorAction SilentlyContinue
           
-          # Show final files for debugging
+          # Show final result for debugging
           Write-Host "=== DLLs in Publish Folder ==="
           Get-ChildItem $publishPath -Filter "*.dll" | Select-Object Name
 
