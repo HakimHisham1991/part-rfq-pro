@@ -1,69 +1,98 @@
-# Deploy to MonsterASP.NET with full OCCT support
-# Requires: Windows runner (for MSVC + C++/CLI)
-
 name: Deploy to MonsterASP.NET (Full OCCT)
 
 on:
   push:
-    branches: [main, master]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
   build_and_deploy:
     runs-on: windows-latest
-    permissions:
-      contents: read
 
     steps:
       - uses: actions/checkout@v4
 
+      # === .NET Setup ===
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
-      - name: Setup MSBuild (for C++/CLI)
+      # === MSBuild for C++/CLI ===
+      - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Set OCCT_ROOT (GitHub Actions)
+      # === OCCT Download with Caching ===
+      - name: Cache OCCT
+        id: cache-occt
+        uses: actions/cache@v4
+        with:
+          path: occt-vc143-64
+          key: occt-7.8.0-vc143-64
+
+      - name: Download and Setup OCCT 7.8.0
+        if: steps.cache-occt.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          # Download and extract OCCT 7.8 (Windows x64) if not cached
-          $occtUrl = "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/occt-7.8.0-vc14-64.zip"
-          $occtZip = "occt.zip"
-          $occtRoot = "$env:GITHUB_WORKSPACE\occt-7.8.0-vc14-64"
+          Write-Host "Downloading OCCT..." -ForegroundColor Cyan
           
-          Invoke-WebRequest -Uri $occtUrl -OutFile $occtZip
-          Expand-Archive -Path $occtZip -DestinationPath $env:GITHUB_WORKSPACE -Force
+          $occtUrl = "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/occt-vc143-64.zip"
+          $thirdPartyUrl = "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/3rdparty-vc14-64.zip"
           
-          echo "OCCT_ROOT=$occtRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "OCCT_ROOT=$occtRoot"
+          Invoke-WebRequest -Uri $occtUrl -OutFile "occt.zip" -UseBasicParsing
+          Invoke-WebRequest -Uri $thirdPartyUrl -OutFile "3rdparty.zip" -UseBasicParsing
+          
+          Expand-Archive -Path "occt.zip" -DestinationPath . -Force
+          Expand-Archive -Path "3rdparty.zip" -DestinationPath . -Force
+          
+          Write-Host "OCCT downloaded and extracted successfully" -ForegroundColor Green
 
+      - name: Set OCCT_ROOT
+        shell: pwsh
+        run: |
+          $occtRoot = "$env:GITHUB_WORKSPACE\occt-vc143-64"
+          echo "OCCT_ROOT=$occtRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "OCCT_ROOT=$occtRoot"
+
+      # === Build C++/CLI Wrapper ===
       - name: Build OCCT C++/CLI Wrapper
         shell: pwsh
+        env:
+          OCCT_ROOT: ${{ env.OCCT_ROOT }}
         run: |
+          if (-not (Test-Path $env:OCCT_ROOT)) {
+            Write-Error "OCCT_ROOT not found at: $env:OCCT_ROOT"
+            exit 1
+          }
           .\scripts\Build-OcctWrapper.ps1
 
-      - name: Run tests
+      # === Test ===
+      - name: Run Tests
         run: dotnet test tests/ThreeDAnalyzer.Tests/ThreeDAnalyzer.Tests.csproj -c Release --verbosity minimal
 
-      - name: Publish Web App (Release)
+      # === Publish ===
+      - name: Publish Web App
         run: |
           dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj `
             -c Release `
             -o "${{ github.workspace }}/publish" `
             --no-self-contained
 
-      - name: Copy OCCT Runtime DLLs to publish folder
+      # === Copy Native OCCT DLLs ===
+      - name: Copy OCCT Runtime DLLs
         shell: pwsh
         run: |
           .\scripts\Copy-OcctRuntime.ps1 -Configuration Release
           
-          # Also copy to the publish output
-          $publishOut = "${{ github.workspace }}/publish"
-          Copy-Item -Path "src\ThreeDAnalyzer.Web\bin\Release\net10.0\*.dll" -Destination $publishOut -Force -ErrorAction SilentlyContinue
-          Write-Host "OCCT DLLs copied to publish folder"
+          $publishPath = "${{ github.workspace }}/publish"
+          # Extra safety copy
+          Get-ChildItem -Path "src\ThreeDAnalyzer.Web\bin\Release\net10.0" -Filter "*.dll" | 
+            Copy-Item -Destination $publishPath -Force -ErrorAction SilentlyContinue
+          
+          Write-Host "✅ OCCT DLLs copied to publish folder" -ForegroundColor Green
+          Get-ChildItem $publishPath -Filter "*.dll" | Select-Object Name
 
+      # === Deploy to MonsterASP ===
       - name: Deploy via Web Deploy
         uses: rasmusbuchholdt/simply-web-deploy@2.1.0
         with:
