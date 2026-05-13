@@ -50,13 +50,14 @@ jobs:
           OCCT_ROOT: ${{ env.OCCT_ROOT }}
         run: .\scripts\Build-OcctWrapper.ps1
 
-      - name: Publish Web App (win-x64)
+      - name: Publish Web App (OCCT Disabled - Test)
         run: |
           dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj `
             -c Release `
             -o "${{ github.workspace }}/publish" `
             --runtime win-x64 `
-            --self-contained false
+            --self-contained false `
+            -p:UseOcct=false
 
       - name: Copy OCCT + Wrapper Files
         shell: pwsh
