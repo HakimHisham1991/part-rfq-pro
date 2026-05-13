@@ -50,7 +50,7 @@ jobs:
           OCCT_ROOT: ${{ env.OCCT_ROOT }}
         run: .\scripts\Build-OcctWrapper.ps1
 
-      - name: Publish Web App (OCCT Disabled - Test)
+      - name: Publish Web App (OCCT Disabled)
         run: |
           dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj `
             -c Release `
