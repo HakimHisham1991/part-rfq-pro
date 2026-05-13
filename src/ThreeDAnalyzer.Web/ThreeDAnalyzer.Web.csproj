@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <!--
-    OCCT: C++/CLI wrapper ThreeDAnalyzer.OcctWrapper.dll
-    Improved for reliable deployment on MonsterASP / GitHub Actions
+    OCCT: C++/CLI wrapper for Part RFQ Pro
+    Optimized for MonsterASP.NET deployment
   -->
 
   <PropertyGroup>
@@ -11,14 +11,16 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
     
-    <!-- Important for native C++/CLI deployment -->
+    <!-- Critical for IIS + C++/CLI -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <AspNetCoreHostingModel>InProcess</AspNetCoreHostingModel>
+    <SelfContained>false</SelfContained>
   </PropertyGroup>
 
   <!-- OCCT Configuration -->
   <PropertyGroup>
-    <!-- Default to true. You can override with -p:UseOcct=false -->
+    <!-- Change to false temporarily if you want to test without OCCT -->
     <UseOcct>true</UseOcct>
   </PropertyGroup>
 
@@ -31,7 +33,7 @@
     <ProjectReference Include="..\ThreeDAnalyzer.Core\ThreeDAnalyzer.Core.csproj" />
   </ItemGroup>
 
-  <!-- Explicit Reference to OCCT Wrapper (more reliable) -->
+  <!-- Explicit Reference to OCCT Wrapper -->
   <ItemGroup Condition="'$(UseOcct)' == 'true'">
     <Reference Include="ThreeDAnalyzer.OcctWrapper">
       <HintPath>..\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.dll</HintPath>
@@ -40,27 +42,23 @@
     </Reference>
   </ItemGroup>
 
-  <!-- Force copy of OCCT wrapper and native DLLs during Publish -->
-  <Target Name="CopyOcctWrapperToPublish" AfterTargets="Publish" Condition="'$(UseOcct)' == 'true'">
+  <!-- Force copy of all OCCT related files during Publish -->
+  <Target Name="CopyOcctToPublish" AfterTargets="Publish" Condition="'$(UseOcct)' == 'true'">
     <ItemGroup>
-      <OcctWrapperFiles Include="..\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.dll" />
-      <OcctNativeDlls Include="..\ThreeDAnalyzer.OcctWrapper\x64\Release\*.dll" />
+      <OcctFiles Include="..\ThreeDAnalyzer.OcctWrapper\x64\Release\*.dll" />
     </ItemGroup>
     
-    <Message Importance="high" Text="Copying OCCT Wrapper and native DLLs to publish folder..." />
+    <Message Importance="high" Text="=== Copying OCCT Wrapper + Native DLLs to Publish Folder ===" />
     
-    <Copy SourceFiles="@(OcctWrapperFiles)" 
+    <Copy SourceFiles="@(OcctFiles)" 
           DestinationFolder="$(PublishDir)" 
-          SkipUnchangedFiles="false" />
-
-    <Copy SourceFiles="@(OcctNativeDlls)" 
-          DestinationFolder="$(PublishDir)" 
-          SkipUnchangedFiles="false" />
+          SkipUnchangedFiles="false" 
+          OverwriteReadOnlyFiles="true" />
   </Target>
 
-  <!-- Optional: Show info during build -->
+  <!-- Build Information -->
   <Target Name="OcctWrapperLinkInfo" BeforeTargets="CoreCompile" Condition="'$(UseOcct)' == 'true'">
-    <Message Importance="high" Text="ThreeDAnalyzer: linking OCCT wrapper from ..\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.dll" />
+    <Message Importance="high" Text="ThreeDAnalyzer: Linking OCCT wrapper from ..\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.dll" />
   </Target>
 
 </Project>
