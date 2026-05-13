@@ -17,9 +17,10 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Setup MSBuild
+      - name: Setup MSBuild (for C++/CLI)
         uses: microsoft/setup-msbuild@v2
 
+      # OCCT Cache & Download
       - name: Cache OCCT
         id: cache-occt
         uses: actions/cache@v4
@@ -38,23 +39,47 @@ jobs:
 
       - name: Set OCCT_ROOT
         shell: pwsh
-        run: echo "OCCT_ROOT=$env:GITHUB_WORKSPACE\occt-vc143-64" | Out-File -FilePath $env:GITHUB_ENV -Append
+        run: |
+          $occtRoot = "$env:GITHUB_WORKSPACE\occt-vc143-64"
+          echo "OCCT_ROOT=$occtRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Build OCCT Wrapper
+      - name: Build OCCT C++/CLI Wrapper
         shell: pwsh
         env:
           OCCT_ROOT: ${{ env.OCCT_ROOT }}
         run: .\scripts\Build-OcctWrapper.ps1
 
-      - name: Publish Web App
-        run: dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj -c Release -o "${{ github.workspace }}/publish" --no-self-contained
+      - name: Publish Web App (win-x64)
+        run: |
+          dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj `
+            -c Release `
+            -o "${{ github.workspace }}/publish" `
+            --runtime win-x64 `
+            --self-contained false
 
-      - name: Copy OCCT DLLs
+      - name: Copy OCCT + Wrapper Files (Enhanced)
         shell: pwsh
-        run: .\scripts\Copy-OcctRuntime.ps1 -Configuration Release
+        run: |
+          $publishPath = "${{ github.workspace }}/publish"
+          
+          Write-Host "=== Copying OCCT Wrapper and Runtime Files ==="
+          
+          # Explicitly copy the main wrapper
+          Copy-Item -Path "src\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.dll" `
+                    -Destination $publishPath -Force -ErrorAction Stop
+          
+          # Run official copy script
+          .\scripts\Copy-OcctRuntime.ps1 -Configuration Release
+          
+          # Extra safety copy from bin folder
+          Get-ChildItem -Path "src\ThreeDAnalyzer.Web\bin\Release\net10.0\win-x64" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue |
+            Copy-Item -Destination $publishPath -Force -ErrorAction SilentlyContinue
+          
+          # Show final files for debugging
+          Write-Host "=== DLLs in Publish Folder ==="
+          Get-ChildItem $publishPath -Filter "*.dll" | Select-Object Name
 
-      # ==================== DEPLOYMENT ====================
-      - name: Deploy to MonsterASP (Web Deploy - HTTPS)
+      - name: Deploy to MonsterASP (Web Deploy)
         uses: rasmusbuchholdt/simply-web-deploy@2.1.0
         with:
           website-name: site68527
@@ -62,4 +87,3 @@ jobs:
           server-username: site68527
           server-password: ${{ secrets.SERVER_PASSWORD }}
           source-path: publish
-          target-delete: false
