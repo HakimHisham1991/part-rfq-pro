@@ -1,17 +1,7 @@
-# Deploy to Monster ASP.NET via Web Deploy.
-# Monster guide: https://help.monsterasp.net/books/github/page/how-to-deploy-website-via-github-actions
-#
-# GitHub: Settings → Secrets and variables → Actions → New repository secret:
-#   WEBSITE_NAME           — from Monster hosting control panel (e.g. site1234)
-#   SERVER_COMPUTER_NAME   — e.g. https://site1234.siteasp.net:8172 (Web Deploy endpoint + port from panel)
-#   SERVER_USERNAME        — Web Deploy username (often same site prefix as in the panel)
-#   SERVER_PASSWORD        — Web Deploy password
-#
-# This workflow publishes Framework-Dependent Deployment (net10.x, no `--runtime`).
-# Requires .NET 10 ASP.NET Core Runtime on Monster for the site pool. OCCT/native DLL must be copied in publish
-# on the runner if USE_OCCT is required in production.
+# Deploy to MonsterASP.NET with full OCCT support
+# Requires: Windows runner (for MSVC + C++/CLI)
 
-name: Deploy to MonsterASP.NET
+name: Deploy to MonsterASP.NET (Full OCCT)
 
 on:
   push:
@@ -32,14 +22,47 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Setup MSBuild (for C++/CLI)
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Set OCCT_ROOT (GitHub Actions)
+        shell: pwsh
+        run: |
+          # Download and extract OCCT 7.8 (Windows x64) if not cached
+          $occtUrl = "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/occt-7.8.0-vc14-64.zip"
+          $occtZip = "occt.zip"
+          $occtRoot = "$env:GITHUB_WORKSPACE\occt-7.8.0-vc14-64"
+          
+          Invoke-WebRequest -Uri $occtUrl -OutFile $occtZip
+          Expand-Archive -Path $occtZip -DestinationPath $env:GITHUB_WORKSPACE -Force
+          
+          echo "OCCT_ROOT=$occtRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "OCCT_ROOT=$occtRoot"
+
+      - name: Build OCCT C++/CLI Wrapper
+        shell: pwsh
+        run: |
+          .\scripts\Build-OcctWrapper.ps1
+
       - name: Run tests
         run: dotnet test tests/ThreeDAnalyzer.Tests/ThreeDAnalyzer.Tests.csproj -c Release --verbosity minimal
 
-      - name: Publish web app
-        run: >-
-          dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj
-          -c Release
-          -o "${{ github.workspace }}/publish"
+      - name: Publish Web App (Release)
+        run: |
+          dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj `
+            -c Release `
+            -o "${{ github.workspace }}/publish" `
+            --no-self-contained
+
+      - name: Copy OCCT Runtime DLLs to publish folder
+        shell: pwsh
+        run: |
+          .\scripts\Copy-OcctRuntime.ps1 -Configuration Release
+          
+          # Also copy to the publish output
+          $publishOut = "${{ github.workspace }}/publish"
+          Copy-Item -Path "src\ThreeDAnalyzer.Web\bin\Release\net10.0\*.dll" -Destination $publishOut -Force -ErrorAction SilentlyContinue
+          Write-Host "OCCT DLLs copied to publish folder"
 
       - name: Deploy via Web Deploy
         uses: rasmusbuchholdt/simply-web-deploy@2.1.0
