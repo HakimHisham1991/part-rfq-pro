@@ -1,4 +1,4 @@
-name: Deploy to MonsterASP.NET (Full OCCT)
+name: Deploy to MonsterASP.NET (Full OCCT + Debug)
 
 on:
   push:
@@ -12,17 +12,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # === .NET Setup ===
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
-      # === MSBuild for C++/CLI ===
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      # === OCCT Download with Caching ===
+      # === OCCT Caching & Download ===
       - name: Cache OCCT
         id: cache-occt
         uses: actions/cache@v4
@@ -35,64 +33,60 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "Downloading OCCT..." -ForegroundColor Cyan
-          
-          $occtUrl = "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/occt-vc143-64.zip"
-          $thirdPartyUrl = "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/3rdparty-vc14-64.zip"
-          
-          Invoke-WebRequest -Uri $occtUrl -OutFile "occt.zip" -UseBasicParsing
-          Invoke-WebRequest -Uri $thirdPartyUrl -OutFile "3rdparty.zip" -UseBasicParsing
-          
+          Invoke-WebRequest -Uri "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/occt-vc143-64.zip" -OutFile "occt.zip" -UseBasicParsing
+          Invoke-WebRequest -Uri "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/3rdparty-vc14-64.zip" -OutFile "3rdparty.zip" -UseBasicParsing
           Expand-Archive -Path "occt.zip" -DestinationPath . -Force
           Expand-Archive -Path "3rdparty.zip" -DestinationPath . -Force
-          
-          Write-Host "OCCT downloaded and extracted successfully" -ForegroundColor Green
 
       - name: Set OCCT_ROOT
         shell: pwsh
         run: |
           $occtRoot = "$env:GITHUB_WORKSPACE\occt-vc143-64"
           echo "OCCT_ROOT=$occtRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "OCCT_ROOT=$occtRoot"
+          Write-Host "OCCT_ROOT = $occtRoot"
 
-      # === Build C++/CLI Wrapper ===
       - name: Build OCCT C++/CLI Wrapper
         shell: pwsh
         env:
           OCCT_ROOT: ${{ env.OCCT_ROOT }}
-        run: |
-          if (-not (Test-Path $env:OCCT_ROOT)) {
-            Write-Error "OCCT_ROOT not found at: $env:OCCT_ROOT"
-            exit 1
-          }
-          .\scripts\Build-OcctWrapper.ps1
+        run: .\scripts\Build-OcctWrapper.ps1
 
-      # === Test ===
       - name: Run Tests
         run: dotnet test tests/ThreeDAnalyzer.Tests/ThreeDAnalyzer.Tests.csproj -c Release --verbosity minimal
 
-      # === Publish ===
       - name: Publish Web App
-        run: |
-          dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj `
-            -c Release `
-            -o "${{ github.workspace }}/publish" `
-            --no-self-contained
+        run: dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj -c Release -o "${{ github.workspace }}/publish" --no-self-contained
 
-      # === Copy Native OCCT DLLs ===
       - name: Copy OCCT Runtime DLLs
         shell: pwsh
         run: |
           .\scripts\Copy-OcctRuntime.ps1 -Configuration Release
-          
-          $publishPath = "${{ github.workspace }}/publish"
-          # Extra safety copy
-          Get-ChildItem -Path "src\ThreeDAnalyzer.Web\bin\Release\net10.0" -Filter "*.dll" | 
-            Copy-Item -Destination $publishPath -Force -ErrorAction SilentlyContinue
-          
-          Write-Host "✅ OCCT DLLs copied to publish folder" -ForegroundColor Green
-          Get-ChildItem $publishPath -Filter "*.dll" | Select-Object Name
+          Write-Host "✅ OCCT DLLs copied successfully"
 
-      # === Deploy to MonsterASP ===
+      # ==================== DEBUG CONNECTION ====================
+      - name: 🔍 Debug - Show Secret Values (Masked)
+        shell: pwsh
+        run: |
+          Write-Host "WEBSITE_NAME          = ${{ secrets.WEBSITE_NAME }}"
+          Write-Host "SERVER_COMPUTER_NAME  = ${{ secrets.SERVER_COMPUTER_NAME }}"
+          Write-Host "SERVER_USERNAME       = ${{ secrets.SERVER_USERNAME }}"
+          Write-Host "SERVER_PASSWORD       = *** (hidden)"
+
+      - name: 🔍 Debug - Test Network Connectivity
+        shell: pwsh
+        run: |
+          $server = "${{ secrets.SERVER_COMPUTER_NAME }}"
+          if ($server -match "https?://") {
+            $server = $server -replace "https?://", "" -replace ":\d+", ""
+          }
+          Write-Host "Testing connection to: $server"
+          
+          Test-NetConnection -ComputerName $server -Port 8172 -WarningAction SilentlyContinue
+          Test-NetConnection -ComputerName $server -Port 5118 -WarningAction SilentlyContinue
+          Test-NetConnection -ComputerName $server -Port 80 -WarningAction SilentlyContinue
+          Test-NetConnection -ComputerName $server -Port 443 -WarningAction SilentlyContinue
+
+      # ==================== DEPLOY ====================
       - name: Deploy via Web Deploy
         uses: rasmusbuchholdt/simply-web-deploy@2.1.0
         with:
@@ -101,3 +95,4 @@ jobs:
           server-username: ${{ secrets.SERVER_USERNAME }}
           server-password: ${{ secrets.SERVER_PASSWORD }}
           source-path: publish
+          verbose: true
