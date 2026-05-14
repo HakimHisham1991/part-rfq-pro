@@ -35,3 +35,4 @@ c:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\artifacts\csonlypick\ThreeDA
 c:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\artifacts\cspatch2\ThreeDAnalyzer.Core.deps.json
 c:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\artifacts\cspatch2\ThreeDAnalyzer.Core.dll
 c:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\artifacts\cspatch2\ThreeDAnalyzer.Core.pdb
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Core\obj\Debug\net10.0\ThreeDAnalyzer.Core.sourcelink.json

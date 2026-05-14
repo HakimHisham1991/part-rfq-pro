@@ -17,9 +17,7 @@ const NX_GNOMON_PX = 128;
 
 /** Reusable math for `_syncNxGnomonOrientation` (no GC per frame). */
 const _gnScr = {
-    qCube: new THREE.Quaternion(),
     nMain: new THREE.Vector3(),
-    zCap: new THREE.Vector3(0, 0, 1),
 };
 
 const ThreeDViewer = {
@@ -40,15 +38,16 @@ const ThreeDViewer = {
     _rafId:       null,
     _onCanvasMouseDown: null,
     _onWindowKeyDown:   null,
-    /** @type {null | { host: HTMLElement, canvas: HTMLCanvasElement, renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.OrthographicCamera, rotScreen: THREE.Group, cubeGroup: THREE.Group, pickMesh: THREE.Mesh, raycaster: THREE.Raycaster }} */
+    /** @type {null | { host: HTMLElement, canvas: HTMLCanvasElement, renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.OrthographicCamera, rotScreen: THREE.Group, cubeGroup: THREE.Group, pickMesh: THREE.Mesh, raycaster: THREE.Raycaster, hoverFaceIdx: number }} */
     _nxGnomon: null,
     /** Scene triad at orbit target (+X,+Y,+Z world; same RGB as gnomon). */
     _worldAxesTriad: null,
     /** @type {null | { t0: number, dur: number, p0: THREE.Vector3, p1: THREE.Vector3, tar0: THREE.Vector3, tar1: THREE.Vector3, up0: THREE.Vector3, up1: THREE.Vector3 }} */
     _snapAnim: null,
     _nxGnomonBoundDown: null,
+    _nxGnomonBoundMove: null,
+    _nxGnomonBoundLeave: null,
 
-    /** Initialise the viewer. Call once from OnAfterRenderAsync. */
     init(canvasId, dotNetRef) {
         const canvas = document.getElementById(canvasId);
         if (!canvas) { console.error('[viewer] canvas not found:', canvasId); return; }
@@ -128,6 +127,64 @@ const ThreeDViewer = {
         this._animate();
 
         this._installNxViewGnomon(canvas);
+    },
+
+    /** Sync HUD camera, then raycast gnomon canvas: highlight hovered box face in red (+ reset others). */
+    _applyGnomonFaceHoverFromEvent(ev) {
+        const g = this._nxGnomon;
+        if (!g?.pickMesh?.material || !g.camera || !g.canvas) return;
+        this._syncNxGnomonOrientation();
+
+        const rect = g.canvas.getBoundingClientRect();
+        const x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+        const y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+        g.raycaster.setFromCamera(new THREE.Vector2(x, y), g.camera);
+        const hits = g.raycaster.intersectObject(g.pickMesh, false);
+
+        let idx = -1;
+        if (hits.length && hits[0].face != null && typeof hits[0].face.materialIndex === 'number')
+            idx = hits[0].face.materialIndex | 0;
+
+        if (idx === g.hoverFaceIdx) {
+            g.canvas.style.cursor = idx >= 0 ? 'pointer' : 'default';
+            return;
+        }
+        g.hoverFaceIdx = idx;
+
+        const mats = g.pickMesh.material;
+        if (!Array.isArray(mats)) return;
+
+        const baseColor = 0xf2f4f8;
+        const hoverColor = 0xffe0e0;
+        for (let i = 0; i < mats.length; i++) {
+            const m = mats[i];
+            if (i === idx && idx >= 0) {
+                m.color.setHex(hoverColor);
+                m.emissive.setHex(0xff2020);
+                m.emissiveIntensity = 1.15;
+            }
+            else {
+                m.color.setHex(baseColor);
+                m.emissive.setHex(0x000000);
+                m.emissiveIntensity = 0;
+            }
+        }
+        g.canvas.style.cursor = idx >= 0 ? 'pointer' : 'default';
+    },
+
+    _resetGnomonFaceHover() {
+        const g = this._nxGnomon;
+        if (!g?.pickMesh?.material || !g.canvas) return;
+        g.hoverFaceIdx = -1;
+        const mats = g.pickMesh.material;
+        if (!Array.isArray(mats)) return;
+        const baseColor = 0xf2f4f8;
+        for (let i = 0; i < mats.length; i++) {
+            mats[i].color.setHex(baseColor);
+            mats[i].emissive.setHex(0x000000);
+            mats[i].emissiveIntensity = 0;
+        }
+        g.canvas.style.cursor = 'default';
     },
 
     /** Load a tessellated mesh (vertices: flat xyz…, indices: triangle corner indices). */
@@ -516,14 +573,14 @@ const ThreeDViewer = {
         const rotScreen = new THREE.Group();
         rotScreen.name = 'nxViewGnomonRotScreen';
 
-        /** Box only: twist so the world face that points at the main camera also faces the fixed HUD camera. */
+        /** Box stays world-axis-aligned (faces ⊥ ±X/±Y/±Z like the triad); HUD camera tracks main view. */
         const cubeGroup = new THREE.Group();
         cubeGroup.name = 'nxViewCubeGroup';
         rotScreen.add(cubeGroup);
 
         const boxSize = 0.92;
         const boxGeo = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
-        const faceMat = new THREE.MeshStandardMaterial({
+        const faceMatOpts = {
             color: 0xf2f4f8,
             metalness: 0.05,
             roughness: 0.55,
@@ -531,8 +588,13 @@ const ThreeDViewer = {
             opacity: 0.52,
             depthWrite: false,
             side: THREE.DoubleSide,
-        });
-        const pickMesh = new THREE.Mesh(boxGeo, faceMat);
+            emissive: 0x000000,
+            emissiveIntensity: 0,
+        };
+        const faceMats = [];
+        for (let i = 0; i < 6; i++)
+            faceMats.push(new THREE.MeshStandardMaterial({ ...faceMatOpts }));
+        const pickMesh = new THREE.Mesh(boxGeo, faceMats);
         pickMesh.name = 'nxGnomonPick';
         cubeGroup.add(pickMesh);
 
@@ -595,8 +657,14 @@ const ThreeDViewer = {
             if (!n || n.lengthSq() < 1e-18) return;
             n.normalize();
             this._snapMainViewFromGnomonNormal(n);
+            this._resetGnomonFaceHover();
         };
         gCanvas.addEventListener('pointerdown', this._nxGnomonBoundDown, { passive: false });
+
+        this._nxGnomonBoundMove = (ev) => this._applyGnomonFaceHoverFromEvent(ev);
+        this._nxGnomonBoundLeave = () => this._resetGnomonFaceHover();
+        gCanvas.addEventListener('pointermove', this._nxGnomonBoundMove);
+        gCanvas.addEventListener('pointerleave', this._nxGnomonBoundLeave);
 
         this._nxGnomon = {
             host,
@@ -608,6 +676,7 @@ const ThreeDViewer = {
             cubeGroup,
             pickMesh,
             raycaster,
+            hoverFaceIdx: -1,
         };
     },
 
@@ -617,6 +686,12 @@ const ThreeDViewer = {
         if (this._nxGnomonBoundDown && g.canvas)
             g.canvas.removeEventListener('pointerdown', this._nxGnomonBoundDown);
         this._nxGnomonBoundDown = null;
+        if (this._nxGnomonBoundMove && g.canvas)
+            g.canvas.removeEventListener('pointermove', this._nxGnomonBoundMove);
+        if (this._nxGnomonBoundLeave && g.canvas)
+            g.canvas.removeEventListener('pointerleave', this._nxGnomonBoundLeave);
+        this._nxGnomonBoundMove = null;
+        this._nxGnomonBoundLeave = null;
 
         g.renderer?.dispose();
         g.scene?.traverse((o) => {
@@ -631,8 +706,9 @@ const ThreeDViewer = {
     },
 
     /**
-     * HUD camera matched to main viewport (direction + camera.up); rotScreen stays world XYZ so gnomon RGB matches
-     * the in-scene world triad. Cube twists so the outward face aligns with eye→origin (parallel to main view).
+     * HUD camera matches main viewport (eye direction + up). rotScreen and cubeGroup stay identity quaternion so
+     * the box remains a true world-axis-aligned cube: each face lies in an X/Y/Z coordinate plane (normals ±X, ±Y, ±Z),
+     * consistent with the RGB triad (+X red, +Y green, +Z blue).
      */
     _syncNxGnomonOrientation() {
         const g = this._nxGnomon;
@@ -651,9 +727,7 @@ const ThreeDViewer = {
         gCam.lookAt(0, 0, 0);
 
         g.rotScreen.quaternion.identity();
-
-        X.qCube.setFromUnitVectors(X.zCap, X.nMain);
-        g.cubeGroup.quaternion.copy(X.qCube);
+        g.cubeGroup.quaternion.identity();
     },
 
     _renderGnomon() {
