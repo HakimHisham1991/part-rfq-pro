@@ -11,10 +11,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
     
-    <!-- Critical for IIS + C++/CLI -->
+    <!-- Critical for IIS + C++/CLI; MonsterASP shared pools often fail InProcess — OutOfProcess is more reliable. -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
-    <AspNetCoreHostingModel>InProcess</AspNetCoreHostingModel>
+    <AspNetCoreHostingModel>OutOfProcess</AspNetCoreHostingModel>
     <SelfContained>false</SelfContained>
   </PropertyGroup>
 

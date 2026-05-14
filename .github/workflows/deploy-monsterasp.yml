@@ -1,16 +1,49 @@
+# MonsterASP / IIS: HTTP 500.30 often = host missing your runtime or ANCM crash. This workflow uses
+# win-x64 self-contained publish, OutOfProcess (csproj), and Web Deploy via repository secrets only.
+#
+# --- Where stdout logging lives in web.config (after dotnet publish) ---
+# Open the published file next to your app DLL (same folder as ThreeDAnalyzer.Web.exe), find:
+#   <configuration><location path="." ...><system.webServer>
+#     <aspNetCore ... stdoutLogEnabled="true" stdoutLogFile=".\logs\stdout" hostingModel="..." />
+# The workflow turns this on automatically and creates a ./logs folder in the publish output.
+# On the server (FTP / File Manager), read logs under the site root, e.g. logs\ stdout_*.log
+#
+# --- Secrets (Settings → Secrets and variables → Actions) ---
+# Never put hostnames, users, or passwords in this file. Use only:
+#   MONSTER_WEBSITE_NAME, MONSTER_SERVER_COMPUTER_NAME, MONSTER_SERVER_USERNAME, MONSTER_SERVER_PASSWORD
+
 name: Deploy to MonsterASP.NET (Full OCCT)
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   workflow_dispatch:
+
+concurrency:
+  group: monsterasp-deploy-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build_and_deploy:
     runs-on: windows-latest
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Require Web Deploy secrets (no values printed)
+        shell: pwsh
+        env:
+          MONSTER_WEBSITE_NAME: ${{ secrets.MONSTER_WEBSITE_NAME }}
+          MONSTER_SERVER_COMPUTER_NAME: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
+          MONSTER_SERVER_USERNAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
+          MONSTER_SERVER_PASSWORD: ${{ secrets.MONSTER_SERVER_PASSWORD }}
+        run: |
+          $ok = ($env:MONSTER_WEBSITE_NAME -and $env:MONSTER_SERVER_COMPUTER_NAME -and $env:MONSTER_SERVER_USERNAME -and $env:MONSTER_SERVER_PASSWORD)
+          if (-not $ok) {
+            Write-Error 'One or more MONSTER_* repository secrets are missing or empty. Add them under GitHub → Settings → Secrets and variables → Actions (names only are listed in the workflow header).'
+          }
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
@@ -20,7 +53,6 @@ jobs:
       - name: Setup MSBuild (for C++/CLI)
         uses: microsoft/setup-msbuild@v2
 
-      # === OCCT Setup ===
       - name: Cache OCCT
         id: cache-occt
         uses: actions/cache@v4
@@ -41,52 +73,52 @@ jobs:
       - name: Set OCCT_ROOT
         shell: pwsh
         run: |
-          $occtRoot = "$env:GITHUB_WORKSPACE\occt-vc143-64"
-          echo "OCCT_ROOT=$occtRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $occtRoot = "${env:GITHUB_WORKSPACE}\occt-vc143-64"
+          "OCCT_ROOT=$occtRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build OCCT C++/CLI Wrapper
         shell: pwsh
-        env:
-          OCCT_ROOT: ${{ env.OCCT_ROOT }}
         run: .\scripts\Build-OcctWrapper.ps1
 
-      # === Publish ===
-      - name: Publish Web App (win-x64)
-        run: |
-          dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj `
-            -c Release `
-            -o "${{ github.workspace }}/publish" `
-            --runtime win-x64 `
-            --self-contained false
+      - name: Publish Web App (win-x64 self-contained)
+        run: >-
+          dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj
+          -c Release
+          -o "${{ github.workspace }}/publish"
+          --runtime win-x64
+          --self-contained true
 
-      # === Copy Native Files ===
-      - name: Copy OCCT + Wrapper Files
+      - name: Copy OCCT + Wrapper into publish folder
         shell: pwsh
         run: |
-          $publishPath = "${{ github.workspace }}/publish"
-          
-          Write-Host "=== Copying OCCT Wrapper and Native DLLs ==="
-          
-          # Direct copy from wrapper build
+          $publishPath = "${{ github.workspace }}\publish"
+          Write-Host "=== Copying wrapper + OCCT runtime ===" -ForegroundColor Cyan
           Copy-Item -Path "src\ThreeDAnalyzer.OcctWrapper\x64\Release\*.dll" -Destination $publishPath -Force -ErrorAction Stop
-          
-          # Run your official copy script
-          .\scripts\Copy-OcctRuntime.ps1 -Configuration Release
-          
-          # Final safety copy from bin folder
-          Get-ChildItem -Path "src\ThreeDAnalyzer.Web\bin\Release\net10.0\win-x64" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue |
-            Copy-Item -Destination $publishPath -Force -ErrorAction SilentlyContinue
-          
-          # Show what was published (very important for debugging)
-          Write-Host "=== DLLs in Publish Folder ==="
-          Get-ChildItem $publishPath -Filter "*.dll" | Select-Object Name
+          .\scripts\Copy-OcctRuntime.ps1 -Configuration Release -OutputDirectory $publishPath
+          Write-Host "=== Published native/managed DLLs (partial) ===" -ForegroundColor Cyan
+          Get-ChildItem $publishPath -Filter "*.dll" | Select-Object -First 30 Name
 
-      # === Deploy ===
+      - name: Enable ASP.NET Core module stdout in published web.config
+        shell: pwsh
+        run: |
+          $pub = "${{ github.workspace }}\publish"
+          New-Item -ItemType Directory -Force -Path (Join-Path $pub "logs") | Out-Null
+          $wc = Join-Path $pub "web.config"
+          if (-not (Test-Path $wc)) { throw "Missing web.config after publish: $wc" }
+          [xml]$doc = Get-Content -LiteralPath $wc -Raw
+          $cfg = $doc.DocumentElement
+          $asp = $cfg.SelectSingleNode("//*[local-name()='aspNetCore']")
+          if (-not $asp) { throw "aspNetCore element not found — expected under configuration/location/system.webServer" }
+          $asp.SetAttribute("stdoutLogEnabled", "true")
+          if (-not $asp.GetAttribute("stdoutLogFile")) { $asp.SetAttribute("stdoutLogFile", ".\logs\stdout") }
+          $doc.Save($wc)
+          Write-Host "stdout logging enabled (see IIS docs: aspNetCore/@stdoutLogEnabled) -> logs next to app"
+
       - name: Deploy to MonsterASP (Web Deploy)
         uses: rasmusbuchholdt/simply-web-deploy@2.1.0
         with:
-          website-name: site68527
-          server-computer-name: https://site68527.siteasp.net:8172
-          server-username: site68527
-          server-password: ${{ secrets.SERVER_PASSWORD }}
+          website-name: ${{ secrets.MONSTER_WEBSITE_NAME }}
+          server-computer-name: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
+          server-username: ${{ secrets.MONSTER_SERVER_USERNAME }}
+          server-password: ${{ secrets.MONSTER_SERVER_PASSWORD }}
           source-path: publish

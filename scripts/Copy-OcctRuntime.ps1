@@ -12,12 +12,20 @@ param(
     [string] $Configuration = 'Debug',
 
     # Optional override; defaults to sibling of OCCT_ROOT: .\3rdparty-vc14-64
-    [string] $ThirdPartyRoot = ''
+    [string] $ThirdPartyRoot = '',
+
+    # When set (e.g. CI publish folder), OCCT runtime DLLs are copied here instead of the local bin path.
+    [string] $OutputDirectory = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
-$out = Join-Path $repoRoot "src\ThreeDAnalyzer.Web\bin\$Configuration\net10.0"
+if ($OutputDirectory) {
+    $out = $OutputDirectory
+}
+else {
+    $out = Join-Path $repoRoot "src\ThreeDAnalyzer.Web\bin\$Configuration\net10.0"
+}
 
 if (-not $env:OCCT_ROOT -or -not (Test-Path $env:OCCT_ROOT)) {
     throw "Set OCCT_ROOT to your OCCT kit root (folder that contains win64\vc14\bin), then re-run."
