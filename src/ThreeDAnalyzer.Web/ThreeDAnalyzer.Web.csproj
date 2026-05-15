@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <!--
-    OCCT: C++/CLI wrapper for Part RFQ Pro
+    OCCT: C++/CLI wrapper — targets OCCT 8.0 (Windows x64, win64\vc14 layout)
     Optimized for MonsterASP.NET deployment
   -->
 

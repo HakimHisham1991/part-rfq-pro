@@ -10,7 +10,7 @@
 
 (The full license text is available at https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html)
 
-This application uses OpenCascade Technology (OCCT) 7.8, which is licensed under LGPL 2.1.
+This application uses OpenCascade Technology (OCCT) 8.0, which is licensed under LGPL 2.1.
 OCCT is linked dynamically (as .dll files). You may replace the OpenCascade DLLs with a
 modified version in compliance with the terms of LGPL 2.1.
 

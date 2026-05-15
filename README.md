@@ -17,7 +17,7 @@ A Blazor Server web application for analyzing STEP/STP 3D CAD files in aerospace
 ## Prerequisites
 
 - **.NET 10 SDK** — https://dotnet.microsoft.com/download  
-- **OpenCascade Technology 7.8** (Windows x64 LGPL) — https://dev.opencascade.org/release  
+- **OpenCascade Technology 8.0** (Windows x64 LGPL, VC++ 2022 prebuilt `opencascade-*-vc14-64` + optional `3rdparty-vc14-64`) — https://dev.opencascade.org/release  
 - **MSVC toolset** to compile the C++/CLI OCCT wrapper — one of:
   - **Visual Studio 2022 Community** (free), workload *Desktop development with C++* (include **C++/CLI**), or  
   - **Build Tools for Visual Studio 2022** (free, smaller install) — same workload/components.
@@ -35,7 +35,7 @@ dotnet build src\ThreeDAnalyzer.Web
 
 ```powershell
 # Example (adjust to your actual installation path):
-[System.Environment]::SetEnvironmentVariable("OCCT_ROOT", "C:\OpenCASCADE-7.8.0-vc14-64", "User")
+[System.Environment]::SetEnvironmentVariable("OCCT_ROOT", "C:\OCCT\opencascade-8.0.0-vc14-64", "User")
 ```
 
 ### Step 2 — Build the C++/CLI wrapper (MSBuild / Visual Studio)
@@ -47,11 +47,20 @@ dotnet build src\ThreeDAnalyzer.Web
 ```
 
 **Option B — Visual Studio IDE:** open `ThreeDAnalyzer.slnx`, set **Release | x64**, build project `ThreeDAnalyzer.OcctWrapper`.
-4. Copy OCCT DLLs next to the web app executable (after at least one `dotnet build` of the web project so the output folder exists):
+
+After the wrapper builds, copy OCCT (+ optional 3rd-party) native DLLs next to the web app using the script (recommended), or manually:
+
+```powershell
+.\scripts\Copy-OcctRuntime.ps1 -Configuration Debug
+# For publish / custom output folder:
+.\scripts\Copy-OcctRuntime.ps1 -Configuration Release -OutputDirectory "path\to\publish"
+```
+
+Manual one-liner (OCCT kit only; add 3rdparty separately if needed):
 
 ```powershell
 $occt = $env:OCCT_ROOT
-$out  = "src\ThreeDAnalyzer.Web\bin\Debug\net10.0"   # or Release\net10.0 for Release builds
+$out  = "src\ThreeDAnalyzer.Web\bin\Debug\net10.0"   # or Release\net10.0; use win-x64 subfolder if your build uses RID there
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 Copy-Item "$occt\win64\vc14\bin\*.dll" $out
 ```
@@ -105,7 +114,7 @@ This application uses only free, royalty-free libraries:
 
 | Library | License | Notes |
 |---------|---------|-------|
-| OpenCascade Technology (OCCT) 7.8 | **LGPL 2.1** | Linked dynamically. See `LGPL-2.1.txt`. |
+| OpenCascade Technology (OCCT) 8.0 | **LGPL 2.1** | Linked dynamically. See `LGPL-2.1.txt`. |
 | Three.js r165 | MIT | See `wwwroot/js/LICENSE` |
 | .NET 10 / ASP.NET Core / Blazor | MIT | |
 | Bootstrap 5 | MIT | |

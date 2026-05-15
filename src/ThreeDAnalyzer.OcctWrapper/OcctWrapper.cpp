@@ -1,9 +1,9 @@
 // ThreeDAnalyzer.OcctWrapper — OCCT C++/CLI Implementation
-// OpenCascade Technology 7.8 — LGPL 2.1
-// Build: Visual Studio 2022, /clr:netcore, x64
+// OpenCascade Technology 8.0 — LGPL 2.1
+// Build: Visual Studio 2022+, /clr:netcore, x64, C++17 (required by OCCT 8)
 // Set Additional Include Directories to: $(OCCT_ROOT)\inc
 // Set Additional Library Directories to: $(OCCT_ROOT)\win64\vc14\lib
-// OCCT_ROOT = path to your OCCT 7.8 installation (e.g. C:\OpenCASCADE-7.8.0-vc14-64)
+// OCCT_ROOT = path to your OCCT 8.0 installation (e.g. C:\OCCT\opencascade-8.0.0-vc14-64)
 
 #include "OcctWrapper.h"
 

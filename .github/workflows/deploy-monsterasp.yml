@@ -53,28 +53,50 @@ jobs:
       - name: Setup MSBuild (for C++/CLI)
         uses: microsoft/setup-msbuild@v2
 
-      - name: Cache OCCT
+      - name: Cache OCCT 8.0 kit
         id: cache-occt
         uses: actions/cache@v4
         with:
-          path: occt-vc143-64
-          key: occt-7.8.0-vc143-64
+          path: occt-kit
+          key: occt-v8.0.0-combined-no-pch-${{ runner.os }}
 
-      - name: Download and Setup OCCT
+      - name: Download OCCT 8.0.0 (combined release + third-party DLLs)
         if: steps.cache-occt.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          Write-Host "Downloading OCCT..." -ForegroundColor Cyan
-          Invoke-WebRequest -Uri "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/occt-vc143-64.zip" -OutFile "occt.zip"
-          Invoke-WebRequest -Uri "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V7_8_0/3rdparty-vc14-64.zip" -OutFile "3rdparty.zip"
-          Expand-Archive -Path "occt.zip" -DestinationPath . -Force
-          Expand-Archive -Path "3rdparty.zip" -DestinationPath . -Force
+          New-Item -ItemType Directory -Force -Path occt-kit | Out-Null
+          $url = 'https://github.com/Open-Cascade-SAS/OCCT/releases/download/V8_0_0/occt-combined-release-no-pch.zip'
+          Write-Host "Downloading $url ..." -ForegroundColor Cyan
+          Invoke-WebRequest -Uri $url -OutFile "occt-combined.zip"
+          Expand-Archive -Path "occt-combined.zip" -DestinationPath "occt-kit" -Force
+          Remove-Item "occt-combined.zip" -Force
 
-      - name: Set OCCT_ROOT
+      - name: Resolve OCCT_ROOT under occt-kit
         shell: pwsh
         run: |
-          $occtRoot = "${env:GITHUB_WORKSPACE}\occt-vc143-64"
-          "OCCT_ROOT=$occtRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $kit = Join-Path "${env:GITHUB_WORKSPACE}" "occt-kit"
+          $roots = New-Object System.Collections.Generic.List[string]
+          if ((Test-Path (Join-Path $kit 'inc')) -and (Test-Path (Join-Path $kit 'win64\vc14\lib'))) {
+            $roots.Add($kit)
+          }
+          foreach ($d in @(Get-ChildItem $kit -Directory -ErrorAction SilentlyContinue)) {
+            $p = $d.FullName
+            if ((Test-Path (Join-Path $p 'inc')) -and (Test-Path (Join-Path $p 'win64\vc14\lib'))) {
+              $roots.Add($p)
+            }
+          }
+          if ($roots.Count -eq 0) {
+            foreach ($d in @(Get-ChildItem $kit -Directory -ErrorAction SilentlyContinue)) {
+              if (Test-Path (Join-Path $d.FullName 'inc')) {
+                $roots.Add($d.FullName)
+              }
+            }
+          }
+          if ($roots.Count -eq 0) {
+            throw "Could not resolve OCCT 8.0 kit under occt-kit (expected folder containing inc\ and win64\vc14\lib)."
+          }
+          $root = $roots[0]
+          "OCCT_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build OCCT C++/CLI Wrapper
         shell: pwsh

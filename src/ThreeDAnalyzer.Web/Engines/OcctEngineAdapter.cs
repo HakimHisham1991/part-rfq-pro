@@ -34,7 +34,7 @@ public sealed class OcctEngineAdapter : IOcctEngine
         string baseDir = AppContext.BaseDirectory.TrimEnd('\\', '/');
         string hint =
             "Also ensure ijwhost.dll is next to ThreeDAnalyzer.OcctWrapper.dll (dotnet build copies it when UseIJWHost is on), " +
-            "then copy every *.dll from %OCCT_ROOT%\\win64\\vc14\\bin and from your OCCT " +
+            "then copy every *.dll from %OCCT_ROOT%\\win64\\vc14\\bin (OCCT 8.0 kit) and from your " +
             "3rdparty-vc14-64 tree into the app's output folder (same folder as ThreeDAnalyzer.Web.dll), " +
             $"e.g.: {baseDir}. From repo root: .\\scripts\\Copy-OcctRuntime.ps1 -Configuration Debug.";
         return new InvalidOperationException(

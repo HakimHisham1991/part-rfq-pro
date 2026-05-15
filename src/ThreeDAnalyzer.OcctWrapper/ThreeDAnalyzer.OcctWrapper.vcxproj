@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ThreeDAnalyzer.OcctWrapper — C++/CLI Managed Wrapper for OCCT 7.8
+  ThreeDAnalyzer.OcctWrapper — C++/CLI Managed Wrapper for OCCT 8.0
   Requirements:
-    • Visual Studio 2022 (v143 toolset)
-    • OCCT 7.8 for Windows x64 — https://dev.opencascade.org/release
+    • Visual Studio 2022 or newer (see PlatformToolset in this project; C++/CLI + Desktop C++ workload)
+    • OCCT 8.0 for Windows x64 (VC++ 2022 binaries, vc14 lib layout) — https://dev.opencascade.org/release
     • Set OCCT_ROOT environment variable (or edit IncludePath/LibraryPath below)
-      e.g. OCCT_ROOT=C:\OpenCASCADE-7.8.0-vc14-64
+      e.g. OCCT_ROOT=C:\OCCT\opencascade-8.0.0-vc14-64
   Build: x64 | Release  (then rebuild ThreeDAnalyzer.Web with -p:UseOcct=true)
 -->
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
@@ -64,6 +64,7 @@
         Add more paths here if OCCT splits headers into sub-packages
       -->
       <AdditionalIncludeDirectories>$(OCCT_ROOT)\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <PreprocessorDefinitions>WIN32;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ExceptionHandling>Async</ExceptionHandling>
       <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebugDLL</RuntimeLibrary>

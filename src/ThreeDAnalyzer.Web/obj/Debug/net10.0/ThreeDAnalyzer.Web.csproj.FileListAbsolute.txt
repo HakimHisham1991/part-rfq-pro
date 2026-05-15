@@ -154,10 +154,6 @@ C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\part-rfq-pro\src\ThreeDAnaly
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\ThreeDAnalyzer.Web.pdb
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\ThreeDAnalyzer.Web.genruntimeconfig.cache
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\ref\ThreeDAnalyzer.Web.dll
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\Debug\net10.0\ThreeDAnalyzer.OcctWrapper.dll
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\Debug\net10.0\ThreeDAnalyzer.OcctWrapper.pdb
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\Debug\net10.0\Ijwhost.dll
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\ifyskc36ub-{0}-lps55l62tc-lps55l62tc.gz
 c:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\artifacts\bbcheck\appsettings.Development.json
 c:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\artifacts\bbcheck\appsettings.json
 c:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\artifacts\bbcheck\ThreeDAnalyzer.Web.staticwebassets.runtime.json
@@ -237,3 +233,7 @@ C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\D
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\pgzpla8mo5-{0}-aersz8mn2s-aersz8mn2s.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\wr3yuba3tp-{0}-hwaxidwiwj-hwaxidwiwj.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\92y7fni4l2-{0}-xbbil6v7co-xbbil6v7co.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\ifyskc36ub-{0}-7elxnlc6as-7elxnlc6as.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\Debug\net10.0\Ijwhost.dll
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\Debug\net10.0\ThreeDAnalyzer.OcctWrapper.dll
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\Debug\net10.0\ThreeDAnalyzer.OcctWrapper.pdb

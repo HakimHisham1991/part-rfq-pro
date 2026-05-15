@@ -4,14 +4,14 @@
   Copies OCCT and (optional) 3rd-party native DLLs into the Blazor app's output folder
   so ThreeDAnalyzer.OcctWrapper.dll can load at runtime ("specified module could not be found").
 .EXAMPLE
-  [Environment]::SetEnvironmentVariable('OCCT_ROOT', 'C:\OpenCASCADE-7.8.0-vc14-64\occt-7.8.0-vc14-64','User')
+  [Environment]::SetEnvironmentVariable('OCCT_ROOT', 'C:\OCCT\opencascade-8.0.0-vc14-64','User')
   .\scripts\Copy-OcctRuntime.ps1 -Configuration Debug
 #>
 param(
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Debug',
 
-    # Optional override; defaults to sibling of OCCT_ROOT: .\3rdparty-vc14-64
+    # Optional override; defaults to env THIRDPARTY_ROOT, else sibling folder .\3rdparty-vc14-64 under OCCT_ROOT's parent.
     [string] $ThirdPartyRoot = '',
 
     # When set (e.g. CI publish folder), OCCT runtime DLLs are copied here instead of the local bin path.
@@ -24,7 +24,10 @@ if ($OutputDirectory) {
     $out = $OutputDirectory
 }
 else {
-    $out = Join-Path $repoRoot "src\ThreeDAnalyzer.Web\bin\$Configuration\net10.0"
+    $base = Join-Path $repoRoot "src\ThreeDAnalyzer.Web\bin\$Configuration\net10.0"
+    $ridOut = Join-Path $base "win-x64"
+    if (Test-Path $ridOut) { $out = $ridOut }
+    else { $out = $base }
 }
 
 if (-not $env:OCCT_ROOT -or -not (Test-Path $env:OCCT_ROOT)) {
@@ -65,14 +68,20 @@ else {
     Write-Warning "App Host packs not found at $hostPackRoot - reinstall .NET SDK or set DOTNET_ROOT."
 }
 
-if (-not [string]::IsNullOrWhiteSpace($ThirdPartyRoot)) {
-    if (-not (Test-Path $ThirdPartyRoot)) {
-        Write-Warning "ThirdPartyRoot not found: $ThirdPartyRoot"
+# Resolve optional third-party root: -ThirdPartyRoot, or env THIRDPARTY_ROOT, or sibling .\3rdparty-vc14-64
+$tproot = $ThirdPartyRoot
+if ([string]::IsNullOrWhiteSpace($tproot) -and $env:THIRDPARTY_ROOT) {
+    $tproot = $env:THIRDPARTY_ROOT.Trim()
+}
+
+if (-not [string]::IsNullOrWhiteSpace($tproot)) {
+    if (-not (Test-Path $tproot)) {
+        Write-Warning "Third-party root not found: $tproot"
     }
     else {
-        Get-ChildItem $ThirdPartyRoot -Recurse -Filter '*.dll' -ErrorAction SilentlyContinue |
+        Get-ChildItem $tproot -Recurse -Filter '*.dll' -ErrorAction SilentlyContinue |
             Copy-Item -Destination $out -Force
-        Write-Host "Copied 3rd-party dlls -> $out from $ThirdPartyRoot"
+        Write-Host "Copied 3rd-party dlls -> $out from $tproot"
     }
 }
 else {

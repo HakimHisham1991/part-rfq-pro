@@ -8,7 +8,7 @@
   (Visual Studio 2022 Community, or "Build Tools for Visual Studio 2022" with the
   "Desktop development with C++" workload, including C++/CLI support).
 
-  Set OCCT_ROOT to your OCCT 7.8 install before running (User or Machine env var).
+  Set OCCT_ROOT to your OCCT 8.0 install before running (User or Machine env var).
 
 .EXAMPLE
   cd C:\path\to\part-rfq-pro
@@ -24,7 +24,7 @@ if (-not (Test-Path $webCsproj)) {
 }
 
 if (-not $env:OCCT_ROOT -or -not (Test-Path $env:OCCT_ROOT)) {
-    Write-Warning "OCCT_ROOT is missing or invalid. Set it to your OCCT install, e.g. C:\OpenCASCADE-7.8.0-vc14-64"
+    Write-Warning "OCCT_ROOT is missing or invalid. Set it to your OCCT install, e.g. C:\OCCT\opencascade-8.0.0-vc14-64"
 }
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'

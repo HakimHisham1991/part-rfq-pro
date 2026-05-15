@@ -1,5 +1,5 @@
 #pragma once
-// ThreeDAnalyzer.OcctWrapper — Managed C++/CLI wrapper around OpenCascade Technology (OCCT 7.8)
+// ThreeDAnalyzer.OcctWrapper — Managed C++/CLI wrapper around OpenCascade Technology (OCCT 8.0)
 // License: LGPL 2.1 (OCCT) — link dynamically, do NOT statically embed.
 // Build in Visual Studio 2022 with /clr:netcore, targeting net10.0.
 // Set OCCT_ROOT environment variable or edit VC++ include/library directories in project settings.

@@ -24,7 +24,7 @@
                 <div class="alert alert-warning py-2 px-3 mb-0" style="font-size:12px;">
                     <strong>OCCT is not linked into this build</strong> (the web app was compiled without <code>ThreeDAnalyzer.OcctWrapper.dll</code>).<br />
                     <span class="text-muted">After you fix it, run <code>dotnet build src\ThreeDAnalyzer.Web</code> again — the build log prints which paths were checked.</span><br /><br />
-                    <strong>1.</strong> Install OCCT 7.8 (Windows x64). Set <code>OCCT_ROOT</code> (headers/libs for the C++ project).<br />
+                    <strong>1.</strong> Install OCCT 8.0 (Windows x64, VC++ 2022 binaries). Set <code>OCCT_ROOT</code> to the kit root (folder that contains <code>inc</code> and <code>win64\vc14</code>), e.g. <code>C:\OCCT\opencascade-8.0.0-vc14-64</code>. Optional: put <code>3rdparty-vc14-64</code> beside it (same parent folder) so runtime DLLs copy correctly.<br />
                     <strong>2.</strong> Build the native wrapper with <strong>MSVC</strong> (Visual Studio Code alone cannot compile C++/CLI). Install <strong>Build Tools for Visual Studio 2022</strong> (free) with workload <em>Desktop development with C++</em> and <em>C++/CLI</em>, then in a terminal: <code>.\scripts\Build-OcctWrapper.ps1</code> — or open <code>ThreeDAnalyzer.slnx</code> in full Visual Studio 2022 and build <code>ThreeDAnalyzer.OcctWrapper</code> (x64 Release).<br />
                     <strong>3.</strong> The .NET app looks for the wrapper here (first match wins):<br />
                     <code style="word-break:break-all;">src\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.dll</code><br />

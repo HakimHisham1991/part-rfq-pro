@@ -40,7 +40,8 @@ html, body {
 }
 
 .app-logo    { color: var(--accent); }
-.app-title   { font-weight: 600; font-size: 15px; color: var(--text-primary); }
+.app-title             { font-weight: 600; font-size: 15px; color: var(--text-primary); }
+.app-title-attribution { font-weight: 500; color: var(--text-muted); }
 
 .nav-btn {
     color: var(--text-muted);
