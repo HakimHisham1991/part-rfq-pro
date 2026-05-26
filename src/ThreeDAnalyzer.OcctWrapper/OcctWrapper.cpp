@@ -171,6 +171,139 @@ BoundingBoxData^ OcctEngine::GetBoundingBoxInCustomCS(
     return result;
 }
 
+// ── Private: TessellateShape ──────────────────────────────────────────────
+
+MeshData^ OcctEngine::TessellateShape(void* shapePtr, double linearDeflection)
+{
+    TopoDS_Shape* shape = static_cast<TopoDS_Shape*>(shapePtr);
+    if (!shape || shape->IsNull()) return gcnew MeshData();
+
+    BRepMesh_IncrementalMesh mesher(*shape, linearDeflection, Standard_False, 0.5);
+    mesher.Perform();
+
+    std::vector<float>  verts;
+    std::vector<int>    indices;
+    int vertOffset = 0;
+
+    for (TopExp_Explorer fExp(*shape, TopAbs_FACE); fExp.More(); fExp.Next())
+    {
+        TopoDS_Face face = TopoDS::Face(fExp.Current());
+        TopLoc_Location loc;
+        static const Poly_MeshPurpose kPurposes[] = {
+            Poly_MeshPurpose_NONE,
+            Poly_MeshPurpose_Presentation,
+            Poly_MeshPurpose_Calculation,
+            Poly_MeshPurpose_AnyFallback
+        };
+        Handle(Poly_Triangulation) tri;
+        for (const Poly_MeshPurpose purpose : kPurposes)
+        {
+            tri = BRep_Tool::Triangulation(face, loc, purpose);
+            if (!tri.IsNull() && tri->NbNodes() >= 3 && tri->NbTriangles() >= 1)
+                break;
+            tri.Nullify();
+        }
+        if (tri.IsNull()) continue;
+
+        const int nNodes = tri->NbNodes();
+        const int nTris  = tri->NbTriangles();
+        const bool isReversed = (face.Orientation() == TopAbs_REVERSED);
+
+        for (int i = 1; i <= nNodes; ++i)
+        {
+            gp_Pnt p = tri->Node(i);
+            if (!loc.IsIdentity())
+                p.Transform(loc);
+            verts.push_back((float)p.X());
+            verts.push_back((float)p.Y());
+            verts.push_back((float)p.Z());
+        }
+
+        for (int i = 1; i <= nTris; ++i)
+        {
+            Standard_Integer n1, n2, n3;
+            tri->Triangle(i).Get(n1, n2, n3);
+            if (isReversed) std::swap(n2, n3);
+            indices.push_back(vertOffset + n1 - 1);
+            indices.push_back(vertOffset + n2 - 1);
+            indices.push_back(vertOffset + n3 - 1);
+        }
+
+        vertOffset += nNodes;
+    }
+
+    MeshData^ result = gcnew MeshData();
+    result->Vertices = gcnew array<float>((int)verts.size());
+    result->Indices  = gcnew array<int>((int)indices.size());
+
+    for (int i = 0; i < (int)verts.size();   ++i) result->Vertices[i] = verts[i];
+    for (int i = 0; i < (int)indices.size(); ++i) result->Indices[i]  = indices[i];
+
+    return result;
+}
+
+// ── Private: ComputeBoundingBox ───────────────────────────────────────────
+
+BoundingBoxData^ OcctEngine::ComputeBoundingBox(void* shapePtr)
+{
+    TopoDS_Shape* shape = static_cast<TopoDS_Shape*>(shapePtr);
+    BoundingBoxData^ result = gcnew BoundingBoxData();
+
+    if (!shape || shape->IsNull()) return result;
+
+    Bnd_Box box;
+    BRepBndLib::Add(*shape, box);
+    if (box.IsVoid()) return result;
+
+    Standard_Real xmin, ymin, zmin, xmax, ymax, zmax;
+    box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+
+    result->MinX = xmin; result->MinY = ymin; result->MinZ = zmin;
+    result->MaxX = xmax; result->MaxY = ymax; result->MaxZ = zmax;
+    return result;
+}
+
+// ── Private: TransformToCustomCS ─────────────────────────────────────────
+
+void* OcctEngine::TransformToCustomCS(
+    double ox, double oy, double oz,
+    double xx, double xy, double xz,
+    double yx, double yy, double yz)
+{
+    TopoDS_Shape* shape = static_cast<TopoDS_Shape*>(m_shape);
+    if (!shape || shape->IsNull()) return nullptr;
+
+    gp_Pnt origin(ox, oy, oz);
+    gp_Vec xVec(gp_Pnt(ox, oy, oz), gp_Pnt(xx, xy, xz));
+    gp_Vec yVec(gp_Pnt(ox, oy, oz), gp_Pnt(yx, yy, yz));
+
+    if (xVec.Magnitude() < Precision::Confusion() ||
+        yVec.Magnitude() < Precision::Confusion())
+        return nullptr;
+
+    xVec.Normalize();
+    yVec.Normalize();
+
+    gp_Vec zVec = xVec.Crossed(yVec);
+    if (zVec.Magnitude() < Precision::Confusion())
+        return nullptr;
+    zVec.Normalize();
+
+    yVec = zVec.Crossed(xVec);
+
+    gp_Ax3 localCS(origin, gp_Dir(zVec), gp_Dir(xVec));
+    gp_Trsf trsf;
+    trsf.SetTransformation(localCS);
+
+    BRepBuilderAPI_Transform builder(*shape, trsf, Standard_True);
+    if (!builder.IsDone()) return nullptr;
+
+    TopoDS_Shape* transformed = new TopoDS_Shape(builder.Shape());
+    return transformed;
+}
+
+#pragma managed(push, off)
+
 namespace {
 
 Standard_Real ShapeDiag(const TopoDS_Shape& shape)
@@ -190,22 +323,22 @@ Standard_Real DistPointToLine(const gp_Pnt& p, const gp_Lin& line)
     return w.Crossed(line.Direction()).Magnitude();
 }
 
-bool TryRadiusFromFace(const TopoDS_Face& face, double& radius, System::String^% kind)
+bool TryRadiusFromFace(const TopoDS_Face& face, double& radius, const char*& kindTag)
 {
     BRepAdaptor_Surface surf(face);
     switch (surf.GetType())
     {
     case GeomAbs_Cylinder:
         radius = surf.Cylinder().Radius();
-        kind = "cylinder";
+        kindTag = "cylinder";
         return true;
     case GeomAbs_Sphere:
         radius = surf.Sphere().Radius();
-        kind = "sphere";
+        kindTag = "sphere";
         return true;
     case GeomAbs_Torus:
         radius = surf.Torus().MinorRadius();
-        kind = "torus (minor)";
+        kindTag = "torus (minor)";
         return true;
     default:
         return false;
@@ -252,6 +385,8 @@ bool TryClosestCircleEdge(const TopoDS_Shape& shape, const gp_Lin& ray, gp_Pnt& 
 
 } // namespace
 
+#pragma managed(pop)
+
 // ── RayPickRadius ─────────────────────────────────────────────────────────
 
 bool OcctEngine::RayPickRadius(
@@ -297,11 +432,11 @@ bool OcctEngine::RayPickRadius(
 
         TopoDS_Face face = inter.Face(best);
         double r = 0.0;
-        System::String^ k = nullptr;
-        if (TryRadiusFromFace(face, r, k))
+        const char* kTag = nullptr;
+        if (TryRadiusFromFace(face, r, kTag))
         {
             radiusMm = r;
-            kind = k;
+            kind = gcnew String(kTag);
             return true;
         }
 
@@ -368,151 +503,6 @@ bool OcctEngine::RayPickSurface(
     hitY = closest.Y();
     hitZ = closest.Z();
     return true;
-}
-
-// ── Private: TessellateShape ──────────────────────────────────────────────
-
-MeshData^ OcctEngine::TessellateShape(void* shapePtr, double linearDeflection)
-{
-    TopoDS_Shape* shape = static_cast<TopoDS_Shape*>(shapePtr);
-    if (!shape || shape->IsNull()) return gcnew MeshData();
-
-    // Triangulate
-    BRepMesh_IncrementalMesh mesher(*shape, linearDeflection, Standard_False, 0.5);
-    mesher.Perform();
-
-    std::vector<float>  verts;
-    std::vector<int>    indices;
-    int vertOffset = 0;
-
-    for (TopExp_Explorer fExp(*shape, TopAbs_FACE); fExp.More(); fExp.Next())
-    {
-        TopoDS_Face face = TopoDS::Face(fExp.Current());
-        TopLoc_Location loc;
-        // OCCT 7.7+: triangulations are stored with a mesh purpose. Try several; AnyFallback alone
-        // can return a non-null handle with no usable triangles on some builds.
-        static const Poly_MeshPurpose kPurposes[] = {
-            Poly_MeshPurpose_NONE,
-            Poly_MeshPurpose_Presentation,
-            Poly_MeshPurpose_Calculation,
-            Poly_MeshPurpose_AnyFallback
-        };
-        Handle(Poly_Triangulation) tri;
-        for (const Poly_MeshPurpose purpose : kPurposes)
-        {
-            tri = BRep_Tool::Triangulation(face, loc, purpose);
-            if (!tri.IsNull() && tri->NbNodes() >= 3 && tri->NbTriangles() >= 1)
-                break;
-            tri.Nullify();
-        }
-        if (tri.IsNull()) continue;
-
-        const int nNodes = tri->NbNodes();
-        const int nTris  = tri->NbTriangles();
-        const bool isReversed = (face.Orientation() == TopAbs_REVERSED);
-
-        // Collect nodes; apply the face's location transform to put them in world space.
-        // TopLoc_Location has operator const gp_Trsf&() for implicit conversion.
-        for (int i = 1; i <= nNodes; ++i)
-        {
-            gp_Pnt p = tri->Node(i);
-            if (!loc.IsIdentity())
-                p.Transform(loc);   // TopLoc_Location → gp_Trsf (implicit)
-            verts.push_back((float)p.X());
-            verts.push_back((float)p.Y());
-            verts.push_back((float)p.Z());
-        }
-
-        // Collect triangle indices
-        for (int i = 1; i <= nTris; ++i)
-        {
-            Standard_Integer n1, n2, n3;
-            tri->Triangle(i).Get(n1, n2, n3);
-            // n1,n2,n3 are 1-based within this face
-            if (isReversed) std::swap(n2, n3);
-            indices.push_back(vertOffset + n1 - 1);
-            indices.push_back(vertOffset + n2 - 1);
-            indices.push_back(vertOffset + n3 - 1);
-        }
-
-        vertOffset += nNodes;
-    }
-
-    MeshData^ result = gcnew MeshData();
-    result->Vertices = gcnew array<float>((int)verts.size());
-    result->Indices  = gcnew array<int>((int)indices.size());
-
-    for (int i = 0; i < (int)verts.size();   ++i) result->Vertices[i] = verts[i];
-    for (int i = 0; i < (int)indices.size(); ++i) result->Indices[i]  = indices[i];
-
-    return result;
-}
-
-// ── Private: ComputeBoundingBox ───────────────────────────────────────────
-
-BoundingBoxData^ OcctEngine::ComputeBoundingBox(void* shapePtr)
-{
-    TopoDS_Shape* shape = static_cast<TopoDS_Shape*>(shapePtr);
-    BoundingBoxData^ result = gcnew BoundingBoxData();
-
-    if (!shape || shape->IsNull()) return result;
-
-    Bnd_Box box;
-    BRepBndLib::Add(*shape, box);
-    if (box.IsVoid()) return result;
-
-    Standard_Real xmin, ymin, zmin, xmax, ymax, zmax;
-    box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
-
-    result->MinX = xmin; result->MinY = ymin; result->MinZ = zmin;
-    result->MaxX = xmax; result->MaxY = ymax; result->MaxZ = zmax;
-    return result;
-}
-
-// ── Private: TransformToCustomCS ─────────────────────────────────────────
-
-void* OcctEngine::TransformToCustomCS(
-    double ox, double oy, double oz,
-    double xx, double xy, double xz,
-    double yx, double yy, double yz)
-{
-    TopoDS_Shape* shape = static_cast<TopoDS_Shape*>(m_shape);
-    if (!shape || shape->IsNull()) return nullptr;
-
-    gp_Pnt origin(ox, oy, oz);
-
-    // Build X and Y direction vectors from the two user-defined points (two-point form)
-    gp_Vec xVec(gp_Pnt(ox, oy, oz), gp_Pnt(xx, xy, xz));
-    gp_Vec yVec(gp_Pnt(ox, oy, oz), gp_Pnt(yx, yy, yz));
-
-    if (xVec.Magnitude() < Precision::Confusion() ||
-        yVec.Magnitude() < Precision::Confusion())
-        return nullptr;
-
-    xVec.Normalize();
-    yVec.Normalize();
-
-    // Z = X cross Y (right-hand rule)
-    gp_Vec zVec = xVec.Crossed(yVec);
-    if (zVec.Magnitude() < Precision::Confusion())
-        return nullptr;   // Collinear points — cannot define a plane
-    zVec.Normalize();
-
-    // Recompute Y for orthogonality: Y = Z cross X
-    yVec = zVec.Crossed(xVec);
-
-    gp_Ax3 localCS(origin, gp_Dir(zVec), gp_Dir(xVec));
-
-    // Build the transformation: world → local CS
-    gp_Trsf trsf;
-    trsf.SetTransformation(localCS);
-
-    // Apply transform to a copy of the shape (Standard_True = copy)
-    BRepBuilderAPI_Transform builder(*shape, trsf, Standard_True);
-    if (!builder.IsDone()) return nullptr;
-
-    TopoDS_Shape* transformed = new TopoDS_Shape(builder.Shape());
-    return transformed;
 }
 
 } // namespace OcctWrapper
