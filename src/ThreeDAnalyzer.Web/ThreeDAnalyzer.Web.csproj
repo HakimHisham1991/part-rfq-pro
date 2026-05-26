@@ -11,11 +11,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
     
-    <!-- Critical for IIS + C++/CLI; MonsterASP shared pools often fail InProcess — OutOfProcess is more reliable. -->
+    <!-- IIS + OCCT: OutOfProcess + DLL (UseAppHost=false on publish). MonsterASP does NOT support OutOfProcess + .exe. -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <AspNetCoreHostingModel>OutOfProcess</AspNetCoreHostingModel>
     <SelfContained>false</SelfContained>
+    <UseAppHost>false</UseAppHost>
   </PropertyGroup>
 
   <!-- OCCT Configuration -->

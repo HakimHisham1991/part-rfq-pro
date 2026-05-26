@@ -1,5 +1,7 @@
-# MonsterASP / IIS: HTTP 500.30 often = host missing your runtime or ANCM crash. This workflow uses
-# win-x64 self-contained publish, OutOfProcess (csproj), and Web Deploy via repository secrets only.
+# MonsterASP / IIS (see docs/DEPLOY-MONSTERASP.md):
+# - OutOfProcess + self-contained .exe is NOT supported (app pool disabled → 403 / "ASP.NET Core not detected").
+# - This workflow publishes framework-dependent win-x64 (dotnet + ThreeDAnalyzer.Web.dll, UseAppHost=false).
+# - OutOfProcess + DLL is the supported MonsterASP scenario for native OCCT.
 #
 # --- Where stdout logging lives in web.config (after dotnet publish) ---
 # Open the published file next to your app DLL (same folder as ThreeDAnalyzer.Web.exe), find:
@@ -9,8 +11,10 @@
 # On the server (FTP / File Manager), read logs under the site root, e.g. logs\ stdout_*.log
 #
 # --- Secrets (Settings → Secrets and variables → Actions) ---
-# Never put hostnames, users, or passwords in this file. Use only:
+# Use MonsterASP control panel Web Deploy values. Either naming set works:
+#   WEBSITE_NAME, SERVER_COMPUTER_NAME, SERVER_USERNAME, SERVER_PASSWORD  (MonsterASP docs)
 #   MONSTER_WEBSITE_NAME, MONSTER_SERVER_COMPUTER_NAME, MONSTER_SERVER_USERNAME, MONSTER_SERVER_PASSWORD
+# Example SERVER_COMPUTER_NAME: https://site12345.siteasp.net:8172  (no /msdeploy.axd path)
 
 name: Deploy to MonsterASP.NET (Full OCCT)
 
@@ -35,15 +39,26 @@ jobs:
       - name: Require Web Deploy secrets (no values printed)
         shell: pwsh
         env:
+          WEBSITE_NAME: ${{ secrets.WEBSITE_NAME }}
+          SERVER_COMPUTER_NAME: ${{ secrets.SERVER_COMPUTER_NAME }}
+          SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
           MONSTER_WEBSITE_NAME: ${{ secrets.MONSTER_WEBSITE_NAME }}
           MONSTER_SERVER_COMPUTER_NAME: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
           MONSTER_SERVER_USERNAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
           MONSTER_SERVER_PASSWORD: ${{ secrets.MONSTER_SERVER_PASSWORD }}
         run: |
-          $ok = ($env:MONSTER_WEBSITE_NAME -and $env:MONSTER_SERVER_COMPUTER_NAME -and $env:MONSTER_SERVER_USERNAME -and $env:MONSTER_SERVER_PASSWORD)
-          if (-not $ok) {
-            Write-Error 'One or more MONSTER_* repository secrets are missing or empty. Add them under GitHub → Settings → Secrets and variables → Actions (names only are listed in the workflow header).'
+          $site = $env:WEBSITE_NAME; if (-not $site) { $site = $env:MONSTER_WEBSITE_NAME }
+          $computer = $env:SERVER_COMPUTER_NAME; if (-not $computer) { $computer = $env:MONSTER_SERVER_COMPUTER_NAME }
+          $user = $env:SERVER_USERNAME; if (-not $user) { $user = $env:MONSTER_SERVER_USERNAME }
+          $pass = $env:SERVER_PASSWORD; if (-not $pass) { $pass = $env:MONSTER_SERVER_PASSWORD }
+          if (-not ($site -and $computer -and $user -and $pass)) {
+            Write-Error 'Missing Web Deploy secrets. Add WEBSITE_NAME, SERVER_COMPUTER_NAME, SERVER_USERNAME, SERVER_PASSWORD (or MONSTER_* equivalents) from the MonsterASP control panel.'
           }
+          "DEPLOY_WEBSITE_NAME=$site" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "DEPLOY_SERVER_COMPUTER_NAME=$computer" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "DEPLOY_SERVER_USERNAME=$user" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "DEPLOY_SERVER_PASSWORD=$pass" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
@@ -102,13 +117,14 @@ jobs:
         shell: pwsh
         run: .\scripts\Build-OcctWrapper.ps1
 
-      - name: Publish Web App (win-x64 self-contained)
+      - name: Publish Web App (win-x64, framework-dependent — MonsterASP OutOfProcess)
         run: >-
           dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj
           -c Release
           -o "${{ github.workspace }}/publish"
           --runtime win-x64
-          --self-contained true
+          --self-contained false
+          /p:UseAppHost=false
 
       - name: Copy OCCT + Wrapper into publish folder
         shell: pwsh
@@ -120,27 +136,65 @@ jobs:
           Write-Host "=== Published native/managed DLLs (partial) ===" -ForegroundColor Cyan
           Get-ChildItem $publishPath -Filter "*.dll" | Select-Object -First 30 Name
 
-      - name: Enable ASP.NET Core module stdout in published web.config
+      - name: Configure web.config for MonsterASP OutOfProcess (DLL, not .exe)
         shell: pwsh
         run: |
           $pub = "${{ github.workspace }}\publish"
           New-Item -ItemType Directory -Force -Path (Join-Path $pub "logs") | Out-Null
+          $dll = Join-Path $pub "ThreeDAnalyzer.Web.dll"
+          if (-not (Test-Path $dll)) { throw "Missing app DLL after publish: $dll" }
+          if (Test-Path (Join-Path $pub "ThreeDAnalyzer.Web.exe")) {
+            throw "Published ThreeDAnalyzer.Web.exe — MonsterASP OutOfProcess requires DLL hosting. Use /p:UseAppHost=false."
+          }
           $wc = Join-Path $pub "web.config"
           if (-not (Test-Path $wc)) { throw "Missing web.config after publish: $wc" }
           [xml]$doc = Get-Content -LiteralPath $wc -Raw
-          $cfg = $doc.DocumentElement
-          $asp = $cfg.SelectSingleNode("//*[local-name()='aspNetCore']")
-          if (-not $asp) { throw "aspNetCore element not found — expected under configuration/location/system.webServer" }
+          $asp = $doc.SelectSingleNode("//*[local-name()='aspNetCore']")
+          if (-not $asp) { throw "aspNetCore element not found in web.config" }
+          $asp.SetAttribute("processPath", "dotnet")
+          $asp.SetAttribute("arguments", ".\ThreeDAnalyzer.Web.dll")
+          $asp.SetAttribute("hostingModel", "OutOfProcess")
           $asp.SetAttribute("stdoutLogEnabled", "true")
-          if (-not $asp.GetAttribute("stdoutLogFile")) { $asp.SetAttribute("stdoutLogFile", ".\logs\stdout") }
+          $asp.SetAttribute("stdoutLogFile", ".\logs\stdout")
+          $envNode = $asp.SelectSingleNode("*[local-name()='environmentVariables']")
+          if (-not $envNode) {
+            $envNode = $doc.CreateElement("environmentVariables")
+            [void]$asp.AppendChild($envNode)
+          }
+          $existing = @{}
+          foreach ($v in $envNode.SelectNodes("*[local-name()='environmentVariable']")) {
+            $existing[$v.GetAttribute("name")] = $v
+          }
+          foreach ($pair in @{ "ASPNETCORE_ENVIRONMENT" = "Production"; "ASPNETCORE_FORWARDEDHEADERS_ENABLED" = "true" }.GetEnumerator()) {
+            if ($existing.ContainsKey($pair.Key)) {
+              $existing[$pair.Key].SetAttribute("value", $pair.Value)
+            } else {
+              $el = $doc.CreateElement("environmentVariable")
+              $el.SetAttribute("name", $pair.Key)
+              $el.SetAttribute("value", $pair.Value)
+              [void]$envNode.AppendChild($el)
+            }
+          }
           $doc.Save($wc)
-          Write-Host "stdout logging enabled (see IIS docs: aspNetCore/@stdoutLogEnabled) -> logs next to app"
+          Write-Host "web.config OK: dotnet + ThreeDAnalyzer.Web.dll, OutOfProcess, stdout logs -> .\logs"
+
+      - name: Verify publish payload (IIS / MonsterASP)
+        shell: pwsh
+        run: |
+          $pub = "${{ github.workspace }}\publish"
+          @("web.config", "ThreeDAnalyzer.Web.dll", "ThreeDAnalyzer.Web.deps.json", "ThreeDAnalyzer.Web.runtimeconfig.json") | ForEach-Object {
+            $p = Join-Path $pub $_
+            if (-not (Test-Path $p)) { throw "Missing required publish file: $_" }
+            Write-Host "OK $_"
+          }
+          Select-String -Path (Join-Path $pub "web.config") -Pattern 'aspNetCore|processPath|arguments' | ForEach-Object { Write-Host $_.Line.Trim() }
 
       - name: Deploy to MonsterASP (Web Deploy)
         uses: rasmusbuchholdt/simply-web-deploy@2.1.0
         with:
-          website-name: ${{ secrets.MONSTER_WEBSITE_NAME }}
-          server-computer-name: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
-          server-username: ${{ secrets.MONSTER_SERVER_USERNAME }}
-          server-password: ${{ secrets.MONSTER_SERVER_PASSWORD }}
+          website-name: ${{ env.DEPLOY_WEBSITE_NAME }}
+          server-computer-name: ${{ env.DEPLOY_SERVER_COMPUTER_NAME }}
+          server-username: ${{ env.DEPLOY_SERVER_USERNAME }}
+          server-password: ${{ env.DEPLOY_SERVER_PASSWORD }}
           source-path: publish
+          target-delete: true

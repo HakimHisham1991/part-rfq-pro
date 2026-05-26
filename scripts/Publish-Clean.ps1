@@ -55,7 +55,8 @@ $publishArgs = @(
     '-c', 'Release',
     '-o', $out,
     '--runtime', 'win-x64',
-    '/p:AppendRuntimeIdentifierToOutputPath=false'
+    '/p:AppendRuntimeIdentifierToOutputPath=false',
+    '/p:UseAppHost=false'
 )
 
 if ($SelfContained) {

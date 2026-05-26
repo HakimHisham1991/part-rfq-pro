@@ -1,9 +1,15 @@
+using Microsoft.AspNetCore.HttpOverrides;
 using ThreeDAnalyzer.Core.Interfaces;
 using ThreeDAnalyzer.Web.Components;
 using ThreeDAnalyzer.Web.Engines;
 using ThreeDAnalyzer.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+});
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
@@ -33,6 +39,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
+app.UseForwardedHeaders();
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
 app.UseAntiforgery();

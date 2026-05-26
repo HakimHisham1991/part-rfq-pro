@@ -129,6 +129,11 @@ This application uses only free, royalty-free libraries:
 **LGPL compliance:** OCCT is linked as loose `.dll` files — never statically embedded.  
 You may replace the OCCT DLLs with your own build. See the `/about` page in the running app.
 
+## Deploy to MonsterASP.NET
+
+GitHub Actions workflow: `.github/workflows/deploy-monsterasp.yml`.  
+See **[docs/DEPLOY-MONSTERASP.md](docs/DEPLOY-MONSTERASP.md)** for Web Deploy secrets, 403 / “ASP.NET Core not detected” fixes, and log locations.
+
 ## Keyboard Shortcuts (in viewer)
 
 | Key | Action |
