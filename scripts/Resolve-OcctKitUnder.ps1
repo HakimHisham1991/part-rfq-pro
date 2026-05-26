@@ -18,9 +18,15 @@ $parent = [System.IO.Path]::GetFullPath($ParentPath)
 function Test-OcctKitRoot([string] $root) {
     if (-not (Test-Path (Join-Path $root 'inc'))) { return $false }
     foreach ($toolset in @('vc14', 'vc143')) {
-        $lib = Join-Path $root "win64\$toolset\lib"
-        $bin = Join-Path $root "win64\$toolset\bin"
-        if ((Test-Path $lib) -and (Test-Path $bin)) { return $true }
+        $base = Join-Path $root "win64\$toolset"
+        if (-not (Test-Path $base)) { continue }
+        foreach ($libName in @('lib', 'libd')) {
+            foreach ($binName in @('bin', 'bind')) {
+                $lib = Join-Path $base $libName
+                $bin = Join-Path $base $binName
+                if ((Test-Path $lib) -and (Test-Path $bin)) { return $true }
+            }
+        }
     }
     return $false
 }

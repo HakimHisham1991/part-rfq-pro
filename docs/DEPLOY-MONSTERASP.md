@@ -26,6 +26,15 @@ In the repo: **Settings → Secrets and variables → Actions**, add values from
 
 **Do not** put `/msdeploy.axd?site=...` in `SERVER_COMPUTER_NAME` — use only `https://siteXXXX.siteasp.net:8172`.
 
+## GitHub Actions OCCT download
+
+The workflow installs OCCT from two official V8_0_0 zips (not the large “combined” archive):
+
+- `opencascade-release-no-pch.zip`
+- `3rdparty-vc14-64.zip`
+
+They are extracted under `occt-kit/staging/` as siblings (outer zips may contain another `.zip` — the install script unpacks those automatically). Cache key: `occt-v8-opencascade+3rdparty-v5`.
+
 ## After deploy
 
 1. Control panel → your site → confirm **ASP.NET Core** is detected and the app pool is **running** (not disabled).
