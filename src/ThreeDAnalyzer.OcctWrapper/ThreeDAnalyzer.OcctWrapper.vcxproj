@@ -75,7 +75,7 @@
         $(OCCT_ROOT)\win64\vc14\lib  — OCCT import libraries
         Adjust the path suffix if your OCCT layout differs.
       -->
-      <AdditionalLibraryDirectories>$(OCCT_ROOT)\win64\vc14\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(OCCT_ROOT)\win64\vc14\lib;$(OCCT_ROOT)\win64\vc143\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>
         TKernel.lib;
         TKMath.lib;

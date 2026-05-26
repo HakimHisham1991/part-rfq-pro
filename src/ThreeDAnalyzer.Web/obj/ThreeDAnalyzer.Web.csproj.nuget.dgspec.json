@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "c:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Web\\ThreeDAnalyzer.Web.csproj": {}
+    "C:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Web\\ThreeDAnalyzer.Web.csproj": {}
   },
   "projects": {
-    "c:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Core\\ThreeDAnalyzer.Core.csproj": {
+    "C:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Core\\ThreeDAnalyzer.Core.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "c:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Core\\ThreeDAnalyzer.Core.csproj",
+        "projectUniqueName": "C:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Core\\ThreeDAnalyzer.Core.csproj",
         "projectName": "ThreeDAnalyzer.Core",
-        "projectPath": "c:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Core\\ThreeDAnalyzer.Core.csproj",
+        "projectPath": "C:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Core\\ThreeDAnalyzer.Core.csproj",
         "packagesPath": "C:\\Users\\hakim.hisham\\.nuget\\packages\\",
-        "outputPath": "c:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Core\\obj\\",
+        "outputPath": "C:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Core\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -346,14 +346,14 @@
         }
       }
     },
-    "c:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Web\\ThreeDAnalyzer.Web.csproj": {
+    "C:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Web\\ThreeDAnalyzer.Web.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "c:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Web\\ThreeDAnalyzer.Web.csproj",
+        "projectUniqueName": "C:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Web\\ThreeDAnalyzer.Web.csproj",
         "projectName": "ThreeDAnalyzer.Web",
-        "projectPath": "c:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Web\\ThreeDAnalyzer.Web.csproj",
+        "projectPath": "C:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Web\\ThreeDAnalyzer.Web.csproj",
         "packagesPath": "C:\\Users\\hakim.hisham\\.nuget\\packages\\",
-        "outputPath": "c:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Web\\obj\\",
+        "outputPath": "C:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Web\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -376,8 +376,8 @@
             "framework": "net10.0",
             "targetAlias": "net10.0",
             "projectReferences": {
-              "c:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Core\\ThreeDAnalyzer.Core.csproj": {
-                "projectPath": "c:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Core\\ThreeDAnalyzer.Core.csproj"
+              "C:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Core\\ThreeDAnalyzer.Core.csproj": {
+                "projectPath": "C:\\Users\\Public\\Documents\\part-rfq-pro\\part-rfq-pro\\src\\ThreeDAnalyzer.Core\\ThreeDAnalyzer.Core.csproj"
               }
             }
           }
