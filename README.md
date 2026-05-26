@@ -4,15 +4,19 @@ A Blazor Server web application for analyzing STEP/STP 3D CAD files in aerospace
 
 ## Features
 
-| # | Feature |
-|---|---------|
-| 1 | Open STEP / STP files (AP203 + AP214) |
-| 2 | Rotate, pan, zoom — Three.js WebGL viewer |
-| 3 | Exact part volume (mm³ / cm³) via OCCT mass properties |
-| 4 | Bounding box visualization (orange wireframe) |
-| 5 | Expand each of 6 faces independently for raw stock sizing |
-| 6 | Raw material volume + utilization % |
-| 7 | 3-point custom coordinate system with surface snap picking |
+| # | Feature | Status |
+|---|---------|--------|
+| 1 | Open STEP / STP (AP203 + AP214) | ✅ |
+| 2 | Pan / rotate / zoom (Three.js) | ✅ |
+| 3 | Part volume (OCCT, mm³ / cm³) | ✅ |
+| 4 | Axis-aligned bounding box | ✅ |
+| 5 | Distance & point-to-point (surface snap) | ✅ |
+| 6 | Angle (3 surface points) | ✅ |
+| 7 | Radius | ⏳ needs edge/cylinder snap in OCCT |
+| 8 | Snap vertex / edge | ⏳ surface snap today |
+| 9 | Raw stock face expansion (6 offsets) | ✅ |
+| 10 | Raw material volume + utilization % | ✅ |
+| 11 | 3-point custom coordinate system | ✅ |
 
 ## Prerequisites
 
@@ -31,12 +35,15 @@ dotnet build src\ThreeDAnalyzer.Web
 
 ## Build Order
 
-### Step 1 — Set OCCT_ROOT environment variable
+### Step 1 — Bundle OCCT inside the repo (standalone)
 
 ```powershell
-# Example (adjust to your actual installation path):
-[System.Environment]::SetEnvironmentVariable("OCCT_ROOT", "C:\OCCT\opencascade-8.0.0-vc14-64", "User")
+.\scripts\Import-OcctKit.ps1 -SourcePath "C:\OCCT\opencascade-8.0.0-vc14-64"
 ```
+
+This copies the kit into `runtime/occt`. Build scripts use that path first (no `C:\OCCT` required at runtime).
+
+Optional: set `OCCT_ROOT` only if you prefer an external kit instead of `runtime/occt`.
 
 ### Step 2 — Build the C++/CLI wrapper (MSBuild / Visual Studio)
 

@@ -50,10 +50,10 @@ public sealed class ThreeJsInterop(IJSRuntime js)
             ox, oy, oz, ux, uy, uz, vx, vy, vz, wx, wy, wz, mx, my, mz, Mx, My, Mz);
     }
 
-    public async ValueTask SetSnapModeAsync(bool enabled)
+    public async ValueTask SetSnapModeAsync(bool enabled, int pointIndex = 0, string pickMode = "surface")
     {
         await EnsureViewerModuleLoadedAsync();
-        await js.InvokeVoidAsync("ThreeDViewer.setSnapMode", enabled);
+        await js.InvokeVoidAsync("ThreeDViewer.setSnapMode", enabled, pointIndex, pickMode);
     }
 
     public async ValueTask SyncCsPickMarkersAsync(

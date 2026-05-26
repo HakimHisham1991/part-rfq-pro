@@ -3,16 +3,10 @@ using ThreeDAnalyzer.Core.Models;
 
 namespace ThreeDAnalyzer.Web.Engines;
 
-/// <summary>
-/// Stub OCCT engine used when ThreeDAnalyzer.OcctWrapper.dll is not yet available.
-/// Build the C++/CLI project in Visual Studio 2022, then set UseOcct=true to enable the real engine.
-/// </summary>
 public sealed class NullOcctEngine : IOcctEngine
 {
     private const string Msg =
-        "OCCT wrapper is not available. " +
-        "Open ThreeDAnalyzer.OcctWrapper.vcxproj in Visual Studio 2022, build it, " +
-        "then rebuild this project with: dotnet build -p:UseOcct=true";
+        "OCCT is not linked. Import runtime\\occt (see runtime\\README.md), build the wrapper, then rebuild the web project.";
 
     public bool IsLoaded => false;
 
@@ -37,6 +31,12 @@ public sealed class NullOcctEngine : IOcctEngine
     public bool RayPickSurface(Ray ray, out Point3D hitPoint)
     {
         hitPoint = Point3D.Zero;
+        throw new InvalidOperationException(Msg);
+    }
+
+    public bool RayPickRadius(Ray ray, out RadiusPickResult? result)
+    {
+        result = null;
         throw new InvalidOperationException(Msg);
     }
 

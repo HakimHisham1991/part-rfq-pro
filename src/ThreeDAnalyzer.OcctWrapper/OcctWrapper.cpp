@@ -42,10 +42,19 @@
 // Shape transform
 #include <BRepBuilderAPI_Transform.hxx>
 
-// Ray–surface intersection
+// Ray–surface intersection / radius pick
 #include <IntCurvesFace_ShapeIntersector.hxx>
 #include <gp_Lin.hxx>
 #include <Precision.hxx>
+#include <BRepAdaptor_Surface.hxx>
+#include <BRepAdaptor_Curve.hxx>
+#include <GeomAbs_SurfaceType.hxx>
+#include <GeomAbs_CurveType.hxx>
+#include <GeomAPI_ProjectPointOnCurve.hxx>
+#include <Geom_Curve.hxx>
+#include <BRep_Tool.hxx>
+#include <TopoDS_Edge.hxx>
+#include <cmath>
 
 // Collections
 #include <TColgp_Array1OfPnt.hxx>
@@ -160,6 +169,162 @@ BoundingBoxData^ OcctEngine::GetBoundingBoxInCustomCS(
     BoundingBoxData^ result = ComputeBoundingBox(transformed);
     delete static_cast<TopoDS_Shape*>(transformed);
     return result;
+}
+
+namespace {
+
+Standard_Real ShapeDiag(const TopoDS_Shape& shape)
+{
+    Bnd_Box box;
+    BRepBndLib::Add(shape, box);
+    if (box.IsVoid()) return 100.0;
+    Standard_Real xmin, ymin, zmin, xmax, ymax, zmax;
+    box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+    Standard_Real dx = xmax - xmin, dy = ymax - ymin, dz = zmax - zmin;
+    return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+Standard_Real DistPointToLine(const gp_Pnt& p, const gp_Lin& line)
+{
+    gp_Vec w(line.Location(), p);
+    return w.Crossed(line.Direction()).Magnitude();
+}
+
+bool TryRadiusFromFace(const TopoDS_Face& face, double& radius, System::String^% kind)
+{
+    BRepAdaptor_Surface surf(face);
+    switch (surf.GetType())
+    {
+    case GeomAbs_Cylinder:
+        radius = surf.Cylinder().Radius();
+        kind = "cylinder";
+        return true;
+    case GeomAbs_Sphere:
+        radius = surf.Sphere().Radius();
+        kind = "sphere";
+        return true;
+    case GeomAbs_Torus:
+        radius = surf.Torus().MinorRadius();
+        kind = "torus (minor)";
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool TryClosestCircleEdge(const TopoDS_Shape& shape, const gp_Lin& ray, gp_Pnt& hit,
+    double& radius, Standard_Real tol)
+{
+    double best = tol;
+    bool found = false;
+
+    for (TopExp_Explorer ex(shape, TopAbs_EDGE); ex.More(); ex.Next())
+    {
+        TopoDS_Edge edge = TopoDS::Edge(ex.Current());
+        BRepAdaptor_Curve curve(edge);
+        if (curve.GetType() != GeomAbs_Circle)
+            continue;
+
+        Standard_Real f = 0.0, l = 0.0;
+        Handle(Geom_Curve) gc = BRep_Tool::Curve(edge, f, l);
+        if (gc.IsNull())
+            continue;
+
+        GeomAPI_ProjectPointOnCurve proj(ray.Location(), gc, f, l);
+        if (proj.NbPoints() < 1)
+            continue;
+
+        gp_Pnt nearP = proj.NearestPoint();
+        Standard_Real d = DistPointToLine(nearP, ray);
+        if (d >= best)
+            continue;
+
+        best = d;
+        hit = nearP;
+        radius = curve.Circle().Radius();
+        found = true;
+    }
+
+    if (found)
+        return true;
+    return false;
+}
+
+} // namespace
+
+// ── RayPickRadius ─────────────────────────────────────────────────────────
+
+bool OcctEngine::RayPickRadius(
+    double rox, double roy, double roz,
+    double rdx, double rdy, double rdz,
+    [Out] double% hitX,
+    [Out] double% hitY,
+    [Out] double% hitZ,
+    [Out] double% radiusMm,
+    [Out] System::String^% kind)
+{
+    hitX = hitY = hitZ = 0.0;
+    radiusMm = 0.0;
+    kind = nullptr;
+
+    TopoDS_Shape* shape = static_cast<TopoDS_Shape*>(m_shape);
+    if (!shape || shape->IsNull()) return false;
+
+    gp_Pnt rayOrigin(rox, roy, roz);
+    gp_Dir rayDir;
+    try { rayDir = gp_Dir(rdx, rdy, rdz); }
+    catch (...) { return false; }
+
+    gp_Lin ray(rayOrigin, rayDir);
+    const Standard_Real tol = std::max(2.0, ShapeDiag(*shape) * 0.025);
+
+    IntCurvesFace_ShapeIntersector inter;
+    inter.Load(*shape, Precision::Confusion());
+    inter.Perform(ray, -1.0e10, 1.0e10);
+
+    if (inter.NbPnt() > 0)
+    {
+        int best = 1;
+        Standard_Real minDist = rayOrigin.Distance(inter.Pnt(1));
+        for (int i = 2; i <= inter.NbPnt(); ++i)
+        {
+            Standard_Real d = rayOrigin.Distance(inter.Pnt(i));
+            if (d < minDist) { minDist = d; best = i; }
+        }
+
+        gp_Pnt hit = inter.Pnt(best);
+        hitX = hit.X(); hitY = hit.Y(); hitZ = hit.Z();
+
+        TopoDS_Face face = inter.Face(best);
+        double r = 0.0;
+        System::String^ k = nullptr;
+        if (TryRadiusFromFace(face, r, k))
+        {
+            radiusMm = r;
+            kind = k;
+            return true;
+        }
+
+        if (TryClosestCircleEdge(*shape, ray, hit, r, tol))
+        {
+            hitX = hit.X(); hitY = hit.Y(); hitZ = hit.Z();
+            radiusMm = r;
+            kind = "circle edge";
+            return true;
+        }
+    }
+
+    gp_Pnt edgeHit;
+    double rEdge = 0.0;
+    if (TryClosestCircleEdge(*shape, ray, edgeHit, rEdge, tol))
+    {
+        hitX = edgeHit.X(); hitY = edgeHit.Y(); hitZ = edgeHit.Z();
+        radiusMm = rEdge;
+        kind = "circle edge";
+        return true;
+    }
+
+    return false;
 }
 
 // ── RayPickSurface ────────────────────────────────────────────────────────

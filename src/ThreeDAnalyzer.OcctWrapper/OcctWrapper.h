@@ -89,6 +89,16 @@ public:
         [Out] double% hitY,
         [Out] double% hitZ);
 
+    /// <summary>Radius from cylindrical/spherical/toroidal face or circular edge at ray hit (mm).</summary>
+    bool RayPickRadius(
+        double rox, double roy, double roz,
+        double rdx, double rdy, double rdz,
+        [Out] double% hitX,
+        [Out] double% hitY,
+        [Out] double% hitZ,
+        [Out] double% radiusMm,
+        [Out] System::String^% kind);
+
 private:
     void* m_shape;  // heap-allocated TopoDS_Shape*
 

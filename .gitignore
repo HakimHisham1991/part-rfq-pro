@@ -1,0 +1,21 @@
+# Build
+**/bin/
+**/obj/
+.vs/
+**/.vs/
+
+# Local / CI artifacts
+artifacts/
+publish/
+publish_clean/
+
+# OCCT native kits (import once per machine via scripts/Import-OcctKit.ps1)
+runtime/occt/
+runtime/thirdparty/
+
+# Keep folder docs
+!runtime/README.md
+
+# User-specific
+*.user
+**/x64/

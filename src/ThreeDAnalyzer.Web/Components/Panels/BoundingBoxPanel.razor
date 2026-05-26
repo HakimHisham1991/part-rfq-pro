@@ -1,5 +1,3 @@
-@rendermode InteractiveServer
-
 @using System.Globalization
 
 <div class="panel-block">
@@ -42,10 +40,9 @@
 </div>
 
 @code {
-    [Parameter] public BoundingBoxData? BaseBbox       { get; set; }
-    [Parameter] public EventCallback<double[]>  OnOffsetsChanged { get; set; }
+    [Parameter] public BoundingBoxData? BaseBbox { get; set; }
+    [Parameter] public EventCallback<double[]> OnOffsetsChanged { get; set; }
 
-    // Offsets: [0]=+X  [1]=-X  [2]=+Y  [3]=-Y  [4]=+Z  [5]=-Z
     private record FaceEntry(string Label, int Idx) { public double Offset { get; set; } }
 
     private readonly FaceEntry[] _faces =
@@ -68,8 +65,7 @@
 
     private double EffectiveOffset(FaceEntry f)
     {
-        if (_draft[f.Idx] is { } d &&
-            TryParseDraft(d, out var v))
+        if (_draft[f.Idx] is { } d && TryParseDraft(d, out var v))
             return v;
         return f.Offset;
     }
@@ -82,21 +78,15 @@
             v = 0;
             return true;
         }
-
         return double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out v) && v >= 0;
     }
 
-    private void OnFaceInput(FaceEntry face, string? raw)
-    {
-        _draft[face.Idx] = raw ?? "";
-    }
+    private void OnFaceInput(FaceEntry face, string? raw) => _draft[face.Idx] = raw ?? "";
 
     private async Task OnFaceKeyDownAsync(FaceEntry f, KeyboardEventArgs e)
     {
-        if (e.Key != "Enter")
-            return;
-
-        await CommitFaceAsync(f);
+        if (e.Key == "Enter")
+            await CommitFaceAsync(f);
     }
 
     private async Task CommitFaceAsync(FaceEntry f)
@@ -111,7 +101,6 @@
         }
 
         _draft[f.Idx] = null;
-
         if (Math.Abs(f.Offset - v) < 1e-9)
             return;
 
@@ -123,7 +112,6 @@
     {
         for (var i = 0; i < _draft.Length; i++)
             _draft[i] = null;
-
         foreach (var f in _faces) f.Offset = 0;
         await OnOffsetsChanged.InvokeAsync(CurrentOffsets);
     }

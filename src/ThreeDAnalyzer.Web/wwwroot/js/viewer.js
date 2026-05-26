@@ -31,6 +31,10 @@ const ThreeDViewer = {
     _csBboxHelper: null,
     _markers:     [],
     _snapMode:    false,
+    _snapPointIndex: 0,
+    _snapPickMode: 'surface',
+    _onSnapPointerDown: null,
+    _lastSnapPickMs: 0,
     _dotNetRef:   null,
     _ro:          null,
     _floorGrid:   null,
@@ -117,9 +121,7 @@ const ThreeDViewer = {
         requestAnimationFrame(() => this._onResize(canvas));
 
         this._canvas = canvas;
-        this._onCanvasMouseDown = e => this._onCanvasClick(e);
         this._onWindowKeyDown = e => this._onKey(e);
-        canvas.addEventListener('mousedown', this._onCanvasMouseDown);
         window.addEventListener('keydown', this._onWindowKeyDown);
 
         this._updateWorldAxesTriad();
@@ -806,13 +808,70 @@ const ThreeDViewer = {
         this._obbHelper = null;
     },
 
-    /** Enter or leave surface snap mode. */
-    setSnapMode(enabled) {
-        this._snapMode = enabled;
+    /** Enter or leave surface snap mode (pointIndex passed through to C# pick handlers). */
+    setSnapMode(enabled, pointIndex = 0, pickMode = 'surface') {
+        this._snapMode = !!enabled;
+        this._snapPointIndex = pointIndex | 0;
+        this._snapPickMode = pickMode === 'radius' ? 'radius' : 'surface';
+
+        if (!this._canvas) return;
+
+        this._canvas.style.cursor = enabled ? 'crosshair' : '';
+
+        if (this._onSnapPointerDown) {
+            this._canvas.removeEventListener('pointerdown', this._onSnapPointerDown, { capture: true });
+            this._onSnapPointerDown = null;
+        }
+
+        if (enabled) {
+            this._onSnapPointerDown = (e) => this._onCanvasSnapClick(e);
+            this._canvas.addEventListener('pointerdown', this._onSnapPointerDown, { capture: true });
+        }
+    },
+
+    /** Marker radius scaled to model size (always visible on dark mesh). */
+    _pickMarkerRadius() {
+        if (!this._meshObj) return 4;
+        const box = new THREE.Box3().setFromObject(this._meshObj);
+        const diag = box.getSize(new THREE.Vector3()).length();
+        if (!Number.isFinite(diag) || diag < 1e-9) return 4;
+        return THREE.MathUtils.clamp(diag * 0.012, 2.5, 14);
+    },
+
+    _addPickSphere(x, y, z, colorIndex) {
+        const colors = [0xff4455, 0x44ff99, 0x55bbff];
+        const r = this._pickMarkerRadius();
+        const geo = new THREE.SphereGeometry(r, 18, 14);
+        const mat = new THREE.MeshBasicMaterial({
+            color: colors[colorIndex % 3],
+            depthTest: false,
+            depthWrite: false,
+        });
+        const sphere = new THREE.Mesh(geo, mat);
+        sphere.position.set(x, y, z);
+        sphere.renderOrder = 999;
+        sphere.name = `snapMarker_${colorIndex}`;
+        this._markers.push(sphere);
+        this._scene.add(sphere);
+    },
+
+    _addPickLine(p1, p2, color) {
+        const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+        const mat = new THREE.LineBasicMaterial({
+            color: color ?? 0xffdd44,
+            depthTest: false,
+            depthWrite: false,
+        });
+        const line = new THREE.Line(geo, mat);
+        line.renderOrder = 998;
+        line.name = 'measureLine';
+        this._markers.push(line);
+        this._scene.add(line);
     },
 
     /**
-     * Custom CS visuals: helper lines use all hits that are marked valid; zero or one coloured sphere when sphereIdx is 0–2.
+     * Pick markers: sphereIdx 0–2 = show only that sphere (custom CS aiming).
+     * sphereIdx < 0 = show all valid hits + connecting lines (measure / finished picks).
      */
     syncCsPickMarkers(
         h0, x0, y0, z0,
@@ -820,28 +879,33 @@ const ThreeDViewer = {
         h2, x2, y2, z2,
         sphereIdx
     ) {
-        // Full reset — replaces multi-marker stacking (single-sphere UX).
         this.clearSnapMarkers();
 
-        const colors = [0xee3333, 0x33cc44, 0x3366ee];
+        const entries = [
+            [h0, x0, y0, z0, 0],
+            [h1, x1, y1, z1, 1],
+            [h2, x2, y2, z2, 2],
+        ];
 
         if (sphereIdx >= 0 && sphereIdx <= 2) {
-            let mx, my, mz, mc;
-            if (sphereIdx === 0 && h0) { mx = x0; my = y0; mz = z0; mc = colors[0]; }
-            else if (sphereIdx === 1 && h1) { mx = x1; my = y1; mz = z1; mc = colors[1]; }
-            else if (sphereIdx === 2 && h2) { mx = x2; my = y2; mz = z2; mc = colors[2]; }
-            if (mx !== undefined) {
-                const geo = new THREE.SphereGeometry(3, 14, 10);
-                const mat = new THREE.MeshBasicMaterial({ color: mc });
-                const sphere = new THREE.Mesh(geo, mat);
-                sphere.position.set(mx, my, mz);
-                sphere.name = `snapMarker_${sphereIdx}`;
-                this._markers.push(sphere);
-                this._scene.add(sphere);
-            }
+            const e = entries[sphereIdx];
+            if (e[0]) this._addPickSphere(e[1], e[2], e[3], e[4]);
+            this._syncCsAxesFromHits(h0, x0, y0, z0, h1, x1, y1, z1, h2, x2, y2, z2);
+            return;
         }
 
-        this._syncCsAxesFromHits(h0, x0, y0, z0, h1, x1, y1, z1, h2, x2, y2, z2);
+        const pts = [];
+        for (const [ok, x, y, z, ci] of entries) {
+            if (!ok) continue;
+            this._addPickSphere(x, y, z, ci);
+            pts.push(new THREE.Vector3(x, y, z));
+        }
+
+        for (let i = 1; i < pts.length; i++)
+            this._addPickLine(pts[i - 1], pts[i], 0xffdd44);
+
+        if (h0 && h1 && h2)
+            this._syncCsAxesFromHits(h0, x0, y0, z0, h1, x1, y1, z1, h2, x2, y2, z2);
     },
 
     /** Axis helper lines between valid P1/P2/P3 (uses stored coords, independent of spheres). */
@@ -892,23 +956,47 @@ const ThreeDViewer = {
         });
     },
 
-    _onCanvasClick(event) {
-        if (!this._snapMode || !this._meshObj) return;
-        if (event.button !== 0) return;
+    _onCanvasSnapClick(event) {
+        if (!this._snapMode || !this._meshObj || !this._dotNetRef) return;
+        if (event.button !== undefined && event.button !== 0) return;
 
-        const canvas = event.currentTarget ?? event.target;
+        const now = performance.now();
+        if (now - (this._lastSnapPickMs || 0) < 350) return;
+        this._lastSnapPickMs = now;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const canvas = this._canvas ?? event.currentTarget ?? event.target;
         const rect = canvas.getBoundingClientRect();
-        const nx =  ((event.clientX - rect.left) / rect.width)  * 2 - 1;
-        const ny = -((event.clientY - rect.top)  / rect.height) * 2 + 1;
+        if (rect.width < 1 || rect.height < 1) return;
+
+        const nx = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        const ny = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(new THREE.Vector2(nx, ny), this._camera);
 
+        const idx = this._snapPointIndex | 0;
         const o = raycaster.ray.origin;
         const d = raycaster.ray.direction;
 
-        // Send ray to C# — OCCT will intersect it against the exact BRep geometry
-        this._dotNetRef.invokeMethodAsync('OnRayPick', o.x, o.y, o.z, d.x, d.y, d.z);
+        if (this._snapPickMode === 'radius') {
+            this._dotNetRef.invokeMethodAsync('OnRadiusRayPick', idx, o.x, o.y, o.z, d.x, d.y, d.z)
+                .catch((err) => console.error('[viewer] OnRadiusRayPick failed', err));
+            return;
+        }
+
+        const meshHits = raycaster.intersectObject(this._meshObj, true);
+        if (meshHits.length > 0) {
+            const p = meshHits[0].point;
+            this._dotNetRef.invokeMethodAsync('OnSurfacePick', idx, p.x, p.y, p.z)
+                .catch((err) => console.error('[viewer] OnSurfacePick failed', err));
+            return;
+        }
+
+        this._dotNetRef.invokeMethodAsync('OnRayPick', idx, o.x, o.y, o.z, d.x, d.y, d.z)
+            .catch((err) => console.error('[viewer] OnRayPick failed', err));
     },
 
     _onKey(event) {
@@ -979,13 +1067,10 @@ const ThreeDViewer = {
         this._snapAnim = null;
         this._disposeNxViewGnomon();
 
-        if (this._canvas && this._onCanvasMouseDown) {
-            this._canvas.removeEventListener('mousedown', this._onCanvasMouseDown);
-        }
+        this.setSnapMode(false, 0);
         if (this._onWindowKeyDown) {
             window.removeEventListener('keydown', this._onWindowKeyDown);
         }
-        this._onCanvasMouseDown = null;
         this._onWindowKeyDown = null;
         this._canvas = null;
 
@@ -1027,8 +1112,8 @@ const ThreeDViewer = {
         this._renderer = null;
         this._camera = null;
         this._scene = null;
+        this.setSnapMode(false, 0);
         this._dotNetRef = null;
-        this._snapMode = false;
     }
 };
 

@@ -23,8 +23,13 @@ if (-not (Test-Path $webCsproj)) {
     throw "Could not find $webCsproj - run scripts\Build-OcctWrapper.ps1 from inside the cloned repo."
 }
 
-if (-not $env:OCCT_ROOT -or -not (Test-Path $env:OCCT_ROOT)) {
-    Write-Warning "OCCT_ROOT is missing or invalid. Set it to your OCCT install, e.g. C:\OCCT\opencascade-8.0.0-vc14-64"
+$resolvedOcct = & (Join-Path $PSScriptRoot 'Resolve-OcctRoot.ps1')
+if ($resolvedOcct) {
+    $env:OCCT_ROOT = $resolvedOcct
+    Write-Host "Using OCCT kit: $resolvedOcct"
+}
+elseif (-not $env:OCCT_ROOT -or -not (Test-Path $env:OCCT_ROOT)) {
+    Write-Warning "OCCT not found. Run .\scripts\Import-OcctKit.ps1 or set OCCT_ROOT."
 }
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'

@@ -51,7 +51,6 @@ public sealed class OcctService(IOcctEngine engine) : IDisposable
     public Task<MeshData> GetMeshAsync(double deflection = 0.1, CancellationToken ct = default) =>
         Task.Run(() => engine.GetMesh(deflection), ct);
 
-    /// <summary>Compute bounding box in a custom coordinate system on background thread.</summary>
     public Task<BoundingBoxData> GetBoundingBoxInCustomCSAsync(CustomCS cs, CancellationToken ct = default) =>
         Task.Run(() => engine.GetBoundingBoxInCustomCS(cs), ct);
 
@@ -61,6 +60,9 @@ public sealed class OcctService(IOcctEngine engine) : IDisposable
     /// </summary>
     public bool RayPick(Ray ray, out Point3D hitPoint) =>
         engine.RayPickSurface(ray, out hitPoint);
+
+    public bool RayPickRadius(Ray ray, out RadiusPickResult? result) =>
+        engine.RayPickRadius(ray, out result);
 
     private void CleanupTempFile()
     {

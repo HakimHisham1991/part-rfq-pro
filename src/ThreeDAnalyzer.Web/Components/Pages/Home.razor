@@ -1,39 +1,27 @@
 ﻿@page "/"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject OcctService Occt
-@inject ThreeJsInterop ThreeJs
 
 <PageTitle>3D Part Analyzer</PageTitle>
 
 <div class="analyzer-layout">
-    <!-- ══ LEFT: 3-D Viewport ══════════════════════════════════════════════ -->
     <div class="analyzer-viewport">
         <ModelViewer @ref="_viewer"
+                     SnapHint="@_snapHint"
                      SnapPointPicked="OnSnapPointPicked"
+                     RadiusPicked="OnRadiusPicked"
                      ErrorOccurred="OnViewerError" />
     </div>
 
-    <!-- ══ RIGHT: Control Sidebar ════════════════════════════════════════ -->
     <aside class="analyzer-sidebar">
-
-        <!-- File Upload -->
         <div class="panel-block">
-            <div class="panel-title">Import STEP / STP File</div>
+            <div class="panel-title">Import STEP / STP</div>
             @if (!Occt.IsAvailable)
             {
                 <div class="alert alert-warning py-2 px-3 mb-0" style="font-size:12px;">
-                    <strong>OCCT is not linked into this build</strong> (the web app was compiled without <code>ThreeDAnalyzer.OcctWrapper.dll</code>).<br />
-                    <span class="text-muted">After you fix it, run <code>dotnet build src\ThreeDAnalyzer.Web</code> again — the build log prints which paths were checked.</span><br /><br />
-                    <strong>1.</strong> Install OCCT 8.0 (Windows x64, VC++ 2022 binaries). Set <code>OCCT_ROOT</code> to the kit root (folder that contains <code>inc</code> and <code>win64\vc14</code>), e.g. <code>C:\OCCT\opencascade-8.0.0-vc14-64</code>. Optional: put <code>3rdparty-vc14-64</code> beside it (same parent folder) so runtime DLLs copy correctly.<br />
-                    <strong>2.</strong> Build the native wrapper with <strong>MSVC</strong> (Visual Studio Code alone cannot compile C++/CLI). Install <strong>Build Tools for Visual Studio 2022</strong> (free) with workload <em>Desktop development with C++</em> and <em>C++/CLI</em>, then in a terminal: <code>.\scripts\Build-OcctWrapper.ps1</code> — or open <code>ThreeDAnalyzer.slnx</code> in full Visual Studio 2022 and build <code>ThreeDAnalyzer.OcctWrapper</code> (x64 Release).<br />
-                    <strong>3.</strong> The .NET app looks for the wrapper here (first match wins):<br />
-                    <code style="word-break:break-all;">src\ThreeDAnalyzer.OcctWrapper\x64\Release\ThreeDAnalyzer.OcctWrapper.dll</code><br />
-                    <code style="word-break:break-all;">src\ThreeDAnalyzer.OcctWrapper\x64\Debug\ThreeDAnalyzer.OcctWrapper.dll</code><br />
-                    <code style="word-break:break-all;">src\ThreeDAnalyzer.OcctWrapper\bin\x64\Release\net10.0\ThreeDAnalyzer.OcctWrapper.dll</code><br />
-                    <code style="word-break:break-all;">src\ThreeDAnalyzer.OcctWrapper\bin\x64\Debug\net10.0\ThreeDAnalyzer.OcctWrapper.dll</code><br />
-                    Or set env var <code>OCCT_WRAPPER_DLL</code> to the full path of that DLL, then rebuild the web project.<br />
-                    <strong>4.</strong> Copy every OCCT runtime <code>*.dll</code> from <code>%OCCT_ROOT%\win64\vc14\bin</code> into the same folder as <code>ThreeDAnalyzer.Web.exe</code> (e.g. <code>src\ThreeDAnalyzer.Web\bin\Debug\net10.0\</code>).<br />
-                    <span class="text-muted">Disable OCCT: </span><code>dotnet build -p:UseOcct=false</code>
+                    <strong>OCCT not linked.</strong><br />
+                    <strong>1.</strong> <code>.\scripts\Import-OcctKit.ps1 -SourcePath "…\opencascade-8.0.0-vc14-64"</code><br />
+                    <strong>2.</strong> <code>.\scripts\Build-OcctWrapper.ps1</code> then <code>run.bat</code>
                 </div>
             }
             else
@@ -51,41 +39,48 @@
 
         <hr class="panel-divider" />
 
-        <!-- Volume Display -->
         <VolumeDisplay PartVolumeMm3="Occt.PartVolumeMm3"
                        RawVolumeMm3="_rawVolumeMm3" />
 
         <hr class="panel-divider" />
 
-        <!-- Bounding Box Controls -->
         <BoundingBoxPanel @ref="_bboxPanel"
                           BaseBbox="ActiveStockBoundingBox()"
                           OnOffsetsChanged="OnOffsetsChanged" />
 
         <hr class="panel-divider" />
 
-        <!-- Custom Coordinate System -->
         <CoordinatePanel @ref="_csPanel"
                          ModelLoaded="Occt.IsLoaded"
-                         OnPickRequested="OnPickRequested"
-                         OnClearRequested="OnClearRequested"
+                         OnPickRequested="OnCsPickRequested"
+                         OnClearRequested="OnCsClearRequested"
                          OnCSApplied="OnCSApplied" />
 
+        <hr class="panel-divider" />
+
+        <MeasurePanel @ref="_measure"
+                      ModelLoaded="Occt.IsLoaded"
+                      OnPickRequested="OnMeasurePickRequested"
+                      OnPickCancelled="OnMeasurePickCancelled" />
     </aside>
 </div>
 
 @code {
-    private ModelViewer?       _viewer;
-    private BoundingBoxPanel?  _bboxPanel;
-    private CoordinatePanel?   _csPanel;
+    private enum SnapTarget { None, Measure, CustomCs }
 
-    private bool               _busy;
-    private string?            _globalError;
-    private double             _rawVolumeMm3;
-    private BoundingBoxData?   _csBbox;
-    private CustomCS?          _appliedCustomCs;
+    private ModelViewer? _viewer;
+    private BoundingBoxPanel? _bboxPanel;
+    private CoordinatePanel? _csPanel;
+    private MeasurePanel? _measure;
 
-    // ── File load ──────────────────────────────────────────────────────────
+    private bool _busy;
+    private string? _globalError;
+    private string? _snapHint;
+    private SnapTarget _snapTarget;
+
+    private double _rawVolumeMm3;
+    private BoundingBoxData? _csBbox;
+    private CustomCS? _appliedCustomCs;
 
     private async Task OnFileSelected(InputFileChangeEventArgs e)
     {
@@ -93,11 +88,14 @@
         _rawVolumeMm3 = 0;
         _csBbox = null;
         _appliedCustomCs = null;
+        _snapTarget = SnapTarget.None;
         _busy = true;
         StateHasChanged();
 
         try
         {
+            if (_measure is not null)
+                await _measure.ResetAllAsync(deselectTool: true);
             if (_viewer is not null)
                 await _viewer.LoadModelAsync(e.File);
 
@@ -107,7 +105,7 @@
                 await _viewer.RefreshStockBoundingBoxAsync(wb, _bboxPanel?.CurrentOffsets ?? new double[6], null, null);
 
             if (_viewer != null && _csPanel is not null)
-                await _viewer.RefreshCsPickVisualAsync(_csPanel.GetSnapHits(), sphereVisibleIdx: -1);
+                await _viewer.RefreshPickMarkersAsync(_csPanel.GetSnapHits(), -1);
         }
         finally
         {
@@ -116,9 +114,11 @@
         }
     }
 
-    private void OnViewerError(string err) => _globalError = err;
-
-    // ── Bounding box expansion ─────────────────────────────────────────────
+    private void OnViewerError(string err)
+    {
+        _globalError = err;
+        StateHasChanged();
+    }
 
     private async Task OnOffsetsChanged(double[] offsets)
     {
@@ -140,37 +140,33 @@
         _rawVolumeMm3 = dx * dy * dz;
     }
 
-    private BoundingBoxData? ActiveStockBoundingBox() =>
-        _csBbox ?? Occt.BoundingBox;
+    private BoundingBoxData? ActiveStockBoundingBox() => _csBbox ?? Occt.BoundingBox;
 
-    // ── Custom coordinate system snap ─────────────────────────────────────
+    // ── Custom coordinate system ───────────────────────────────────────────
 
-    private async Task OnPickRequested(int pointIndex)
+    private async Task OnCsPickRequested(int pointIndex)
     {
         if (_viewer is null || _csPanel is null) return;
+
+        await EndMeasureSnapAsync();
+
         if (pointIndex < 0)
         {
+            _snapTarget = SnapTarget.None;
+            _snapHint = null;
+            _csPanel.CancelPick();
             await _viewer.ExitSnapModeAsync();
-            await _viewer.RefreshCsPickVisualAsync(_csPanel.GetSnapHits(), sphereVisibleIdx: -1);
+            await _viewer.RefreshPickMarkersAsync(_csPanel.GetSnapHits(), -1);
             return;
         }
 
-        // Hide prior pick spheres while aiming the next surface point.
-        await _viewer.RefreshCsPickVisualAsync(_csPanel.GetSnapHits(), sphereVisibleIdx: -1);
+        _snapTarget = SnapTarget.CustomCs;
+        _snapHint = $"Custom CS — click P{pointIndex + 1} on the model surface";
+        await _viewer.RefreshPickMarkersAsync(_csPanel.GetSnapHits(), -1);
         await _viewer.EnterSnapModeAsync(pointIndex);
     }
 
-    private async Task OnSnapPointPicked((int Index, Point3D Hit) args)
-    {
-        _csPanel?.SetSnapPoint(args.Index, args.Hit);
-        if (_viewer is not null && _csPanel is not null)
-        {
-            await _viewer.ExitSnapModeAsync();
-            await _viewer.RefreshCsPickVisualAsync(_csPanel.GetSnapHits(), args.Index);
-        }
-    }
-
-    private async Task OnClearRequested()
+    private async Task OnCsClearRequested()
     {
         _csBbox = null;
         _appliedCustomCs = null;
@@ -197,7 +193,7 @@
                 await _viewer.RefreshStockBoundingBoxAsync(wb, _bboxPanel?.CurrentOffsets ?? new double[6], _appliedCustomCs, _csBbox);
 
             if (_viewer != null && _csPanel is not null)
-                await _viewer.RefreshCsPickVisualAsync(_csPanel.GetSnapHits(), sphereVisibleIdx: -1);
+                await _viewer.RefreshPickMarkersAsync(_csPanel.GetSnapHits(), -1);
         }
         catch (Exception ex)
         {
@@ -206,6 +202,89 @@
         finally
         {
             _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    // ── Measure tools ──────────────────────────────────────────────────────
+
+    private async Task OnMeasurePickRequested((MeasureTool Tool, int PointIndex) args)
+    {
+        if (_viewer is null || _measure is null) return;
+
+        await EndCsSnapAsync();
+
+        _snapTarget = SnapTarget.Measure;
+        _snapHint = args.Tool switch
+        {
+            MeasureTool.Radius => "Radius — click cylinder, hole, fillet, or circular edge",
+            MeasureTool.Angle => $"Angle — click point {args.PointIndex + 1} (2 = vertex)",
+            MeasureTool.Distance or MeasureTool.PointToPoint => $"Distance — click point {args.PointIndex + 1}",
+            _ => "Click a surface point"
+        };
+
+        var pickMode = args.Tool == MeasureTool.Radius ? "radius" : "surface";
+        await _viewer.RefreshPickMarkersAsync(_measure.GetSnapHits(), -1);
+        await _viewer.EnterSnapModeAsync(args.PointIndex, pickMode);
+    }
+
+    private async Task OnMeasurePickCancelled()
+    {
+        _snapTarget = SnapTarget.None;
+        _snapHint = null;
+        if (_viewer is null || _measure is null) return;
+        await _viewer.ExitSnapModeAsync();
+        await _viewer.RefreshPickMarkersAsync(_measure.GetSnapHits(), -1);
+    }
+
+    private async Task EndMeasureSnapAsync()
+    {
+        if (_measure is not null && _snapTarget == SnapTarget.Measure)
+            await OnMeasurePickCancelled();
+    }
+
+    private async Task EndCsSnapAsync()
+    {
+        if (_csPanel is not null && _snapTarget == SnapTarget.CustomCs)
+            await OnCsPickRequested(-1);
+    }
+
+    private async Task OnRadiusPicked(RadiusPickResult pick)
+    {
+        if (_viewer is null || _measure is null) return;
+        if (_snapTarget != SnapTarget.Measure || !_measure.IsPicking)
+            return;
+
+        await _measure.ApplyRadiusAsync(pick);
+        await _viewer.RefreshPickMarkersAsync(_measure.GetSnapHits(), -1);
+        _globalError = null;
+        _snapHint = null;
+        StateHasChanged();
+    }
+
+    private async Task OnSnapPointPicked((int Index, Point3D Hit) args)
+    {
+        if (_viewer is null) return;
+
+        if (_snapTarget == SnapTarget.CustomCs && _csPanel is not null)
+        {
+            _csPanel.SetSnapPoint(args.Index, args.Hit);
+            await _viewer.ExitSnapModeAsync();
+            _snapTarget = SnapTarget.None;
+            _snapHint = null;
+            await _viewer.RefreshPickMarkersAsync(_csPanel.GetSnapHits(), args.Index);
+            return;
+        }
+
+        if (_snapTarget == SnapTarget.Measure && _measure is not null && _measure.IsPicking)
+        {
+            await _measure.AddPoint(args.Hit);
+            await _viewer.RefreshPickMarkersAsync(_measure.GetSnapHits(), -1);
+            if (!string.IsNullOrEmpty(_measure.LastResult))
+                _globalError = null;
+            _snapHint = _measure.IsPicking
+                ? "Click the next point on the model surface"
+                : null;
             StateHasChanged();
         }
     }

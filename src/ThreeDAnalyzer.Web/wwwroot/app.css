@@ -191,6 +191,31 @@ html, body {
     overflow-wrap: anywhere;
 }
 
+/* ── Measure Panel ──────────────────────────────────────────────── */
+.measure-hint {
+    font-size: 11px;
+    color: #ffffff;
+}
+
+.measure-hint .text-info {
+    color: #7ec8ff;
+}
+
+.measure-result {
+    background: var(--bg-panel-alt);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    min-height: 2.5rem;
+}
+
+.measure-result-value {
+    font-size: 15px;
+    font-weight: 700;
+    color: #7ec8ff;
+    overflow-wrap: anywhere;
+}
+
 /* ── Bounding Box Panel ─────────────────────────────────────────── */
 .bbox-grid  { display: flex; flex-direction: column; gap: 4px; }
 
@@ -248,11 +273,16 @@ html, body {
 
 .snap-info  { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .snap-name  { font-size: 11px; font-weight: 600; }
-.snap-coord {
+.snap-coord,
+.pick-coord {
     font-size: 10px;
     font-family: var(--font-mono);
-    color: var(--text-muted);
+    color: #ffffff;
     overflow-wrap: anywhere;
+}
+
+.snap-coord--empty {
+    color: var(--text-muted);
 }
 
 /* ── Buttons ────────────────────────────────────────────────────── */

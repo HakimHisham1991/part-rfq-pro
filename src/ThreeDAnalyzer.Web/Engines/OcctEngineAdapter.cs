@@ -2,13 +2,8 @@
 using ThreeDAnalyzer.Core.Interfaces;
 using ThreeDAnalyzer.Core.Models;
 
-// ReSharper disable once CheckNamespace
 namespace ThreeDAnalyzer.Web.Engines;
 
-/// <summary>
-/// Adapts the C++/CLI OcctEngine (ThreeDAnalyzer.OcctWrapper.dll) to the IOcctEngine interface.
-/// This file only compiles when USE_OCCT is defined (build with: dotnet build -p:UseOcct=true).
-/// </summary>
 public sealed class OcctEngineAdapter : IOcctEngine
 {
     private OcctWrapper.OcctEngine? _engine;
@@ -33,10 +28,10 @@ public sealed class OcctEngineAdapter : IOcctEngine
     {
         string baseDir = AppContext.BaseDirectory.TrimEnd('\\', '/');
         string hint =
-            "Also ensure ijwhost.dll is next to ThreeDAnalyzer.OcctWrapper.dll (dotnet build copies it when UseIJWHost is on), " +
-            "then copy every *.dll from %OCCT_ROOT%\\win64\\vc14\\bin (OCCT 8.0 kit) and from your " +
-            "3rdparty-vc14-64 tree into the app's output folder (same folder as ThreeDAnalyzer.Web.dll), " +
-            $"e.g.: {baseDir}. From repo root: .\\scripts\\Copy-OcctRuntime.ps1 -Configuration Debug.";
+            "Copy OCCT runtime DLLs into the app folder. From repo root: " +
+            ".\\scripts\\Copy-OcctRuntime.ps1 -Configuration Debug " +
+            "(uses runtime\\occt after Import-OcctKit.ps1). " +
+            $"Output folder example: {baseDir}";
         return new InvalidOperationException(
             "OcctWrapper or a native OCCT dependency failed to load (" + ex.GetType().Name + ": " + ex.Message + "). " + hint,
             ex);
@@ -102,6 +97,20 @@ public sealed class OcctEngineAdapter : IOcctEngine
             ray.Dx, ray.Dy, ray.Dz,
             out hx, out hy, out hz);
         hitPoint = hit ? new Point3D(hx, hy, hz) : Point3D.Zero;
+        return hit;
+    }
+
+    public bool RayPickRadius(Ray ray, out RadiusPickResult? result)
+    {
+        double hx, hy, hz, radius;
+        string? kind = null;
+        bool hit = Engine.RayPickRadius(
+            ray.Ox, ray.Oy, ray.Oz,
+            ray.Dx, ray.Dy, ray.Dz,
+            out hx, out hy, out hz,
+            out radius,
+            out kind);
+        result = hit ? new RadiusPickResult(new Point3D(hx, hy, hz), radius, kind ?? "unknown") : null;
         return hit;
     }
 
