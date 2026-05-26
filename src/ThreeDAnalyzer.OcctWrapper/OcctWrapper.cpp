@@ -64,6 +64,11 @@
 #include <vector>
 #include <limits>
 
+#include "OcctWrapperNative.h"
+
+// Required on GitHub Actions / some MSVC builds: OCCT headers default this TU to native.
+#pragma managed(push, on)
+
 using namespace System;
 using namespace System::Collections::Generic;
 using namespace System::Runtime::InteropServices;
@@ -302,91 +307,6 @@ void* OcctEngine::TransformToCustomCS(
     return transformed;
 }
 
-#pragma managed(push, off)
-
-namespace {
-
-Standard_Real ShapeDiag(const TopoDS_Shape& shape)
-{
-    Bnd_Box box;
-    BRepBndLib::Add(shape, box);
-    if (box.IsVoid()) return 100.0;
-    Standard_Real xmin, ymin, zmin, xmax, ymax, zmax;
-    box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
-    Standard_Real dx = xmax - xmin, dy = ymax - ymin, dz = zmax - zmin;
-    return std::sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-Standard_Real DistPointToLine(const gp_Pnt& p, const gp_Lin& line)
-{
-    gp_Vec w(line.Location(), p);
-    return w.Crossed(line.Direction()).Magnitude();
-}
-
-bool TryRadiusFromFace(const TopoDS_Face& face, double& radius, const char*& kindTag)
-{
-    BRepAdaptor_Surface surf(face);
-    switch (surf.GetType())
-    {
-    case GeomAbs_Cylinder:
-        radius = surf.Cylinder().Radius();
-        kindTag = "cylinder";
-        return true;
-    case GeomAbs_Sphere:
-        radius = surf.Sphere().Radius();
-        kindTag = "sphere";
-        return true;
-    case GeomAbs_Torus:
-        radius = surf.Torus().MinorRadius();
-        kindTag = "torus (minor)";
-        return true;
-    default:
-        return false;
-    }
-}
-
-bool TryClosestCircleEdge(const TopoDS_Shape& shape, const gp_Lin& ray, gp_Pnt& hit,
-    double& radius, Standard_Real tol)
-{
-    double best = tol;
-    bool found = false;
-
-    for (TopExp_Explorer ex(shape, TopAbs_EDGE); ex.More(); ex.Next())
-    {
-        TopoDS_Edge edge = TopoDS::Edge(ex.Current());
-        BRepAdaptor_Curve curve(edge);
-        if (curve.GetType() != GeomAbs_Circle)
-            continue;
-
-        Standard_Real f = 0.0, l = 0.0;
-        Handle(Geom_Curve) gc = BRep_Tool::Curve(edge, f, l);
-        if (gc.IsNull())
-            continue;
-
-        GeomAPI_ProjectPointOnCurve proj(ray.Location(), gc, f, l);
-        if (proj.NbPoints() < 1)
-            continue;
-
-        gp_Pnt nearP = proj.NearestPoint();
-        Standard_Real d = DistPointToLine(nearP, ray);
-        if (d >= best)
-            continue;
-
-        best = d;
-        hit = nearP;
-        radius = curve.Circle().Radius();
-        found = true;
-    }
-
-    if (found)
-        return true;
-    return false;
-}
-
-} // namespace
-
-#pragma managed(pop)
-
 // ── RayPickRadius ─────────────────────────────────────────────────────────
 
 bool OcctEngine::RayPickRadius(
@@ -411,7 +331,7 @@ bool OcctEngine::RayPickRadius(
     catch (...) { return false; }
 
     gp_Lin ray(rayOrigin, rayDir);
-    const Standard_Real tol = std::max(2.0, ShapeDiag(*shape) * 0.025);
+    const Standard_Real tol = std::max(2.0, OcctNative::ShapeDiag(*shape) * 0.025);
 
     IntCurvesFace_ShapeIntersector inter;
     inter.Load(*shape, Precision::Confusion());
@@ -433,14 +353,14 @@ bool OcctEngine::RayPickRadius(
         TopoDS_Face face = inter.Face(best);
         double r = 0.0;
         const char* kTag = nullptr;
-        if (TryRadiusFromFace(face, r, kTag))
+        if (OcctNative::TryRadiusFromFace(face, r, kTag))
         {
             radiusMm = r;
             kind = gcnew String(kTag);
             return true;
         }
 
-        if (TryClosestCircleEdge(*shape, ray, hit, r, tol))
+        if (OcctNative::TryClosestCircleEdge(*shape, ray, hit, r, tol))
         {
             hitX = hit.X(); hitY = hit.Y(); hitZ = hit.Z();
             radiusMm = r;
@@ -451,7 +371,7 @@ bool OcctEngine::RayPickRadius(
 
     gp_Pnt edgeHit;
     double rEdge = 0.0;
-    if (TryClosestCircleEdge(*shape, ray, edgeHit, rEdge, tol))
+    if (OcctNative::TryClosestCircleEdge(*shape, ray, edgeHit, rEdge, tol))
     {
         hitX = edgeHit.X(); hitY = edgeHit.Y(); hitZ = edgeHit.Z();
         radiusMm = rEdge;

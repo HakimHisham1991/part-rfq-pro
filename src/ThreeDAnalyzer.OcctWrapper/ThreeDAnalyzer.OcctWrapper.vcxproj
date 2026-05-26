@@ -99,9 +99,13 @@
   <!-- ── Source files ─────────────────────────────────────────────── -->
   <ItemGroup>
     <ClCompile Include="OcctWrapper.cpp" />
+    <ClCompile Include="OcctWrapperNative.cpp">
+      <CompileAsManaged>false</CompileAsManaged>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="OcctWrapper.h" />
+    <ClInclude Include="OcctWrapperNative.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
