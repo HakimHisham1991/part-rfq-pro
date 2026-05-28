@@ -26,31 +26,54 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x080a0d);
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100000);
-camera.position.set(200, 150, 300);
+camera.up.set(0, 0, 1);
 
+// GridHelper defaults to XZ (Y-up); rotate to XY for Z-up (NX CAM style).
 const grid = new THREE.GridHelper(1000, 40, 0x1a2030, 0x111820);
+grid.rotation.x = Math.PI / 2;
 scene.add(grid);
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 
 const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.2);
-dirLight1.position.set(300, 500, 200);
+dirLight1.position.set(400, 300, 600);
 scene.add(dirLight1);
 
 const dirLight2 = new THREE.DirectionalLight(0x88ccff, 0.4);
-dirLight2.position.set(-200, -100, -300);
+dirLight2.position.set(-300, -400, 250);
 scene.add(dirLight2);
 
-// ── SECTION B — Orbit Controls (manual) ───────────────────────────────────────
+// ── SECTION B — Orbit Controls (manual, Z-up) ───────────────────────────────
 const target = new THREE.Vector3(0, 0, 0);
-const spherical = { theta: Math.PI / 4, phi: Math.PI / 3, radius: 500 };
+// phi = angle from +Z; theta = azimuth in XY plane
+const ISOMETRIC_PHI = Math.acos(1 / Math.sqrt(3));
+// NX CAM home: isometric with -90° azimuth about world Z
+const ISOMETRIC_THETA = Math.PI / 4 - Math.PI / 2;
+const spherical = { theta: ISOMETRIC_THETA, phi: ISOMETRIC_PHI, radius: 500 };
+const viewUp = new THREE.Vector3(0, 0, 1);
 
 function updateCamera() {
   const { theta, phi, radius } = spherical;
-  camera.position.x = target.x + radius * Math.sin(phi) * Math.sin(theta);
-  camera.position.y = target.y + radius * Math.cos(phi);
-  camera.position.z = target.z + radius * Math.sin(phi) * Math.cos(theta);
+  camera.position.x = target.x + radius * Math.sin(phi) * Math.cos(theta);
+  camera.position.y = target.y + radius * Math.sin(phi) * Math.sin(theta);
+  camera.position.z = target.z + radius * Math.cos(phi);
+
+  if (phi < 0.12) {
+    viewUp.set(0, 1, 0);
+  } else if (phi > Math.PI - 0.12) {
+    viewUp.set(0, -1, 0);
+  } else {
+    viewUp.set(0, 0, 1);
+  }
+  camera.up.copy(viewUp);
   camera.lookAt(target);
+}
+
+function snapViewToDirection(direction) {
+  const dir = direction.clone().normalize();
+  spherical.phi = Math.acos(Math.max(-1, Math.min(1, dir.z)));
+  spherical.theta = Math.atan2(dir.y, dir.x);
+  updateCamera();
 }
 
 function fitCameraToModel() {
@@ -58,11 +81,18 @@ function fitCameraToModel() {
   const box = new THREE.Box3().setFromObject(partGroup);
   if (box.isEmpty()) return;
   const center = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3());
-  const maxDim = Math.max(size.x, size.y, size.z);
-  if (maxDim <= 0) return;
-  spherical.radius = maxDim * 2.5;
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  if (sphere.radius <= 0) return;
+
+  spherical.theta = ISOMETRIC_THETA;
+  spherical.phi = ISOMETRIC_PHI;
   target.copy(center);
+
+  const vFov = camera.fov * (Math.PI / 180);
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+  const fov = Math.min(vFov, hFov);
+  spherical.radius = (sphere.radius / Math.sin(fov / 2)) * 1.15;
+
   updateCamera();
 }
 
@@ -144,10 +174,227 @@ const resizeObserver = new ResizeObserver(() => {
 });
 resizeObserver.observe(canvas.parentElement);
 
-// ── SECTION D — Render Loop ─────────────────────────────────────────────────
+// ── SECTION D — View Gnomon (NX-style) ──────────────────────────────────────
+const gnomonCanvas = document.getElementById('gnomon-canvas');
+const GNOMON_WIDGET_PX = 198;
+const GNOMON_CUBE_SIZE = 0.72;      // governs axis origin/length
+const GNOMON_CUBE_MESH_SIZE = 1.44; // cube visual only (2× cube size)
+const GNOMON_CUBE_HALF = GNOMON_CUBE_SIZE / 2;
+const GNOMON_AXIS_LENGTH = GNOMON_CUBE_SIZE * 4;
+const GNOMON_FACE_BASE = 0x2a3040;
+const GNOMON_FACE_HOVER = 0xff9999;
+const GNOMON_LOCAL_FACE_NORMALS = [
+  new THREE.Vector3(1, 0, 0),
+  new THREE.Vector3(-1, 0, 0),
+  new THREE.Vector3(0, 1, 0),
+  new THREE.Vector3(0, -1, 0),
+  new THREE.Vector3(0, 0, 1),
+  new THREE.Vector3(0, 0, -1)
+];
+
+const gnomonRenderer = new THREE.WebGLRenderer({
+  canvas: gnomonCanvas,
+  alpha: true,
+  antialias: true
+});
+gnomonRenderer.setPixelRatio(window.devicePixelRatio);
+gnomonRenderer.setSize(GNOMON_WIDGET_PX, GNOMON_WIDGET_PX, false);
+gnomonRenderer.setClearColor(0x000000, 0);
+
+const gnomonScene = new THREE.Scene();
+const gnomonCamera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+const gnomonTarget = new THREE.Vector3();
+let gnomonCamDist = 5;      // computed by fitGnomonCamera()
+
+gnomonScene.add(new THREE.AmbientLight(0xffffff, 0.85));
+const gnomonLight = new THREE.DirectionalLight(0xffffff, 0.45);
+gnomonLight.position.set(2, 1, 4);
+gnomonScene.add(gnomonLight);
+
+// Gnomon group stays WORLD-ALIGNED (identity rotation).
+// The gnomon CAMERA is what moves to mirror the main camera's viewing direction.
+const gnomonGroup = new THREE.Group();
+gnomonScene.add(gnomonGroup);
+const gnomonCubeGroup = gnomonGroup;
+const gnomonAxesGroup = gnomonGroup;
+
+const gnomonMaterials = GNOMON_LOCAL_FACE_NORMALS.map(() =>
+  new THREE.MeshStandardMaterial({
+    color: GNOMON_FACE_BASE,
+    metalness: 0.1,
+    roughness: 0.85,
+    transparent: true,
+    opacity: 0.92
+  })
+);
+
+const gnomonCube = new THREE.Mesh(
+  new THREE.BoxGeometry(GNOMON_CUBE_MESH_SIZE, GNOMON_CUBE_MESH_SIZE, GNOMON_CUBE_MESH_SIZE),
+  gnomonMaterials
+);
+gnomonCubeGroup.add(gnomonCube);
+
+const gnomonEdges = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(GNOMON_CUBE_MESH_SIZE, GNOMON_CUBE_MESH_SIZE, GNOMON_CUBE_MESH_SIZE)),
+  new THREE.LineBasicMaterial({ color: 0x8899aa })
+);
+gnomonCubeGroup.add(gnomonEdges);
+
+function createGnomonAxisLine(from, to, color) {
+  const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
+  return new THREE.Line(geo, new THREE.LineBasicMaterial({ color }));
+}
+
+function createGnomonLabel(text, color, position) {
+  const size = 256;
+  const labelCanvas = document.createElement('canvas');
+  labelCanvas.width = size;
+  labelCanvas.height = size;
+  const ctx = labelCanvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  ctx.font = 'bold 168px Rajdhani, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = '#0d0f12';
+  ctx.strokeText(text, size / 2, size / 2);
+  ctx.fillStyle = color;
+  ctx.fillText(text, size / 2, size / 2);
+  const texture = new THREE.CanvasTexture(labelCanvas);
+  texture.needsUpdate = true;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: texture,
+      depthTest: false,
+      depthWrite: false,
+      transparent: true
+    })
+  );
+  sprite.position.copy(position);
+  const labelScale = 0.55 * 2.5;
+  sprite.scale.set(labelScale, labelScale, 1);
+  sprite.renderOrder = 100;
+  sprite.userData.labelRadius = labelScale * 0.5;
+  return sprite;
+}
+
+function axisLabelPosition(origin, axisEnd, pastLine = 0.14) {
+  const dir = axisEnd.clone().sub(origin);
+  if (dir.lengthSq() === 0) return axisEnd.clone();
+  dir.normalize();
+  return axisEnd.clone().addScaledVector(dir, pastLine);
+}
+
+function fitGnomonCamera() {
+  // Compute bounding sphere of the (identity-rotation) gnomon to get camera distance.
+  const box = new THREE.Box3();
+  gnomonGroup.traverse((child) => {
+    if (child.isMesh || child.isLine || child.isLineSegments) {
+      const childBox = new THREE.Box3().setFromObject(child);
+      box.union(childBox);
+    }
+    if (child.isSprite && child.userData.labelRadius) {
+      const r = child.userData.labelRadius;
+      const p = child.position;
+      box.expandByPoint(new THREE.Vector3(p.x + r, p.y + r, p.z + r));
+      box.expandByPoint(new THREE.Vector3(p.x - r, p.y - r, p.z - r));
+    }
+  });
+
+  box.getCenter(gnomonTarget);
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  const vFov = gnomonCamera.fov * (Math.PI / 180);
+  gnomonCamDist = (sphere.radius / Math.sin(vFov / 2)) * 1.5;
+}
+
+const axisOrigin = new THREE.Vector3(-GNOMON_CUBE_HALF, -GNOMON_CUBE_HALF, -GNOMON_CUBE_HALF);
+const xAxisEnd = new THREE.Vector3(
+  axisOrigin.x + GNOMON_AXIS_LENGTH,
+  axisOrigin.y,
+  axisOrigin.z
+);
+const yAxisEnd = new THREE.Vector3(
+  axisOrigin.x,
+  axisOrigin.y + GNOMON_AXIS_LENGTH,
+  axisOrigin.z
+);
+const zAxisEnd = new THREE.Vector3(
+  axisOrigin.x,
+  axisOrigin.y,
+  axisOrigin.z + GNOMON_AXIS_LENGTH
+);
+gnomonAxesGroup.add(createGnomonAxisLine(axisOrigin, xAxisEnd, 0xff4444));
+gnomonAxesGroup.add(createGnomonAxisLine(axisOrigin, yAxisEnd, 0x44cc44));
+gnomonAxesGroup.add(createGnomonAxisLine(axisOrigin, zAxisEnd, 0x4488ff));
+gnomonAxesGroup.add(createGnomonLabel('X', '#ff6666', axisLabelPosition(axisOrigin, xAxisEnd)));
+gnomonAxesGroup.add(createGnomonLabel('Y', '#66cc66', axisLabelPosition(axisOrigin, yAxisEnd)));
+gnomonAxesGroup.add(createGnomonLabel('Z', '#6699ff', axisLabelPosition(axisOrigin, zAxisEnd)));
+
+fitGnomonCamera();
+
+const gnomonRaycaster = new THREE.Raycaster();
+const gnomonMouse = new THREE.Vector2();
+let gnomonHoveredFace = -1;
+
+function setGnomonHoveredFace(faceIndex) {
+  if (gnomonHoveredFace === faceIndex) return;
+  if (gnomonHoveredFace >= 0) {
+    gnomonMaterials[gnomonHoveredFace].color.setHex(GNOMON_FACE_BASE);
+  }
+  gnomonHoveredFace = faceIndex;
+  if (gnomonHoveredFace >= 0) {
+    gnomonMaterials[gnomonHoveredFace].color.setHex(GNOMON_FACE_HOVER);
+  }
+}
+
+function updateGnomonOrientation() {
+  // Move the gnomon camera to mirror the main camera's viewing direction.
+  // The gnomon GROUP stays world-aligned (identity), so axes always match world XYZ.
+  const dir = new THREE.Vector3().subVectors(camera.position, target).normalize();
+  gnomonCamera.position.copy(gnomonTarget).addScaledVector(dir, gnomonCamDist);
+  gnomonCamera.up.copy(camera.up);
+  gnomonCamera.lookAt(gnomonTarget);
+}
+
+function getGnomonMouse(event) {
+  const rect = gnomonCanvas.getBoundingClientRect();
+  gnomonMouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  gnomonMouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+}
+
+function pickGnomonFace(event) {
+  getGnomonMouse(event);
+  gnomonRaycaster.setFromCamera(gnomonMouse, gnomonCamera);
+  const hits = gnomonRaycaster.intersectObject(gnomonCube, false);
+  return hits.length > 0 ? hits[0].face.materialIndex : -1;
+}
+
+function snapToGnomonFace(faceIndex) {
+  // Gnomon group is world-aligned, so face normals are already in world space.
+  snapViewToDirection(GNOMON_LOCAL_FACE_NORMALS[faceIndex]);
+}
+
+gnomonCanvas.addEventListener('mousemove', (event) => {
+  setGnomonHoveredFace(pickGnomonFace(event));
+});
+
+gnomonCanvas.addEventListener('mouseleave', () => {
+  setGnomonHoveredFace(-1);
+});
+
+gnomonCanvas.addEventListener('click', (event) => {
+  const faceIndex = pickGnomonFace(event);
+  if (faceIndex < 0) return;
+  event.stopPropagation();
+  snapToGnomonFace(faceIndex);
+});
+
+// ── SECTION E — Render Loop ─────────────────────────────────────────────────
 function animate() {
   requestAnimationFrame(animate);
   renderer.render(scene, camera);
+  updateGnomonOrientation();
+  gnomonRenderer.render(gnomonScene, gnomonCamera);
 }
 animate();
 
