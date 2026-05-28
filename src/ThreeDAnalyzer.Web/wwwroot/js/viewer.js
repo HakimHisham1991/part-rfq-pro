@@ -76,10 +76,13 @@ function updateCamera() {
 
 function snapViewToDirection(direction) {
   const dir = direction.clone().normalize();
-  // Convert to spherical angles, then use setOrbitFromAngles so that the orbit
-  // quaternion's local-Y encodes the correct camera up (no pole jump).
-  const phi   = Math.acos(Math.max(-1, Math.min(1, dir.z)));
-  const theta = Math.atan2(dir.y, dir.x);
+  const phi = Math.acos(Math.max(-1, Math.min(1, dir.z)));
+  // atan2(0,0) is undefined at the top/bottom poles.  Use theta = -PI/2 so that
+  // setOrbitFromAngles produces orbitQuat = identity for the top face, giving
+  // camera.up = world Y (X right, Y up on screen — NX top-view convention).
+  const theta = (Math.abs(dir.x) < 1e-6 && Math.abs(dir.y) < 1e-6)
+    ? -Math.PI / 2
+    : Math.atan2(dir.y, dir.x);
   setOrbitFromAngles(theta, phi);
   updateCamera();
 }
@@ -407,6 +410,7 @@ gnomonCanvas.addEventListener('click', (event) => {
 // ── SECTION E — Render Loop ─────────────────────────────────────────────────
 function animate() {
   requestAnimationFrame(animate);
+  updateCoordAxisScreenScale();
   renderer.render(scene, camera);
   updateGnomonOrientation();
   gnomonRenderer.render(gnomonScene, gnomonCamera);
@@ -506,6 +510,59 @@ function disposeCoordAxisGroup() {
   scene.remove(coordAxisGroup);
   disposeObject(coordAxisGroup);
   coordAxisGroup = null;
+}
+
+function createCoordAxisLabel(text, color, position) {
+  // Reuse the gnomon label approach for consistent styling.
+  const size = 256;
+  const labelCanvas = document.createElement('canvas');
+  labelCanvas.width = size;
+  labelCanvas.height = size;
+  const ctx = labelCanvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  ctx.font = 'bold 168px Rajdhani, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = '#0d0f12';
+  ctx.strokeText(text, size / 2, size / 2);
+  ctx.fillStyle = color;
+  ctx.fillText(text, size / 2, size / 2);
+  const texture = new THREE.CanvasTexture(labelCanvas);
+  texture.needsUpdate = true;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: texture,
+      depthTest: false,
+      depthWrite: false,
+      transparent: true
+    })
+  );
+  sprite.position.copy(position);
+  const labelScale = 0.55 * 2.5 * 5;
+  sprite.scale.set(labelScale, labelScale, 1);
+  sprite.renderOrder = 100;
+  sprite.userData.labelRadius = labelScale * 0.5;
+  return sprite;
+}
+
+function updateCoordAxisScreenScale() {
+  // Never let a coord-axis scaling issue break the entire render loop.
+  try {
+    if (!coordAxisGroup) return;
+    if (!camera || !camera.position) return;
+    const baseDist = coordAxisGroup.userData.baseDist;
+    if (!baseDist || baseDist <= 0) return;
+    const dist = camera.position.distanceTo(coordAxisGroup.position);
+    if (!Number.isFinite(dist) || dist <= 0) return;
+    let s = dist / baseDist;
+    if (!Number.isFinite(s) || s <= 0) return;
+    // Clamp to avoid accidental extreme scaling.
+    s = Math.min(Math.max(s, 0.02), 50);
+    coordAxisGroup.scale.set(s, s, s);
+  } catch {
+    // Swallow to keep rendering alive.
+  }
 }
 
 const raycaster = new THREE.Raycaster();
@@ -1240,9 +1297,25 @@ function completeCoord(p1, p2, p3) {
 
   const len = getCoordAxisLength();
   coordAxisGroup = new THREE.Group();
-  coordAxisGroup.add(createLine(origin, origin.clone().addScaledVector(xAxis, len), 0xff0000));
-  coordAxisGroup.add(createLine(origin, origin.clone().addScaledVector(yAxis, len), 0x00ff00));
-  coordAxisGroup.add(createLine(origin, origin.clone().addScaledVector(zAxis, len), 0x0000ff));
+  // Anchor the group at the custom origin so scaling does not translate it.
+  coordAxisGroup.position.copy(origin);
+
+  const localOrigin = new THREE.Vector3(0, 0, 0);
+  const xEnd = xAxis.clone().multiplyScalar(len);
+  const yEnd = yAxis.clone().multiplyScalar(len);
+  const zEnd = zAxis.clone().multiplyScalar(len);
+  coordAxisGroup.add(createLine(localOrigin, xEnd, 0xff0000));
+  coordAxisGroup.add(createLine(localOrigin, yEnd, 0x00ff00));
+  coordAxisGroup.add(createLine(localOrigin, zEnd, 0x0000ff));
+
+  // Add labels after line ends (similar to world/gnomon axes).
+  const labelOffset = Math.max(len * 0.08, 0.2);
+  coordAxisGroup.add(createCoordAxisLabel('X', '#ff6666', axisLabelPosition(localOrigin, xEnd, labelOffset)));
+  coordAxisGroup.add(createCoordAxisLabel('Y', '#66cc66', axisLabelPosition(localOrigin, yEnd, labelOffset)));
+  coordAxisGroup.add(createCoordAxisLabel('Z', '#6699ff', axisLabelPosition(localOrigin, zEnd, labelOffset)));
+
+  // Keep this custom axis fixed-size on screen by scaling with camera distance.
+  coordAxisGroup.userData.baseDist = camera.position.distanceTo(coordAxisGroup.position);
   scene.add(coordAxisGroup);
 
   setStatus('Coordinate system defined — click Apply to update bounding box and stock');
