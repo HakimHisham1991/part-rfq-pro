@@ -20,12 +20,15 @@
             <button class="tool-btn" type="button" data-tool="distance">Distance</button>
             <button class="tool-btn" type="button" data-tool="angle">Angle</button>
             <button class="tool-btn" type="button" data-tool="radius">Radius</button>
-            <button class="tool-btn" type="button" data-tool="coord">Coord System</button>
-            <button class="tool-btn" type="button" data-tool="stock">Raw Stock</button>
+            <button id="btn-reset-measurements" type="button">Reset Measurement</button>
             <span class="sep"></span>
             <span id="status-bar">No file loaded</span>
         </header>
         <main id="main-area">
+            <aside id="measure-panel">
+                <h2>Measurements</h2>
+                <div id="measurements-list"></div>
+            </aside>
             <div id="canvas-container">
                 <canvas id="three-canvas"></canvas>
             </div>
@@ -48,22 +51,21 @@
                     <div class="prop-value" id="prop-utilization">—</div>
                 </div>
                 <hr />
-                <h2>Measurements</h2>
-                <div id="measurements-list"></div>
-                <hr />
                 <h2>Stock Offsets (mm)</h2>
                 <div id="stock-offsets">
-                    <input type="number" data-face="px" value="5" step="any" />
-                    <input type="number" data-face="nx" value="5" step="any" />
-                    <input type="number" data-face="py" value="5" step="any" />
-                    <input type="number" data-face="ny" value="5" step="any" />
-                    <input type="number" data-face="pz" value="5" step="any" />
-                    <input type="number" data-face="nz" value="5" step="any" />
+                    <input type="number" data-face="px" value="0" step="any" />
+                    <input type="number" data-face="nx" value="0" step="any" />
+                    <input type="number" data-face="py" value="0" step="any" />
+                    <input type="number" data-face="ny" value="0" step="any" />
+                    <input type="number" data-face="pz" value="0" step="any" />
+                    <input type="number" data-face="nz" value="0" step="any" />
                     <button id="btn-apply-stock" type="button">Apply Stock</button>
                 </div>
                 <hr />
-                <h2>Custom Coord System</h2>
+                <h2>Custom Coordinate System</h2>
                 <div id="coord-status">Click 3 points on model to define</div>
+                <button id="btn-pick-coord" type="button" class="info-panel-btn">Pick 3 points: Origin, X+, Y+</button>
+                <button id="btn-apply-coord" type="button" class="info-panel-btn">Apply</button>
             </aside>
         </main>
     </div>

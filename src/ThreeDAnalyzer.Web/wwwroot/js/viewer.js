@@ -13,6 +13,9 @@ const stockOffsetsEl = document.getElementById('stock-offsets');
 const btnOpen = document.getElementById('btn-open');
 const fileInput = document.getElementById('file-input');
 const btnApplyStock = document.getElementById('btn-apply-stock');
+const btnApplyCoord = document.getElementById('btn-apply-coord');
+const btnPickCoord = document.getElementById('btn-pick-coord');
+const btnResetMeasurements = document.getElementById('btn-reset-measurements');
 const toolBtns = document.querySelectorAll('.tool-btn');
 
 // ── SECTION A — Scene Setup ─────────────────────────────────────────────────
@@ -111,7 +114,7 @@ canvas.addEventListener('mousemove', (e) => {
     return;
   }
 
-  if (activeTool && activeTool !== 'stock') {
+  if (activeTool && isSnapPickTool(activeTool)) {
     handleSnapMouseMove(e);
   }
 });
@@ -150,18 +153,163 @@ animate();
 
 // ── State ───────────────────────────────────────────────────────────────────
 let partGroup = null;
+let partBboxMesh = null;
 let stockMesh = null;
 let partVolumeMm3 = 0;
 let partBBox = null;
+let customCoordSystem = null;
 let activeTool = null;
 let pickPoints = [];
+let pickPointMarkers = [];
 let snapPoint = null;
 let snapSphere = null;
+let snapSphereRadius = 0;
 let measurementIdCounter = 0;
 const measurementVisuals = new Map();
+let coordAxisGroup = null;
+
+const MEASUREMENT_TOOLS = new Set(['distance', 'angle', 'radius']);
+
+function getMarkerRadius() {
+  if (!partGroup) return 1;
+  const box = new THREE.Box3().setFromObject(partGroup);
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  return Math.max(maxDim * 0.006, 0.05);
+}
+
+function createPointMarker(point, color = 0xffff00) {
+  const radius = getMarkerRadius();
+  const geo = new THREE.SphereGeometry(radius, 12, 12);
+  const mat = new THREE.MeshBasicMaterial({
+    color,
+    depthTest: false,
+    transparent: true,
+    opacity: 0.95
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(point);
+  mesh.renderOrder = 999;
+  mesh.raycast = () => {};
+  scene.add(mesh);
+  return mesh;
+}
+
+function clearPickPointMarkers() {
+  pickPointMarkers.forEach((marker) => {
+    scene.remove(marker);
+    marker.geometry.dispose();
+    marker.material.dispose();
+  });
+  pickPointMarkers.length = 0;
+}
+
+function adoptPickPointMarkers(group) {
+  pickPointMarkers.forEach((marker) => {
+    scene.remove(marker);
+    group.add(marker);
+  });
+  pickPointMarkers.length = 0;
+}
+
+function resetAllMeasurements() {
+  measurementsList.innerHTML = '';
+  measurementVisuals.forEach((visual) => {
+    scene.remove(visual);
+    disposeObject(visual);
+  });
+  measurementVisuals.clear();
+  clearPickPointMarkers();
+  pickPoints = [];
+  removeSnapSphere();
+}
+
+function isMeasurementTool(tool) {
+  return MEASUREMENT_TOOLS.has(tool);
+}
+
+function isSnapPickTool(tool) {
+  return tool === 'coord' || isMeasurementTool(tool);
+}
+
+function getCoordAxisLength() {
+  if (!partGroup) return 20;
+  const box = new THREE.Box3().setFromObject(partGroup);
+  const size = box.getSize(new THREE.Vector3());
+  return Math.max(size.x, size.y, size.z) * 0.15;
+}
+
+function disposeCoordAxisGroup() {
+  if (!coordAxisGroup) return;
+  scene.remove(coordAxisGroup);
+  disposeObject(coordAxisGroup);
+  coordAxisGroup = null;
+}
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
+
+function disposePartBboxMesh() {
+  if (!partBboxMesh) return;
+  scene.remove(partBboxMesh);
+  partBboxMesh.geometry.dispose();
+  partBboxMesh.material.dispose();
+  partBboxMesh = null;
+}
+
+function showPartBboxWireframe(bboxData) {
+  disposePartBboxMesh();
+  const { box, w, h, d, coord } = bboxData;
+  if (w <= 0 || h <= 0 || d <= 0) return;
+
+  const geometry = new THREE.BoxGeometry(w, h, d);
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x00e5ff,
+    wireframe: true
+  });
+  partBboxMesh = new THREE.Mesh(geometry, material);
+
+  const localCenter = new THREE.Vector3().addVectors(box.min, box.max).multiplyScalar(0.5);
+  if (coord) {
+    partBboxMesh.position.copy(worldFromLocal(localCenter, coord));
+    const rotMatrix = new THREE.Matrix4().makeBasis(coord.xAxis, coord.yAxis, coord.zAxis);
+    partBboxMesh.setRotationFromMatrix(rotMatrix);
+  } else {
+    partBboxMesh.position.copy(localCenter);
+  }
+
+  partBboxMesh.raycast = () => {};
+  scene.add(partBboxMesh);
+}
+
+function createShadedMeshWithEdges(geometry) {
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x4488cc,
+    metalness: 0.35,
+    roughness: 0.55,
+    side: THREE.DoubleSide,
+    flatShading: false
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+
+  const edgesGeometry = new THREE.EdgesGeometry(geometry, 30);
+  const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x0a0e14 });
+  const edgeLines = new THREE.LineSegments(edgesGeometry, edgeMaterial);
+  edgeLines.raycast = () => {};
+  mesh.add(edgeLines);
+
+  return mesh;
+}
+
+function disposePartGroup() {
+  if (!partGroup) return;
+  scene.remove(partGroup);
+  partGroup.traverse((child) => {
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) child.material.dispose();
+  });
+  partGroup = null;
+}
 
 // ── SECTION J — Status Bar ───────────────────────────────────────────────────
 function setStatus(message) {
@@ -209,24 +357,91 @@ function computePartVolume(group) {
   return total;
 }
 
-function formatVolume(mm3) {
-  const cm3 = mm3 / 1000;
-  return `${mm3.toFixed(2)} mm³ (${cm3.toFixed(4)} cm³)`;
+function formatNum(value, decimals = 3) {
+  return value.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  });
 }
 
-function computeBoundingBox(group) {
-  const box = new THREE.Box3().setFromObject(group);
-  const min = box.min;
-  const max = box.max;
-  const w = max.x - min.x;
-  const h = max.y - min.y;
-  const d = max.z - min.z;
-  const text =
-    `X: ${min.x.toFixed(2)} to ${max.x.toFixed(2)}\n` +
-    `Y: ${min.y.toFixed(2)} to ${max.y.toFixed(2)}\n` +
-    `Z: ${min.z.toFixed(2)} to ${max.z.toFixed(2)}\n` +
-    `Overall: ${w.toFixed(2)} × ${h.toFixed(2)} × ${d.toFixed(2)} mm`;
-  return { box, text, w, h, d };
+function formatVolume(mm3) {
+  const cm3 = mm3 / 1000;
+  return `${formatNum(mm3)} mm³ (${formatNum(cm3)} cm³)`;
+}
+
+function formatBboxText(min, max, w, h, d, custom = false) {
+  let text =
+    `X: ${formatNum(min.x, 2)} to ${formatNum(max.x, 2)}\n` +
+    `Y: ${formatNum(min.y, 2)} to ${formatNum(max.y, 2)}\n` +
+    `Z: ${formatNum(min.z, 2)} to ${formatNum(max.z, 2)}\n` +
+    `Overall: ${formatNum(w, 2)} × ${formatNum(h, 2)} × ${formatNum(d, 2)} mm`;
+  if (custom) {
+    text += '\n(Custom coordinate system)';
+  }
+  return text;
+}
+
+function localFromWorld(worldPoint, coord) {
+  const v = worldPoint.clone().sub(coord.origin);
+  return new THREE.Vector3(
+    v.dot(coord.xAxis),
+    v.dot(coord.yAxis),
+    v.dot(coord.zAxis)
+  );
+}
+
+function worldFromLocal(localPoint, coord) {
+  return coord.origin.clone()
+    .addScaledVector(coord.xAxis, localPoint.x)
+    .addScaledVector(coord.yAxis, localPoint.y)
+    .addScaledVector(coord.zAxis, localPoint.z);
+}
+
+function computeBoundingBox(group, coord = null) {
+  if (!coord) {
+    const box = new THREE.Box3().setFromObject(group);
+    const min = box.min;
+    const max = box.max;
+    const w = max.x - min.x;
+    const h = max.y - min.y;
+    const d = max.z - min.z;
+    return {
+      box: { min: min.clone(), max: max.clone() },
+      text: formatBboxText(min, max, w, h, d, false),
+      w,
+      h,
+      d,
+      coord: null
+    };
+  }
+
+  const localMin = new THREE.Vector3(Infinity, Infinity, Infinity);
+  const localMax = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+  const vertex = new THREE.Vector3();
+
+  group.traverse((child) => {
+    if (!child.isMesh || !child.geometry?.attributes?.position) return;
+    const positions = child.geometry.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+      vertex.fromBufferAttribute(positions, i);
+      child.localToWorld(vertex);
+      const local = localFromWorld(vertex, coord);
+      localMin.min(local);
+      localMax.max(local);
+    }
+  });
+
+  const w = localMax.x - localMin.x;
+  const h = localMax.y - localMin.y;
+  const d = localMax.z - localMin.z;
+  return {
+    box: { min: localMin.clone(), max: localMax.clone() },
+    text: formatBboxText(localMin, localMax, w, h, d, true),
+    w,
+    h,
+    d,
+    coord
+  };
 }
 
 function getOffsets() {
@@ -275,15 +490,78 @@ function updateStockDisplay() {
   }
 }
 
-function displayProperties(group) {
+function disposeStockMesh() {
+  if (!stockMesh) return;
+  scene.remove(stockMesh);
+  stockMesh.geometry.dispose();
+  stockMesh.material.dispose();
+  stockMesh = null;
+}
+
+function refreshStockBox() {
+  if (!partBBox) {
+    disposeStockMesh();
+    updateStockDisplay();
+    return;
+  }
+
+  const offsets = getOffsets();
+  const stock = computeStockVolume(partBBox.box, offsets);
+
+  disposeStockMesh();
+
+  if (stock.w <= 0 || stock.h <= 0 || stock.d <= 0) {
+    updateStockDisplay();
+    return;
+  }
+
+  const geometry = new THREE.BoxGeometry(stock.w, stock.h, stock.d);
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xff6b35,
+    wireframe: true
+  });
+  stockMesh = new THREE.Mesh(geometry, material);
+
+  const localCenter = new THREE.Vector3().addVectors(stock.min, stock.max).multiplyScalar(0.5);
+  if (partBBox.coord) {
+    stockMesh.position.copy(worldFromLocal(localCenter, partBBox.coord));
+    const rotMatrix = new THREE.Matrix4().makeBasis(
+      partBBox.coord.xAxis,
+      partBBox.coord.yAxis,
+      partBBox.coord.zAxis
+    );
+    stockMesh.setRotationFromMatrix(rotMatrix);
+  } else {
+    stockMesh.position.copy(stock.center);
+  }
+
+  stockMesh.raycast = () => {};
+  scene.add(stockMesh);
+
+  updateStockDisplay();
+}
+
+function displayProperties(group, coord = null) {
   partVolumeMm3 = computePartVolume(group);
   propVolume.textContent = formatVolume(partVolumeMm3);
 
-  const bbox = computeBoundingBox(group);
-  partBBox = bbox;
-  propBbox.textContent = bbox.text;
+  partBBox = computeBoundingBox(group, coord);
+  propBbox.textContent = partBBox.text;
+  showPartBboxWireframe(partBBox);
+  refreshStockBox();
+}
 
-  updateStockDisplay();
+function applyCustomCoordSystem() {
+  if (!customCoordSystem || !partGroup) {
+    setStatus('Define a coordinate system first (3 points on model)');
+    return;
+  }
+
+  partBBox = computeBoundingBox(partGroup, customCoordSystem);
+  propBbox.textContent = partBBox.text;
+  showPartBboxWireframe(partBBox);
+  refreshStockBox();
+  setStatus('Custom coordinate system applied to bounding box and stock');
 }
 
 // ── OCCT loader (occt-import-js is UMD, not a native ES module) ─────────────
@@ -348,19 +626,13 @@ async function loadStepFile(arrayBuffer, fileName) {
     }
 
     if (partGroup) {
-      scene.remove(partGroup);
-      partGroup.traverse((child) => {
-        if (child.geometry) child.geometry.dispose();
-        if (child.material) child.material.dispose();
-      });
-      partGroup = null;
+      disposePartGroup();
     }
 
+    disposePartBboxMesh();
+
     if (stockMesh) {
-      scene.remove(stockMesh);
-      stockMesh.geometry.dispose();
-      stockMesh.material.dispose();
-      stockMesh = null;
+      disposeStockMesh();
     }
 
     partGroup = new THREE.Group();
@@ -380,13 +652,7 @@ async function loadStepFile(arrayBuffer, fileName) {
       }
       geometry.computeVertexNormals();
 
-      const material = new THREE.MeshStandardMaterial({
-        color: 0x4488cc,
-        metalness: 0.4,
-        roughness: 0.5,
-        side: THREE.DoubleSide
-      });
-      const mesh = new THREE.Mesh(geometry, material);
+      const mesh = createShadedMeshWithEdges(geometry);
       partGroup.add(mesh);
     }
 
@@ -394,16 +660,14 @@ async function loadStepFile(arrayBuffer, fileName) {
 
     fitCameraToModel();
 
+    customCoordSystem = null;
+    btnApplyCoord.disabled = true;
+    disposeCoordAxisGroup();
     displayProperties(partGroup);
     setStatus(`Loaded ${result.meshes.length} mesh(es) from ${fileName || 'file'}`);
 
     pickPoints = [];
-    measurementsList.innerHTML = '';
-    measurementVisuals.forEach((visual) => {
-      scene.remove(visual);
-      disposeObject(visual);
-    });
-    measurementVisuals.clear();
+    resetAllMeasurements();
     coordStatus.textContent = 'Click 3 points on model to define';
   } catch (err) {
     setStatus(`Error loading file: ${err.message}`);
@@ -421,64 +685,64 @@ function disposeObject(obj) {
 }
 
 // ── SECTION G — Measurement Tools ───────────────────────────────────────────
+function deactivateAllTools() {
+  activeTool = null;
+  toolBtns.forEach((b) => b.classList.remove('active'));
+  btnPickCoord.classList.remove('active');
+  pickPoints = [];
+  clearPickPointMarkers();
+  removeSnapSphere();
+}
+
+function activateTool(tool, btn) {
+  if (activeTool === tool) {
+    deactivateAllTools();
+    return;
+  }
+  deactivateAllTools();
+  activeTool = tool;
+  btn.classList.add('active');
+}
+
 toolBtns.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const tool = btn.dataset.tool;
-    if (activeTool === tool) {
-      activeTool = null;
-      btn.classList.remove('active');
-    } else {
-      activeTool = tool;
-      toolBtns.forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-    }
-    pickPoints = [];
-    removeSnapSphere();
-  });
+  btn.addEventListener('click', () => activateTool(btn.dataset.tool, btn));
+});
+
+btnPickCoord.addEventListener('click', () => activateTool('coord', btnPickCoord));
+
+btnResetMeasurements.addEventListener('click', () => {
+  resetAllMeasurements();
+  setStatus('Measurements cleared');
 });
 
 btnApplyStock.addEventListener('click', () => {
-  if (activeTool !== 'stock' || !partBBox) return;
-
-  const offsets = getOffsets();
-  const stock = computeStockVolume(partBBox.box, offsets);
-
-  if (stockMesh) {
-    scene.remove(stockMesh);
-    stockMesh.geometry.dispose();
-    stockMesh.material.dispose();
-    stockMesh = null;
-  }
-
-  const geometry = new THREE.BoxGeometry(stock.w, stock.h, stock.d);
-  const material = new THREE.MeshBasicMaterial({
-    color: 0xff6b35,
-    wireframe: true
-  });
-  stockMesh = new THREE.Mesh(geometry, material);
-  stockMesh.position.copy(stock.center);
-  scene.add(stockMesh);
-
-  propStockVolume.textContent = formatVolume(stock.volume);
-  if (stock.volume > 0 && partVolumeMm3 > 0) {
-    const util = (partVolumeMm3 / stock.volume) * 100;
-    propUtilization.textContent = `${util.toFixed(1)}%`;
-  }
+  if (!partBBox) return;
+  refreshStockBox();
   setStatus('Raw stock box applied');
 });
 
+btnApplyCoord.addEventListener('click', () => {
+  applyCustomCoordSystem();
+});
+
+btnApplyCoord.disabled = true;
+
 stockOffsetsEl.querySelectorAll('input[data-face]').forEach((input) => {
-  input.addEventListener('change', () => updateStockDisplay());
+  input.addEventListener('input', () => refreshStockBox());
+  input.addEventListener('change', () => refreshStockBox());
 });
 
 canvas.addEventListener('click', (e) => {
-  if (!activeTool || activeTool === 'stock' || !partGroup) return;
+  if (!activeTool || !partGroup) return;
   if (isDragging) return;
 
   const point = getPickPoint(e);
   if (!point) return;
 
   pickPoints.push(point.clone());
+  if (isSnapPickTool(activeTool)) {
+    pickPointMarkers.push(createPointMarker(point));
+  }
 
   if (activeTool === 'distance' && pickPoints.length === 2) {
     completeDistance(pickPoints[0], pickPoints[1]);
@@ -492,6 +756,7 @@ canvas.addEventListener('click', (e) => {
   } else if (activeTool === 'coord' && pickPoints.length === 3) {
     completeCoord(pickPoints[0], pickPoints[1], pickPoints[2]);
     pickPoints = [];
+    deactivateAllTools();
   }
 });
 
@@ -565,21 +830,34 @@ function handleSnapMouseMove(e) {
     }
   }
 
-  if (closestDist <= 5) {
+  if (closestDist <= 8) {
     snapPoint = closest.clone();
     showSnapSphere(snapPoint);
   } else {
-    snapPoint = null;
-    removeSnapSphere();
+    snapPoint = hit.point.clone();
+    showSnapSphere(snapPoint);
   }
 }
 
 function showSnapSphere(point) {
+  const radius = getMarkerRadius() * 1.15;
   if (!snapSphere) {
-    const geo = new THREE.SphereGeometry(1, 8, 8);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    const geo = new THREE.SphereGeometry(radius, 12, 12);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xffff00,
+      depthTest: false,
+      transparent: true,
+      opacity: 0.55
+    });
     snapSphere = new THREE.Mesh(geo, mat);
+    snapSphere.renderOrder = 998;
+    snapSphere.raycast = () => {};
     scene.add(snapSphere);
+    snapSphereRadius = radius;
+  } else if (Math.abs(snapSphereRadius - radius) > radius * 0.05) {
+    snapSphere.geometry.dispose();
+    snapSphere.geometry = new THREE.SphereGeometry(radius, 12, 12);
+    snapSphereRadius = radius;
   }
   snapSphere.position.copy(point);
   snapSphere.visible = true;
@@ -638,9 +916,11 @@ function createLine(p1, p2, color) {
 
 function completeDistance(p1, p2) {
   const dist = p1.distanceTo(p2);
-  const line = createLine(p1, p2, 0x00e5ff);
-  scene.add(line);
-  addMeasurement('Distance', `Distance: ${dist.toFixed(2)} mm`, line);
+  const group = new THREE.Group();
+  group.add(createLine(p1, p2, 0x00e5ff));
+  adoptPickPointMarkers(group);
+  scene.add(group);
+  addMeasurement('Distance', `Distance: ${formatNum(dist)} mm`, group);
 }
 
 function completeAngle(p1, p2, p3) {
@@ -651,7 +931,12 @@ function completeAngle(p1, p2, p3) {
   if (denom > 0) {
     angle = Math.acos(Math.max(-1, Math.min(1, a.dot(b) / denom))) * 180 / Math.PI;
   }
-  addMeasurement('Angle', `Angle: ${angle.toFixed(2)} degrees`, null);
+  const group = new THREE.Group();
+  group.add(createLine(p1, p2, 0x00e5ff));
+  group.add(createLine(p2, p3, 0x00e5ff));
+  adoptPickPointMarkers(group);
+  scene.add(group);
+  addMeasurement('Angle', `Angle: ${formatNum(angle)} degrees`, group);
 }
 
 function completeRadius(p1, p2, p3) {
@@ -665,31 +950,38 @@ function completeRadius(p1, p2, p3) {
   if (area > 0) {
     radius = (a * b * c) / (4 * area);
   }
-  addMeasurement('Radius', `Radius: ${radius.toFixed(2)} mm`, null);
+  const group = new THREE.Group();
+  adoptPickPointMarkers(group);
+  scene.add(group);
+  addMeasurement('Radius', `Radius: ${formatNum(radius)} mm`, group);
 }
 
 function completeCoord(p1, p2, p3) {
+  clearPickPointMarkers();
+
   const origin = p1.clone();
   const xAxis = new THREE.Vector3().subVectors(p2, p1).normalize();
-  const normal = new THREE.Vector3().crossVectors(xAxis, new THREE.Vector3().subVectors(p3, p1)).normalize();
-  const yAxis = new THREE.Vector3().crossVectors(normal, xAxis).normalize();
+  const zAxis = new THREE.Vector3().crossVectors(xAxis, new THREE.Vector3().subVectors(p3, p1)).normalize();
+  const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis).normalize();
 
-  const matrix = new THREE.Matrix4().makeBasis(xAxis, yAxis, normal);
-  matrix.setPosition(origin);
+  customCoordSystem = { origin, xAxis, yAxis, zAxis };
+  btnApplyCoord.disabled = false;
 
-  const fmt = (v) => `(${v.x.toFixed(3)}, ${v.y.toFixed(3)}, ${v.z.toFixed(3)})`;
+  const fmt = (v) => `(${formatNum(v.x, 3)}, ${formatNum(v.y, 3)}, ${formatNum(v.z, 3)})`;
   coordStatus.innerHTML =
     `Origin: ${fmt(origin)}<br>` +
     `X: ${fmt(xAxis)}<br>` +
     `Y: ${fmt(yAxis)}<br>` +
-    `Z: ${fmt(normal)}`;
+    `Z: ${fmt(zAxis)}`;
 
-  const group = new THREE.Group();
-  const len = 20;
-  group.add(createLine(origin, origin.clone().addScaledVector(xAxis, len), 0xff0000));
-  group.add(createLine(origin, origin.clone().addScaledVector(yAxis, len), 0x00ff00));
-  group.add(createLine(origin, origin.clone().addScaledVector(normal, len), 0x0000ff));
-  scene.add(group);
+  disposeCoordAxisGroup();
 
-  addMeasurement('Coord System', 'Custom coordinate system defined', group);
+  const len = getCoordAxisLength();
+  coordAxisGroup = new THREE.Group();
+  coordAxisGroup.add(createLine(origin, origin.clone().addScaledVector(xAxis, len), 0xff0000));
+  coordAxisGroup.add(createLine(origin, origin.clone().addScaledVector(yAxis, len), 0x00ff00));
+  coordAxisGroup.add(createLine(origin, origin.clone().addScaledVector(zAxis, len), 0x0000ff));
+  scene.add(coordAxisGroup);
+
+  setStatus('Coordinate system defined — click Apply to update bounding box and stock');
 }
