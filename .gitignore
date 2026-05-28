@@ -4,17 +4,13 @@
 .vs/
 **/.vs/
 
-# Local / CI artifacts
-artifacts/
+# Local publish / test output
 publish/
 publish_clean/
+_publish_*/
 
-# OCCT native kits (import once per machine via scripts/Import-OcctKit.ps1)
-runtime/occt/
-runtime/thirdparty/
-
-# Keep folder docs
-!runtime/README.md
+# Node (refresh libs with: npm install && powershell -File scripts/copy-libs.ps1)
+node_modules/
 
 # User-specific
 *.user

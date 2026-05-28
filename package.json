@@ -1,0 +1,9 @@
+{
+  "name": "threedanalyzer",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "occt-import-js": "^0.0.23",
+    "three": "^0.165.0"
+  }
+}
