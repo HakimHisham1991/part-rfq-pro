@@ -43,36 +43,44 @@ const dirLight2 = new THREE.DirectionalLight(0x88ccff, 0.4);
 dirLight2.position.set(-300, -400, 250);
 scene.add(dirLight2);
 
-// ── SECTION B — Orbit Controls (manual, Z-up) ───────────────────────────────
+// ── SECTION B — Orbit Controls (quaternion-based, Z-up, no gimbal lock) ─────
 const target = new THREE.Vector3(0, 0, 0);
-// phi = angle from +Z; theta = azimuth in XY plane
-const ISOMETRIC_PHI = Math.acos(1 / Math.sqrt(3));
-// NX CAM home: isometric with -90° azimuth about world Z
-const ISOMETRIC_THETA = Math.PI / 4 - Math.PI / 2;
-const spherical = { theta: ISOMETRIC_THETA, phi: ISOMETRIC_PHI, radius: 500 };
-const viewUp = new THREE.Vector3(0, 0, 1);
+const ISOMETRIC_PHI   = Math.acos(1 / Math.sqrt(3));   // ~54.74° from +Z
+const ISOMETRIC_THETA = Math.PI / 4 - Math.PI / 2;     // -45° azimuth (NX home)
+let orbitRadius = 500;
+
+// orbitQuat: encodes the camera rig orientation.
+// Invariant: (0,0,1).applyQuaternion(orbitQuat) == normalised(camera.position - target)
+const orbitQuat = new THREE.Quaternion();
+
+function setOrbitFromAngles(theta, phi) {
+  // qZ(θ+π/2)·qX(φ) is the unique quaternion whose local axes satisfy:
+  //   (0,0,1) → camera-offset direction  (sin φ cos θ, sin φ sin θ, cos φ)
+  //   (0,1,0) → camera up = worldZ projected onto view plane (-cos φ cos θ, -cos φ sin θ, sin φ)
+  // Reading up directly from orbitQuat avoids the pole singularity in the
+  // "worldZ − dir·dotZ" projection formula.
+  const qZ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), theta + Math.PI / 2);
+  const qX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), phi);
+  orbitQuat.copy(qZ).multiply(qX);
+}
+setOrbitFromAngles(ISOMETRIC_THETA, ISOMETRIC_PHI);
 
 function updateCamera() {
-  const { theta, phi, radius } = spherical;
-  camera.position.x = target.x + radius * Math.sin(phi) * Math.cos(theta);
-  camera.position.y = target.y + radius * Math.sin(phi) * Math.sin(theta);
-  camera.position.z = target.z + radius * Math.cos(phi);
-
-  if (phi < 0.12) {
-    viewUp.set(0, 1, 0);
-  } else if (phi > Math.PI - 0.12) {
-    viewUp.set(0, -1, 0);
-  } else {
-    viewUp.set(0, 0, 1);
-  }
-  camera.up.copy(viewUp);
+  const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(orbitQuat);
+  camera.position.copy(target).addScaledVector(dir, orbitRadius);
+  // orbitQuat's local Y is always the correct camera up (no projection formula,
+  // no pole singularity, no conditional branch).
+  camera.up.copy(new THREE.Vector3(0, 1, 0).applyQuaternion(orbitQuat));
   camera.lookAt(target);
 }
 
 function snapViewToDirection(direction) {
   const dir = direction.clone().normalize();
-  spherical.phi = Math.acos(Math.max(-1, Math.min(1, dir.z)));
-  spherical.theta = Math.atan2(dir.y, dir.x);
+  // Convert to spherical angles, then use setOrbitFromAngles so that the orbit
+  // quaternion's local-Y encodes the correct camera up (no pole jump).
+  const phi   = Math.acos(Math.max(-1, Math.min(1, dir.z)));
+  const theta = Math.atan2(dir.y, dir.x);
+  setOrbitFromAngles(theta, phi);
   updateCamera();
 }
 
@@ -84,14 +92,13 @@ function fitCameraToModel() {
   const sphere = box.getBoundingSphere(new THREE.Sphere());
   if (sphere.radius <= 0) return;
 
-  spherical.theta = ISOMETRIC_THETA;
-  spherical.phi = ISOMETRIC_PHI;
+  setOrbitFromAngles(ISOMETRIC_THETA, ISOMETRIC_PHI);
   target.copy(center);
 
   const vFov = camera.fov * (Math.PI / 180);
   const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
   const fov = Math.min(vFov, hFov);
-  spherical.radius = (sphere.radius / Math.sin(fov / 2)) * 1.15;
+  orbitRadius = (sphere.radius / Math.sin(fov / 2)) * 1.15;
 
   updateCamera();
 }
@@ -127,7 +134,7 @@ canvas.addEventListener('mousemove', (e) => {
     lastMouse = { x: e.clientX, y: e.clientY };
 
     if (e.shiftKey) {
-      const panSpeed = spherical.radius * 0.001;
+      const panSpeed = orbitRadius * 0.001;
       const right = new THREE.Vector3();
       const up = new THREE.Vector3();
       right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
@@ -136,9 +143,29 @@ canvas.addEventListener('mousemove', (e) => {
       target.addScaledVector(up, dy * panSpeed);
       updateCamera();
     } else {
-      spherical.theta -= dx * 0.005;
-      spherical.phi -= dy * 0.005;
-      spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, spherical.phi));
+      // Z-up turntable: horizontal = world Z rotation, vertical = elevation only.
+      // Apply horizontal first so vertical axis is computed from the updated direction.
+      const rotH = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 0, 1), -dx * 0.005
+      );
+      orbitQuat.premultiply(rotH);
+
+      if (dy !== 0) {
+        // Vertical pivot = cross(worldZ, cameraDir) — lies entirely in the XY plane
+        // (z = 0) so vertical drag produces pure elevation change with no Z-roll.
+        const cameraDir = new THREE.Vector3(0, 0, 1).applyQuaternion(orbitQuat);
+        const pivotAxis = new THREE.Vector3().crossVectors(
+          new THREE.Vector3(0, 0, 1), cameraDir
+        );
+        if (pivotAxis.lengthSq() > 1e-6) {
+          pivotAxis.normalize();
+        } else {
+          // Exactly at top/bottom pole — fall back to orbit frame's local X (stays horizontal).
+          pivotAxis.set(1, 0, 0).applyQuaternion(orbitQuat);
+        }
+        const rotV = new THREE.Quaternion().setFromAxisAngle(pivotAxis, -dy * 0.005);
+        orbitQuat.premultiply(rotV);
+      }
       updateCamera();
     }
     return;
@@ -151,8 +178,8 @@ canvas.addEventListener('mousemove', (e) => {
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
-  spherical.radius *= e.deltaY > 0 ? 1.1 : 0.9;
-  spherical.radius = Math.max(1, spherical.radius);
+  orbitRadius *= e.deltaY > 0 ? 1.1 : 0.9;
+  orbitRadius = Math.max(1, orbitRadius);
   updateCamera();
 }, { passive: false });
 
