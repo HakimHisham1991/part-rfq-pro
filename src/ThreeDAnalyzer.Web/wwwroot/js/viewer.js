@@ -143,29 +143,17 @@ canvas.addEventListener('mousemove', (e) => {
       target.addScaledVector(up, dy * panSpeed);
       updateCamera();
     } else {
-      // Z-up turntable: horizontal = world Z rotation, vertical = elevation only.
-      // Apply horizontal first so vertical axis is computed from the updated direction.
-      const rotH = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(0, 0, 1), -dx * 0.005
-      );
-      orbitQuat.premultiply(rotH);
-
-      if (dy !== 0) {
-        // Vertical pivot = cross(worldZ, cameraDir) — lies entirely in the XY plane
-        // (z = 0) so vertical drag produces pure elevation change with no Z-roll.
-        const cameraDir = new THREE.Vector3(0, 0, 1).applyQuaternion(orbitQuat);
-        const pivotAxis = new THREE.Vector3().crossVectors(
-          new THREE.Vector3(0, 0, 1), cameraDir
-        );
-        if (pivotAxis.lengthSq() > 1e-6) {
-          pivotAxis.normalize();
-        } else {
-          // Exactly at top/bottom pole — fall back to orbit frame's local X (stays horizontal).
-          pivotAxis.set(1, 0, 0).applyQuaternion(orbitQuat);
-        }
-        const rotV = new THREE.Quaternion().setFromAxisAngle(pivotAxis, -dy * 0.005);
-        orbitQuat.premultiply(rotV);
-      }
+      // Screen-space orbit: dx rotates around the camera's current up axis,
+      // dy rotates around the camera's current right axis.
+      //
+      // For equatorial views the camera up ≈ projected world-Z, so horizontal
+      // drag behaves like a Z-up turntable.  At the poles the camera has a
+      // well-defined up/right pair, so the view orbits freely with no locked axis.
+      const cameraUp    = new THREE.Vector3(0, 1, 0).applyQuaternion(orbitQuat);
+      const cameraRight = new THREE.Vector3(1, 0, 0).applyQuaternion(orbitQuat);
+      const rotH = new THREE.Quaternion().setFromAxisAngle(cameraUp,    -dx * 0.005);
+      const rotV = new THREE.Quaternion().setFromAxisAngle(cameraRight, -dy * 0.005);
+      orbitQuat.premultiply(rotH).premultiply(rotV);
       updateCamera();
     }
     return;
