@@ -2,7 +2,7 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 REM ---------------------------------------------------------------------------
-REM  3D Part Analyzer — build and run (Razor Pages + browser WASM)
+REM  Part RFQ Pro — build and run (Razor Pages + browser WASM)
 REM  Double-click or:  run.bat
 REM  Opens http://localhost:5118 — STEP parsing runs entirely in the browser.
 REM ---------------------------------------------------------------------------
@@ -14,7 +14,7 @@ set "CONFIG=Debug"
 set "EXIT_CODE=0"
 
 echo.
-echo === 3D Part Analyzer ===
+echo === Part RFQ Pro ===
 echo Repo: %REPO_ROOT%
 echo.
 
