@@ -43,8 +43,19 @@ No npm, OCCT, or native build steps in CI.
 ## After deploy
 
 1. Control panel → confirm **ASP.NET Core** is detected and the app pool is **running**.
-2. File manager → **`wwwroot`** must contain `web.config`, `ThreeDAnalyzer.Web.dll`, and `wwwroot/lib/` (occt-import-js + three.js).
-3. If the site fails, check **`wwwroot\logs\stdout_*.log`**.
+2. File manager → site **`wwwroot`** must contain at least:
+   - `web.config` (OutOfProcess: `dotnet` + `ThreeDAnalyzer.Web.dll`)
+   - `ThreeDAnalyzer.Web.dll`, `ThreeDAnalyzer.Web.deps.json`, `ThreeDAnalyzer.Web.runtimeconfig.json`
+   - `Data/material-specs-master.json`
+   - nested `wwwroot/` folder (css, js, lib including `occt-import-js.wasm`)
+3. Upload the **contents** of the publish folder into the site `wwwroot` (not an extra nested folder).
+4. If the site fails, check **`logs/stdout_*.log`** on the server.
+
+### HTTP 400 on MonsterASP
+
+If the browser shows **HTTP ERROR 400** but `stdout_*.log` shows `Application started`, the app is running; IIS/SSL forwarding is usually the cause. This project disables **HTTPS redirection** in Production (MonsterASP terminates SSL). Re-publish with the latest build, upload all files, and restart the app pool.
+
+First startup seeds the SQLite database (users + 171 material specs) and can take **30–60 seconds** — wait for `Application started` in the log before testing the URL.
 
 ## Local publish (same layout as CI)
 

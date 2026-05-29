@@ -25,6 +25,16 @@ Version numbers use **MAJOR.MINOR.PATCH**:
 
 ---
 
+## [1.3.2] - 2026-05-29
+
+### Fixed
+
+- **MonsterASP / shared hosting**: disable HTTPS redirection and HSTS in Production; enable forwarded headers and session cookie `SameAsRequest` (fixes HTTP 400 behind IIS SSL termination).
+- Added `/Error` page for production exception handler.
+- `publish.bat` verifies `Data/material-specs-master.json` is included in upload.
+
+---
+
 ## [1.3.1] - 2026-05-29
 
 ### Changed
@@ -130,7 +140,8 @@ Version numbers use **MAJOR.MINOR.PATCH**:
 - **3-point custom coordinate system** (origin, X+, Y+) for oriented bounding box and stock volume.
 - GitHub Actions workflow and MonsterASP/IIS publish documentation.
 
-[Unreleased]: https://github.com/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/compare/v1.2.1...v1.2.2

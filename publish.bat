@@ -2,7 +2,7 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 REM ---------------------------------------------------------------------------
-REM  3D Part Analyzer — clean Release publish for MonsterASP manual FTP upload
+REM  Part RFQ Pro — clean Release publish for MonsterASP manual FTP upload
 REM  Double-click or:  publish.bat
 REM  Output: C:\Users\Public\Documents\part-rfq-pro\publish_clean
 REM  Paths are absolute — safe to run this .bat from any location.
@@ -14,7 +14,7 @@ set "PUBLISH_DIR=C:\Users\Public\Documents\part-rfq-pro\publish_clean"
 set "EXIT_CODE=0"
 
 echo.
-echo === 3D Part Analyzer — Publish ===
+echo === Part RFQ Pro — Publish ===
 echo Repo:   %REPO_ROOT%
 echo Output: %PUBLISH_DIR%
 echo.
@@ -76,7 +76,7 @@ echo.
 echo [4/4] Verifying publish output...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$pub = '%PUBLISH_DIR%';" ^
-  "$required = @('web.config','ThreeDAnalyzer.Web.dll','ThreeDAnalyzer.Web.deps.json','ThreeDAnalyzer.Web.runtimeconfig.json','wwwroot\lib\occt-import-js.wasm','wwwroot\js\viewer.js');" ^
+  "$required = @('web.config','ThreeDAnalyzer.Web.dll','ThreeDAnalyzer.Web.deps.json','ThreeDAnalyzer.Web.runtimeconfig.json','Data\material-specs-master.json','wwwroot\lib\occt-import-js.wasm','wwwroot\js\viewer.js');" ^
   "foreach ($f in $required) { if (-not (Test-Path (Join-Path $pub $f))) { throw \"Missing: $f\" } };" ^
   "if (Test-Path (Join-Path $pub 'ThreeDAnalyzer.Web.exe')) { throw 'ThreeDAnalyzer.Web.exe must not be present' };" ^
   "Write-Host '       All required files present. No .exe — OK for MonsterASP.'"
