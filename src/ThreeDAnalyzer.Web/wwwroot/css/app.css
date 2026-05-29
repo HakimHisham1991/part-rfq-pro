@@ -22,14 +22,40 @@ body {
 }
 
 #toolbar {
-  height: 48px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #0a0c0f;
+  border-bottom: 1px solid #1e2530;
+}
+
+#app-brand {
+  flex-shrink: 0;
+}
+
+#app-title {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #e8eef5;
+  letter-spacing: 0.02em;
+}
+
+#app-version {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #5a6472;
+  margin-top: 2px;
+}
+
+#toolbar-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 12px;
-  background: #0a0c0f;
-  border-bottom: 1px solid #1e2530;
+  flex-wrap: wrap;
 }
 
 #toolbar button {
@@ -59,7 +85,7 @@ body {
   margin: 0 4px;
 }
 
-#status-bar {
+#toolbar-row #status-bar {
   margin-left: auto;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;

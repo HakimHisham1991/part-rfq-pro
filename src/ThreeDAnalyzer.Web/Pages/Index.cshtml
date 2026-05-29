@@ -8,12 +8,17 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>3D Analyzer</title>
+    <title>Part RFQ Pro</title>
     <link rel="stylesheet" href="~/css/app.css" />
 </head>
 <body>
     <div id="app">
         <header id="toolbar">
+            <div id="app-brand">
+                <div id="app-title">Part RFQ Pro</div>
+                <div id="app-version">v1.1.0</div>
+            </div>
+            <div id="toolbar-row">
             <button id="btn-open" type="button">Open STEP / STP</button>
             <input id="file-input" type="file" accept=".step,.stp" style="display:none" />
             <span class="sep"></span>
@@ -23,6 +28,7 @@
             <button id="btn-reset-measurements" type="button">Reset Measurement</button>
             <span class="sep"></span>
             <span id="status-bar">No file loaded</span>
+            </div>
         </header>
         <main id="main-area">
             <aside id="measure-panel">
