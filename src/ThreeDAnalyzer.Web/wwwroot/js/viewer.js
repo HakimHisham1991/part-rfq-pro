@@ -23,13 +23,13 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x080a0d);
+scene.background = new THREE.Color(0xe8e9ed);
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100000);
 camera.up.set(0, 0, 1);
 
 // GridHelper defaults to XZ (Y-up); rotate to XY for Z-up (NX CAM style).
-const grid = new THREE.GridHelper(1000, 40, 0x1a2030, 0x111820);
+const grid = new THREE.GridHelper(1000, 40, 0x9ba9b8, 0xbcbcc4);
 grid.rotation.x = Math.PI / 2;
 scene.add(grid);
 
@@ -199,7 +199,7 @@ const GNOMON_CUBE_SIZE = 0.72;      // governs axis origin/length
 const GNOMON_CUBE_MESH_SIZE = 1.44; // cube visual only (2× cube size)
 const GNOMON_CUBE_HALF = GNOMON_CUBE_SIZE / 2;
 const GNOMON_AXIS_LENGTH = GNOMON_CUBE_SIZE * 4;
-const GNOMON_FACE_BASE = 0x2a3040;
+const GNOMON_FACE_BASE = 0xbcbcc4;
 const GNOMON_FACE_HOVER = 0xff9999;
 const GNOMON_LOCAL_FACE_NORMALS = [
   new THREE.Vector3(1, 0, 0),
@@ -254,7 +254,7 @@ gnomonCubeGroup.add(gnomonCube);
 
 const gnomonEdges = new THREE.LineSegments(
   new THREE.EdgesGeometry(new THREE.BoxGeometry(GNOMON_CUBE_MESH_SIZE, GNOMON_CUBE_MESH_SIZE, GNOMON_CUBE_MESH_SIZE)),
-  new THREE.LineBasicMaterial({ color: 0x8899aa })
+  new THREE.LineBasicMaterial({ color: 0x7c7c7c })
 );
 gnomonCubeGroup.add(gnomonEdges);
 
@@ -270,11 +270,11 @@ function createGnomonLabel(text, color, position) {
   labelCanvas.height = size;
   const ctx = labelCanvas.getContext('2d');
   ctx.clearRect(0, 0, size, size);
-  ctx.font = 'bold 168px Rajdhani, sans-serif';
+  ctx.font = 'bold 168px Segoe UI, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.lineWidth = 10;
-  ctx.strokeStyle = '#0d0f12';
+  ctx.strokeStyle = '#fbfbfb';
   ctx.strokeText(text, size / 2, size / 2);
   ctx.fillStyle = color;
   ctx.fillText(text, size / 2, size / 2);
@@ -520,11 +520,11 @@ function createCoordAxisLabel(text, color, position) {
   labelCanvas.height = size;
   const ctx = labelCanvas.getContext('2d');
   ctx.clearRect(0, 0, size, size);
-  ctx.font = 'bold 168px Rajdhani, sans-serif';
+  ctx.font = 'bold 168px Segoe UI, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.lineWidth = 10;
-  ctx.strokeStyle = '#0d0f12';
+  ctx.strokeStyle = '#fbfbfb';
   ctx.strokeText(text, size / 2, size / 2);
   ctx.fillStyle = color;
   ctx.fillText(text, size / 2, size / 2);
@@ -603,7 +603,7 @@ function showPartBboxWireframe(bboxData) {
 
 function createShadedMeshWithEdges(geometry) {
   const material = new THREE.MeshStandardMaterial({
-    color: 0x4488cc,
+    color: 0x2453b3,
     metalness: 0.35,
     roughness: 0.55,
     side: THREE.DoubleSide,
@@ -612,7 +612,7 @@ function createShadedMeshWithEdges(geometry) {
   const mesh = new THREE.Mesh(geometry, material);
 
   const edgesGeometry = new THREE.EdgesGeometry(geometry, 30);
-  const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x0a0e14 });
+  const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x7c7c7c });
   const edgeLines = new THREE.LineSegments(edgesGeometry, edgeMaterial);
   edgeLines.raycast = () => {};
   mesh.add(edgeLines);
@@ -836,7 +836,7 @@ function refreshStockBox() {
 
   const geometry = new THREE.BoxGeometry(stock.w, stock.h, stock.d);
   const material = new THREE.MeshBasicMaterial({
-    color: 0xff6b35,
+    color: 0x2453b3,
     wireframe: true
   });
   stockMesh = new THREE.Mesh(geometry, material);
@@ -1252,7 +1252,7 @@ function completeAngle(p1, p2, p3) {
   }
   const group = new THREE.Group();
   group.add(createLine(p1, p2, 0x00e5ff));
-  group.add(createLine(p2, p3, 0x00e5ff));
+  group.add(createLine(p2, p3, 0x2453b3));
   adoptPickPointMarkers(group);
   scene.add(group);
   addMeasurement('Angle', `Angle: ${formatNum(angle)} degrees`, group);

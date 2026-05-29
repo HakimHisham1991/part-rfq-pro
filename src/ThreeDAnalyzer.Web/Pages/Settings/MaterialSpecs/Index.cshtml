@@ -1,0 +1,37 @@
+@page "/Settings/MaterialSpecs"
+@{
+    ViewData["Title"] = "Material Specification Management";
+    ViewData["Module"] = "settings-material-specs";
+}
+
+<div class="module-page">
+    <header class="module-page-header">
+        <h1>Material Specification Management</h1>
+        <p class="module-subtitle">Settings · Material specifications</p>
+    </header>
+    <div class="module-page-body">
+        <div class="table-wrap">
+            <table class="data-table" id="material-specs-table">
+                <thead>
+                    <tr>
+                        <th>No.</th>
+                        <th>Material Specification</th>
+                        <th>General Name</th>
+                        <th>Material Type</th>
+                        <th>Density</th>
+                        <th>Created By</th>
+                        <th>Created Date</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <p class="empty-state" id="material-specs-empty" hidden>No material specifications yet.</p>
+    </div>
+</div>
+
+@section Scripts {
+    <script type="module" src="~/js/settings-material-specs.js"></script>
+}

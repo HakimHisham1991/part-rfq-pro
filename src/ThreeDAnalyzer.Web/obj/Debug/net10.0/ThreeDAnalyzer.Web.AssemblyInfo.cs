@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ThreeDAnalyzer.Web")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0ef89fffcf6eb8e653c0be9ab84655e1d921b3a8")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d2bf8ec60866d95c252e9dc4ec1d4525ea5618ac")]
 [assembly: System.Reflection.AssemblyProductAttribute("ThreeDAnalyzer.Web")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ThreeDAnalyzer.Web")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

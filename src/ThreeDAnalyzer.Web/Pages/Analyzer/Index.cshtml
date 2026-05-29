@@ -1,0 +1,72 @@
+@page "/Analyzer"
+@{
+    ViewData["Title"] = "3D Analyzer";
+    ViewData["Module"] = "analyzer";
+}
+
+<div class="analyzer-shell">
+    <header id="toolbar">
+        <div id="toolbar-row">
+            <button id="btn-open" type="button">Open STEP / STP</button>
+            <input id="file-input" type="file" accept=".step,.stp" style="display:none" />
+            <span class="sep"></span>
+            <button class="tool-btn" type="button" data-tool="distance">Distance</button>
+            <button class="tool-btn" type="button" data-tool="angle">Angle</button>
+            <button class="tool-btn" type="button" data-tool="radius">Radius</button>
+            <button id="btn-reset-measurements" type="button">Reset Measurement</button>
+            <span class="sep"></span>
+            <span id="status-bar">No file loaded</span>
+        </div>
+    </header>
+    <main id="main-area">
+        <aside id="measure-panel">
+            <h2>Measurements</h2>
+            <div id="measurements-list"></div>
+        </aside>
+        <div id="canvas-container">
+            <canvas id="three-canvas"></canvas>
+            <div id="view-gnomon">
+                <canvas id="gnomon-canvas"></canvas>
+            </div>
+        </div>
+        <aside id="info-panel">
+            <h2>Properties</h2>
+            <div class="prop-group">
+                <div class="prop-label">Part Volume</div>
+                <div class="prop-value" id="prop-volume">—</div>
+            </div>
+            <div class="prop-group">
+                <div class="prop-label">Bounding Box</div>
+                <div class="prop-value" id="prop-bbox">—</div>
+            </div>
+            <div class="prop-group">
+                <div class="prop-label">Raw Stock Volume</div>
+                <div class="prop-value" id="prop-stock-volume">—</div>
+            </div>
+            <div class="prop-group">
+                <div class="prop-label">Material Utilization</div>
+                <div class="prop-value" id="prop-utilization">—</div>
+            </div>
+            <hr />
+            <h2>Stock Offsets (mm)</h2>
+            <div id="stock-offsets">
+                <input type="number" data-face="px" value="0" step="any" />
+                <input type="number" data-face="nx" value="0" step="any" />
+                <input type="number" data-face="py" value="0" step="any" />
+                <input type="number" data-face="ny" value="0" step="any" />
+                <input type="number" data-face="pz" value="0" step="any" />
+                <input type="number" data-face="nz" value="0" step="any" />
+                <button id="btn-apply-stock" type="button">Apply Stock</button>
+            </div>
+            <hr />
+            <h2>Custom Coordinate System</h2>
+            <div id="coord-status">Click 3 points on model to define</div>
+            <button id="btn-pick-coord" type="button" class="info-panel-btn">Pick 3 points: Origin, X+, Y+</button>
+            <button id="btn-apply-coord" type="button" class="info-panel-btn">Apply</button>
+        </aside>
+    </main>
+</div>
+
+@section Scripts {
+    <script type="module" src="~/js/viewer.js"></script>
+}

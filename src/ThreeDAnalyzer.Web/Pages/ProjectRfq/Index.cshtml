@@ -1,0 +1,55 @@
+@page "/ProjectRfq"
+@{
+    ViewData["Title"] = "Project RFQ";
+    ViewData["Module"] = "project-rfq";
+}
+
+<div class="module-page">
+    <header class="module-page-header">
+        <h1>Project RFQ</h1>
+        <p class="module-subtitle" id="rfq-subtitle">Loading…</p>
+    </header>
+    <div class="module-page-body">
+        <div class="module-toolbar">
+            <a class="btn" id="back-to-projects" href="/Projects">← Project Manager</a>
+        </div>
+        <div class="table-wrap">
+            <table class="data-table" id="rfq-table">
+                <thead>
+                    <tr>
+                        <th>Aircraft</th>
+                        <th>No</th>
+                        <th>Part Number</th>
+                        <th>Part Description</th>
+                        <th>Picture</th>
+                        <th>QPA</th>
+                        <th>1st launch quantity</th>
+                        <th>1st delivery</th>
+                        <th>MATERIAL SPEC</th>
+                        <th>FINISH SIZE (MM): THICKNESS / DIAMETER</th>
+                        <th>FINISH SIZE (MM): WIDTH</th>
+                        <th>FINISH SIZE (MM): LENGTH</th>
+                        <th>MATERIAL (MM): RULING DIM.</th>
+                        <th>MATERIAL (MM): THICKNESS / DIAMETER</th>
+                        <th>MATERIAL (MM): WIDTH</th>
+                        <th>MATERIAL (MM): LENGTH</th>
+                        <th>QTY/BILLET</th>
+                        <th>SETUP TIME (HOUR)</th>
+                        <th>CYCLE TIME (HOUR): TurnMill</th>
+                        <th>CYCLE TIME (HOUR): 3X</th>
+                        <th>CYCLE TIME (HOUR): 4X</th>
+                        <th>CYCLE TIME (HOUR): 5X</th>
+                        <th>CYCLE TIME (HOUR): TOTAL HRS REQUIRE</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <p class="empty-state" id="rfq-empty" hidden>No parts in this project.</p>
+    </div>
+</div>
+
+@section Scripts {
+    <script type="module" src="~/js/project-rfq.js"></script>
+}

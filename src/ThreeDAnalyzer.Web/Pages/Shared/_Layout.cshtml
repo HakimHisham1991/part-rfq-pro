@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] — Part RFQ Pro</title>
+    <link rel="stylesheet" href="~/css/theme.css" />
+    <link rel="stylesheet" href="~/css/app.css" />
+    <link rel="stylesheet" href="~/css/modules.css" />
+</head>
+<body class="module-@ViewData["Module"]">
+    <div id="app">
+        <aside id="module-sidebar" aria-label="Module navigation">
+            <div class="sidebar-header">
+                <button type="button" id="sidebar-toggle" title="Collapse sidebar" aria-expanded="true">☰</button>
+                <div class="sidebar-brand">
+                    <div class="sidebar-title">Part RFQ Pro</div>
+                    <div class="sidebar-version">v1.1.0</div>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <a class="nav-link" href="/Projects" data-module="projects" title="Project Manager">
+                    <span class="nav-full">Project Manager</span><span class="nav-short">PM</span>
+                </a>
+                <a class="nav-link" href="/ProjectRfq" data-module="project-rfq" id="nav-project-rfq" title="Project RFQ">
+                    <span class="nav-full">Project RFQ</span><span class="nav-short">RFQ</span>
+                </a>
+                <a class="nav-link" href="/CycleTime/Edit" data-module="cycle-time" id="nav-cycle-time" title="Edit Cycle Time">
+                    <span class="nav-full">Edit Cycle Time</span><span class="nav-short">CT</span>
+                </a>
+                <a class="nav-link" href="/Analyzer" data-module="analyzer" title="3D Analyzer">
+                    <span class="nav-full">3D Analyzer</span><span class="nav-short">3D</span>
+                </a>
+                <div class="nav-group" id="nav-group-settings">
+                    <button type="button" class="nav-group-toggle" id="settings-nav-toggle" aria-expanded="true">
+                        <span class="nav-full">Settings</span><span class="nav-short">SET</span>
+                        <span class="nav-chevron" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="nav-group-items">
+                        <a class="nav-link nav-sublink" href="/Settings/Users" data-module="settings-users" title="User Management">
+                            <span class="nav-full">User Management</span><span class="nav-short">USR</span>
+                        </a>
+                        <a class="nav-link nav-sublink" href="/Settings/MaterialSpecs" data-module="settings-material-specs" title="Material Specification Management">
+                            <span class="nav-full">Material Specification</span><span class="nav-short">MAT</span>
+                        </a>
+                    </div>
+                </div>
+            </nav>
+        </aside>
+        <div id="app-main">
+            @RenderBody()
+        </div>
+    </div>
+    <script src="~/js/app-shell.js"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

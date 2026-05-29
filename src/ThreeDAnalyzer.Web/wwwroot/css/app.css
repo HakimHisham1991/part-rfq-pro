@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Rajdhani:wght@400;600;700&display=swap');
-
 * {
   box-sizing: border-box;
   margin: 0;
@@ -10,9 +8,10 @@ html,
 body {
   height: 100%;
   overflow: hidden;
-  background: #0d0f12;
-  color: #c8d0dc;
-  font-family: 'Rajdhani', sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-size: 14px;
 }
 
 #app {
@@ -28,8 +27,9 @@ body {
   align-items: stretch;
   gap: 8px;
   padding: 8px 12px;
-  background: #0a0c0f;
-  border-bottom: 1px solid #1e2530;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
 }
 
 #app-brand {
@@ -38,16 +38,16 @@ body {
 
 #app-title {
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
-  color: #e8eef5;
-  letter-spacing: 0.02em;
+  color: var(--color-primary);
+  letter-spacing: 0.01em;
 }
 
 #app-version {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-family);
   font-size: 11px;
-  color: #5a6472;
+  color: var(--color-text-muted);
   margin-top: 2px;
 }
 
@@ -59,37 +59,39 @@ body {
 }
 
 #toolbar button {
-  background: #1a2030;
-  color: #00e5ff;
-  border: 1px solid #00e5ff;
-  font-family: 'Rajdhani', sans-serif;
+  background: var(--color-surface);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  font-family: var(--font-family);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   padding: 6px 12px;
+  border-radius: 4px;
 }
 
 #toolbar button:hover {
-  background: #002535;
+  background: var(--color-primary-light);
 }
 
 #toolbar button.active {
-  background: #00e5ff;
-  color: #000;
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
 }
 
 #toolbar .sep {
   width: 1px;
   height: 24px;
-  background: #1e2530;
+  background: var(--color-border);
   margin: 0 4px;
 }
 
 #toolbar-row #status-bar {
   margin-left: auto;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-family);
   font-size: 11px;
-  color: #5a6472;
+  color: var(--color-text-muted);
 }
 
 #main-area {
@@ -101,7 +103,7 @@ body {
 #canvas-container {
   flex: 1;
   position: relative;
-  background: #080a0d;
+  background: var(--color-canvas);
 }
 
 #three-canvas {
@@ -130,35 +132,35 @@ body {
 #measure-panel,
 #info-panel {
   width: 260px;
-  background: #13171e;
+  background: var(--color-surface);
   overflow-y: auto;
   padding: 14px;
   flex-shrink: 0;
 }
 
 #measure-panel {
-  border-right: 1px solid #1e2530;
+  border-right: 1px solid var(--color-border);
 }
 
 #info-panel {
-  border-left: 1px solid #1e2530;
+  border-left: 1px solid var(--color-border);
 }
 
 #measure-panel h2,
 #info-panel h2 {
-  font-family: 'Rajdhani', sans-serif;
+  font-family: var(--font-family);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
+  font-weight: 600;
+  letter-spacing: 1px;
   text-transform: uppercase;
-  color: #00e5ff;
+  color: var(--color-primary);
   margin-bottom: 10px;
 }
 
 #measure-panel hr,
 #info-panel hr {
   border: none;
-  border-top: 1px solid #1e2530;
+  border-top: 1px solid var(--color-border-light);
   margin: 14px 0;
 }
 
@@ -168,16 +170,17 @@ body {
 
 .prop-label {
   font-size: 10px;
-  color: #5a6472;
+  color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
   margin-bottom: 2px;
+  font-weight: 600;
 }
 
 .prop-value {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-family);
   font-size: 12px;
-  color: #c8d0dc;
+  color: var(--color-text);
 }
 
 #prop-bbox {
@@ -192,75 +195,86 @@ body {
 }
 
 #stock-offsets input {
-  background: #0d0f12;
-  border: 1px solid #1e2530;
-  color: #c8d0dc;
-  font-family: 'IBM Plex Mono', monospace;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: var(--font-family);
   font-size: 12px;
   padding: 4px 6px;
   width: 100%;
+  border-radius: 3px;
+}
+
+#stock-offsets input:focus {
+  border-color: var(--color-primary);
+  outline: none;
 }
 
 #btn-apply-stock {
   grid-column: 1 / -1;
   margin-top: 4px;
-  background: #1a2030;
-  border: 1px solid #ff6b35;
-  color: #ff6b35;
-  font-family: 'Rajdhani', sans-serif;
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  color: #fff;
+  font-family: var(--font-family);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   padding: 6px 12px;
+  border-radius: 4px;
 }
 
 #btn-apply-stock:hover {
-  background: #2a1510;
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
 }
 
 .info-panel-btn {
   margin-top: 8px;
   width: 100%;
-  background: #1a2030;
-  border: 1px solid #00e5ff;
-  color: #00e5ff;
-  font-family: 'Rajdhani', sans-serif;
+  background: var(--color-surface);
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+  font-family: var(--font-family);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   padding: 6px 12px;
+  border-radius: 4px;
 }
 
 .info-panel-btn:hover:not(:disabled) {
-  background: #102028;
+  background: var(--color-primary-light);
 }
 
 .info-panel-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .info-panel-btn.active {
-  background: #00e5ff;
-  color: #000;
+  background: var(--color-primary);
+  color: #fff;
 }
 
 .measurement-entry {
-  background: #0d1018;
-  border: 1px solid #1e2530;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-light);
   padding: 8px;
   margin-bottom: 6px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-family);
   font-size: 11px;
   position: relative;
+  border-radius: 4px;
 }
 
 .measurement-entry .m-type {
-  color: #00e5ff;
+  color: var(--color-primary);
   font-size: 10px;
   text-transform: uppercase;
   display: block;
   margin-bottom: 4px;
+  font-weight: 600;
 }
 
 .measurement-entry .m-remove {
@@ -269,7 +283,7 @@ body {
   right: 8px;
   background: none;
   border: none;
-  color: #5a6472;
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
@@ -277,12 +291,12 @@ body {
 }
 
 .measurement-entry .m-remove:hover {
-  color: #ff6b35;
+  color: var(--color-danger);
 }
 
 #coord-status {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-family);
   font-size: 11px;
-  color: #c8d0dc;
+  color: var(--color-text);
   line-height: 1.6;
 }

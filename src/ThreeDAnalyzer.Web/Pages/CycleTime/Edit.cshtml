@@ -1,0 +1,54 @@
+@page "/CycleTime/Edit"
+@{
+    ViewData["Title"] = "Edit Cycle Time";
+    ViewData["Module"] = "cycle-time";
+}
+
+<div class="module-page">
+    <header class="module-page-header">
+        <h1>Edit Cycle Time</h1>
+        <p class="module-subtitle" id="cycle-subtitle">Loading…</p>
+    </header>
+    <div class="module-page-body">
+        <div class="module-toolbar">
+            <a class="btn" id="back-to-rfq" href="/Projects">← Project RFQ</a>
+            <button type="button" id="btn-save-cycle">Save</button>
+        </div>
+
+        <p class="empty-state" id="cycle-empty" hidden>
+            No part selected. Open Project RFQ and click a part number or Edit.
+        </p>
+
+        <div id="cycle-editor-wrap" hidden>
+            <div class="cycle-summary">
+                <label>Part Number:</label>
+                <span class="summary-value" id="cycle-part-number">—</span>
+                <span></span>
+                <span></span>
+                <label>Cycle Time to Quote:</label>
+                <span class="summary-value" id="cycle-quote-hr">—</span>
+                <span>hr</span>
+                <span class="col-formula">=CEILING((Total Overall CT),0.5)</span>
+            </div>
+
+            <div class="cycle-table-wrap">
+                <table class="cycle-table">
+                    <thead>
+                        <tr>
+                            <th>Categories</th>
+                            <th>Properties</th>
+                            <th>Data</th>
+                            <th>Unit</th>
+                            <th>Formula</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cycle-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script type="module" src="~/js/cycle-time.js"></script>
+}
