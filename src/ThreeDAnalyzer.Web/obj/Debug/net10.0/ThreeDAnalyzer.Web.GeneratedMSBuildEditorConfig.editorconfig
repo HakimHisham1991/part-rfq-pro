@@ -43,6 +43,14 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSW5kZXguY3NodG1s
 build_metadata.AdditionalFiles.CssScope = 
 
+[C:/Users/Public/Documents/part-rfq-pro/part-rfq-pro/src/ThreeDAnalyzer.Web/Pages/Login.cshtml]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcTG9naW4uY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/Public/Documents/part-rfq-pro/part-rfq-pro/src/ThreeDAnalyzer.Web/Pages/Logout.cshtml]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcTG9nb3V0LmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
 [C:/Users/Public/Documents/part-rfq-pro/part-rfq-pro/src/ThreeDAnalyzer.Web/Pages/ProjectRfq/Index.cshtml]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUHJvamVjdFJmcVxJbmRleC5jc2h0bWw=
 build_metadata.AdditionalFiles.CssScope = 

@@ -9,6 +9,9 @@ public static class DbSeeder
     {
         await db.Database.EnsureCreatedAsync();
         await EnsureMaterialSpecDensityColumnAsync(db);
+        await EnsureUserPasswordColumnAsync(db);
+        await SeedUsersAsync(db);
+        await MaterialSpecMasterSeed.EnsureSeededAsync(db);
 
         if (await db.Projects.AnyAsync()) return;
 
@@ -83,85 +86,98 @@ public static class DbSeeder
                 CycleTotalHrs = 1.2
             });
 
-        db.Users.AddRange(
-            new User
-            {
-                Username = "hakim",
-                DisplayName = "Hakim Hisham",
-                CreatedDate = new DateOnly(2025, 11, 1),
-                Status = "Active"
-            },
-            new User
-            {
-                Username = "alex",
-                DisplayName = "Alex Tan",
-                CreatedDate = new DateOnly(2026, 1, 15),
-                Status = "Active"
-            },
-            new User
-            {
-                Username = "viewer",
-                DisplayName = "Read Only",
-                CreatedDate = new DateOnly(2026, 3, 20),
-                Status = "Inactive"
-            });
-
-        db.MaterialSpecs.AddRange(
-            new MaterialSpec
-            {
-                Specification = "AMS 4050",
-                GeneralName = "Al 7050 Plate",
-                MaterialType = "Aluminum",
-                CreatedBy = "Hakim Hisham",
-                CreatedDate = new DateOnly(2026, 1, 10),
-                Status = "Active"
-            },
-            new MaterialSpec
-            {
-                Specification = "AMS 5659",
-                GeneralName = "Inconel 718 Bar",
-                MaterialType = "Superalloy",
-                CreatedBy = "Alex Tan",
-                CreatedDate = new DateOnly(2026, 2, 1),
-                Status = "Active"
-            },
-            new MaterialSpec
-            {
-                Specification = "AMS 4928",
-                GeneralName = "Ti-6Al-4V",
-                MaterialType = "Titanium",
-                CreatedBy = "Hakim Hisham",
-                CreatedDate = new DateOnly(2026, 2, 18),
-                Status = "Inactive"
-            });
-
         await db.SaveChangesAsync();
     }
 
     private static async Task EnsureMaterialSpecDensityColumnAsync(AppDbContext db)
     {
-        try
+        if (!await SqliteColumnExistsAsync(db, "MaterialSpecs", "Density"))
         {
             await db.Database.ExecuteSqlRawAsync(
                 "ALTER TABLE MaterialSpecs ADD COLUMN Density REAL NOT NULL DEFAULT 0;");
         }
-        catch (Exception ex) when (IsSqliteDuplicateColumn(ex))
-        {
-            // Column already exists on upgraded databases.
-        }
 
-        await db.Database.ExecuteSqlRawAsync(
-            """
-            UPDATE MaterialSpecs SET Density = 2830 WHERE Specification = 'AMS 4050' AND (Density IS NULL OR Density = 0);
-            UPDATE MaterialSpecs SET Density = 8190 WHERE Specification = 'AMS 5659' AND (Density IS NULL OR Density = 0);
-            UPDATE MaterialSpecs SET Density = 4430 WHERE Specification = 'AMS 4928' AND (Density IS NULL OR Density = 0);
-            """);
     }
 
-    private static bool IsSqliteDuplicateColumn(Exception ex)
+    private static async Task EnsureUserPasswordColumnAsync(AppDbContext db)
     {
-        var msg = ex.Message;
-        return msg.Contains("duplicate column", StringComparison.OrdinalIgnoreCase)
-            || msg.Contains("already exists", StringComparison.OrdinalIgnoreCase);
+        if (!await SqliteColumnExistsAsync(db, "Users", "Password"))
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE Users ADD COLUMN Password TEXT NOT NULL DEFAULT '';");
+        }
+    }
+
+    private static async Task<bool> SqliteColumnExistsAsync(
+        AppDbContext db,
+        string tableName,
+        string columnName)
+    {
+        await db.Database.OpenConnectionAsync();
+        try
+        {
+            await using var command = db.Database.GetDbConnection().CreateCommand();
+            command.CommandText =
+                $"SELECT 1 FROM pragma_table_info('{tableName}') WHERE name = $name LIMIT 1";
+            var param = command.CreateParameter();
+            param.ParameterName = "$name";
+            param.Value = columnName;
+            command.Parameters.Add(param);
+            return await command.ExecuteScalarAsync() != null;
+        }
+        finally
+        {
+            await db.Database.CloseConnectionAsync();
+        }
+    }
+
+    private static async Task SeedUsersAsync(AppDbContext db)
+    {
+        var seedUsers = new[]
+        {
+            ("adib.jamil", "abc123", "Adib Jamil", "ACTIVE"),
+            ("bakhari.hussin", "abc123", "Bakhari Hussin", "ACTIVE"),
+            ("boon.bao", "abc123", "Low Boon Bao", "ACTIVE"),
+            ("chee.wei", "abc123", "Tan Chee Wei", "ACTIVE"),
+            ("faiq.faizul", "abc123", "Faiq Faizul", "ACTIVE"),
+            ("hakim.hisham", "abc123", "Hakim Hisham", "ACTIVE"),
+            ("hakim.ramaly", "abc123", "Hakim Ramaly", "ACTIVE"),
+            ("ismail.jahrin", "abc123", "Ismail Jahrin", "ACTIVE"),
+            ("nik.faiszal", "abc123", "Nik Faiszal Abdullah", "ACTIVE"),
+            ("bazlan.suhaimi", "abc123", "Bazlan Suhaimi", "INACTIVE")
+        };
+
+        foreach (var (username, password, displayName, status) in seedUsers)
+        {
+            var existing = await db.Users.FirstOrDefaultAsync(u =>
+                u.Username.ToLower() == username.ToLower());
+            if (existing == null)
+            {
+                db.Users.Add(new User
+                {
+                    Username = username,
+                    Password = password,
+                    DisplayName = displayName,
+                    CreatedDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                    Status = status
+                });
+            }
+            else
+            {
+                existing.Password = password;
+                existing.DisplayName = displayName;
+                existing.Status = status;
+            }
+        }
+
+        var seedUsernames = seedUsers.Select(u => u.Item1.ToLowerInvariant()).ToHashSet();
+        var obsolete = await db.Users
+            .Where(u => !seedUsernames.Contains(u.Username.ToLower()))
+            .ToListAsync();
+        if (obsolete.Count > 0)
+        {
+            db.Users.RemoveRange(obsolete);
+            await db.SaveChangesAsync();
+        }
     }
 }

@@ -36,7 +36,7 @@ public static class EntityMappers
             p.CycleTotalHrs);
 
     public static UserDto ToDto(this User u) =>
-        new(u.Id, u.Username, u.DisplayName, u.CreatedDate.ToString("yyyy-MM-dd"), u.Status);
+        new(u.Id, u.Username, u.Password, u.DisplayName, u.Status);
 
     public static MaterialSpecDto ToDto(this MaterialSpec m) =>
         new(

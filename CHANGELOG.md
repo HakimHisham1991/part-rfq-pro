@@ -25,6 +25,63 @@ Version numbers use **MAJOR.MINOR.PATCH**:
 
 ---
 
+## [1.3.1] - 2026-05-29
+
+### Changed
+
+- Material spec master seed **Created By** set to **Admin** (replaces `MASTER - MATERIAL SPEC.xlsx`; existing rows updated on startup).
+
+---
+
+## [1.3.0] - 2026-05-29
+
+### Added
+
+- **Material Specification Management** master data: **171** specifications loaded from `MASTER - MATERIAL SPEC.xlsx` (`Data/material-specs-master.json`), applied on startup when the table does not match the master set.
+
+### Changed
+
+- Material spec table column renamed to **Density kg/m³**; density values show as numbers only (no unit suffix in cells).
+- Edit modal density label aligned to **Density kg/m³**.
+
+---
+
+## [1.2.2] - 2026-05-29
+
+### Fixed
+
+- Settings action toolbar: added top padding so **Add User** / **Add Material Specification** no longer sit against the header divider.
+
+---
+
+## [1.2.1] - 2026-05-29
+
+### Fixed
+
+- **Material Specification Management** page crash (`IHttpContextAccessor` not registered); page model now uses `PageModel.HttpContext`.
+- Settings **Add User** / **Add Material Specification** toolbar moved below the page title (above the table).
+
+---
+
+## [1.2.0] - 2026-05-29
+
+### Added
+
+- **User Management**: **Add User** toolbar button; **Edit** and **Delete** in the Action column; modal dialog for create/edit (Tool-Master-Control style).
+- **Material Specification Management**: **Add Material Specification** toolbar button; **Edit** and **Delete** in the Action column; modal dialog for create/edit.
+- REST API: `POST` / `DELETE` for `/api/users` and `/api/material-specs`; create/update request models.
+
+### Changed
+
+- **3D Analyzer**: imported solid part shading color set to **#A5D4FF** (lighter blue; reduced metalness for a cleaner look).
+- Settings pages: primary action toolbar above page header; delete actions use confirm dialog.
+
+### Fixed
+
+- Database seeder: skip `ALTER TABLE` when `Density` / `Password` columns already exist (cleaner startup logs).
+
+---
+
 ## [1.1.0] - 2026-05-29
 
 ### Added
@@ -73,6 +130,11 @@ Version numbers use **MAJOR.MINOR.PATCH**:
 - **3-point custom coordinate system** (origin, X+, Y+) for oriented bounding box and stock volume.
 - GitHub Actions workflow and MonsterASP/IIS publish documentation.
 
-[Unreleased]: https://github.com/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/compare/v1.2.2...v1.3.0
+[1.2.2]: https://github.com/compare/v1.2.1...v1.2.2
+[1.2.1]: https://github.com/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/releases/tag/v1.0.0

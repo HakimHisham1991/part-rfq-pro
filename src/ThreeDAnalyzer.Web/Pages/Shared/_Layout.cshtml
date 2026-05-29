@@ -15,8 +15,12 @@
                 <button type="button" id="sidebar-toggle" title="Collapse sidebar" aria-expanded="true">☰</button>
                 <div class="sidebar-brand">
                     <div class="sidebar-title">Part RFQ Pro</div>
-                    <div class="sidebar-version">v1.1.0</div>
+                    <div class="sidebar-version">v1.3.1</div>
                 </div>
+            </div>
+            <div class="sidebar-user">
+                <span class="sidebar-user-name">@(Context.Session.GetString("DisplayName") ?? Context.Session.GetString("Username") ?? "")</span>
+                <a class="sidebar-logout" href="/logout" title="Sign out">Logout</a>
             </div>
             <nav class="sidebar-nav">
                 <a class="nav-link" href="/Projects" data-module="projects" title="Project Manager">

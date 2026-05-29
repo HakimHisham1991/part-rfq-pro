@@ -1,0 +1,45 @@
+@page "/login"
+@model ThreeDAnalyzer.Web.Pages.LoginModel
+@{
+    Layout = null;
+    ViewData["Title"] = "Login";
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login — Part RFQ Pro</title>
+    <link rel="stylesheet" href="~/css/theme.css" />
+    <link rel="stylesheet" href="~/css/login.css" />
+</head>
+<body>
+    <div class="login-page">
+        <div class="login-container">
+            <div class="login-card">
+                <div class="login-header">
+                    <img src="~/images/zenix-upeca-logo.png" alt="Zenix Aerospace UPECA" class="login-logo" />
+                    <h1>Part RFQ Pro</h1>
+                </div>
+
+                @if (!string.IsNullOrEmpty(Model.Input.ErrorMessage))
+                {
+                    <div class="error-message" role="alert">@Model.Input.ErrorMessage</div>
+                }
+
+                <form method="post" class="login-form" asp-antiforgery="true">
+                    <div class="form-group">
+                        <label asp-for="Input.Username">Username</label>
+                        <input asp-for="Input.Username" class="form-control" autocomplete="username" />
+                    </div>
+                    <div class="form-group">
+                        <label asp-for="Input.Password">Password</label>
+                        <input asp-for="Input.Password" class="form-control" autocomplete="current-password" />
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Login</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

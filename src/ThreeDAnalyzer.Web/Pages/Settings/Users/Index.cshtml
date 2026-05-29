@@ -9,6 +9,9 @@
         <h1>User Management</h1>
         <p class="module-subtitle">Settings · Users</p>
     </header>
+    <div class="module-toolbar module-toolbar-actions">
+        <button type="button" id="btn-add-user">Add User</button>
+    </div>
     <div class="module-page-body">
         <div class="table-wrap">
             <table class="data-table" id="users-table">
@@ -16,8 +19,8 @@
                     <tr>
                         <th>No.</th>
                         <th>Username</th>
+                        <th>Password</th>
                         <th>Display Name</th>
-                        <th>Created Date</th>
                         <th>Status</th>
                         <th>Action</th>
                     </tr>
@@ -26,6 +29,45 @@
             </table>
         </div>
         <p class="empty-state" id="users-empty" hidden>No users yet.</p>
+    </div>
+</div>
+
+<div id="user-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="user-modal-title">
+    <div class="modal-backdrop" data-modal-close></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="user-modal-title">Edit User</h3>
+            <button type="button" class="modal-close" data-modal-close aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="user-modal-error" class="modal-error" role="alert"></div>
+            <form id="user-form">
+                <input type="hidden" id="user-id" />
+                <div class="form-group">
+                    <label for="user-username">Username</label>
+                    <input type="text" id="user-username" class="form-control" autocomplete="username" required />
+                </div>
+                <div class="form-group">
+                    <label for="user-password">Password</label>
+                    <input type="text" id="user-password" class="form-control" autocomplete="off" required />
+                </div>
+                <div class="form-group">
+                    <label for="user-display-name">Display Name</label>
+                    <input type="text" id="user-display-name" class="form-control" required />
+                </div>
+                <div class="form-group" id="user-status-group">
+                    <label for="user-status">Status</label>
+                    <select id="user-status" class="form-control" required>
+                        <option value="ACTIVE">Active</option>
+                        <option value="INACTIVE">Inactive</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 

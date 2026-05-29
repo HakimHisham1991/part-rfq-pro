@@ -29,7 +29,7 @@ public record PartDto(
     double Cycle5x,
     double CycleTotalHrs);
 
-public record UserDto(int Id, string Username, string DisplayName, string CreatedDate, string Status);
+public record UserDto(int Id, string Username, string Password, string DisplayName, string Status);
 
 public record MaterialSpecDto(
     int Id,
@@ -44,3 +44,24 @@ public record MaterialSpecDto(
 public record CycleTimePayload(System.Text.Json.JsonElement? Values, string? UpdatedAt);
 
 public record CycleTimeResponse(object? CycleTimeData);
+
+public record CreateUserRequest(string Username, string Password, string DisplayName, string? Status);
+
+public record UpdateUserRequest(string Password, string DisplayName, string Status);
+
+public record CreateMaterialSpecRequest(
+    string Specification,
+    string GeneralName,
+    string MaterialType,
+    double Density,
+    string CreatedBy,
+    string CreatedDate,
+    string? Status);
+
+public record UpdateMaterialSpecRequest(
+    string GeneralName,
+    string MaterialType,
+    double Density,
+    string CreatedBy,
+    string CreatedDate,
+    string Status);

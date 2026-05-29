@@ -603,9 +603,9 @@ function showPartBboxWireframe(bboxData) {
 
 function createShadedMeshWithEdges(geometry) {
   const material = new THREE.MeshStandardMaterial({
-    color: 0x2453b3,
-    metalness: 0.35,
-    roughness: 0.55,
+    color: 0xa5d4ff,
+    metalness: 0.15,
+    roughness: 0.65,
     side: THREE.DoubleSide,
     flatShading: false
   });

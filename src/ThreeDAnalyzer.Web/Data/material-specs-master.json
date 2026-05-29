@@ -1,0 +1,1199 @@
+[
+  {
+    "specification": "6/6, MOS2 FILLED",
+    "generalName": "NYLATRON GS, PL NYLON",
+    "materialType": "STRIP",
+    "density": 1150.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABM1-1005, AITM 6-4003",
+    "generalName": "AL 2024",
+    "materialType": "FORK",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABM1-2007",
+    "generalName": "AL 2024",
+    "materialType": "ROUND BAR",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABM1-2007, ABP 0-2021 Sec A,B,C",
+    "generalName": "AL 2024",
+    "materialType": "ROUND BAR",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABM1-2007, AITM 6-4003, ABP 0-2021 section A,B and C",
+    "generalName": "AL 2024",
+    "materialType": "EXTRUSION BAR (SQUARE)",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABM3-1029",
+    "generalName": "Al 7010/7050",
+    "materialType": "PLATE",
+    "density": 2820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5032A",
+    "generalName": "AL 2024",
+    "materialType": "PLATE",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5043",
+    "generalName": "AL 2024",
+    "materialType": "RIB",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5044",
+    "generalName": "AL 2024",
+    "materialType": "FLAT ROUTING",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5052",
+    "generalName": "AL 7475",
+    "materialType": "MILLING",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5055",
+    "generalName": "AL 2024",
+    "materialType": "ROUND BAR",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5064",
+    "generalName": "AL 7175",
+    "materialType": "PLATE",
+    "density": 2800.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5125",
+    "generalName": "Ti6Al-4V",
+    "materialType": "PLATE",
+    "density": 4430.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5238",
+    "generalName": "AL 5083",
+    "materialType": "SHEET",
+    "density": 2660.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5259, AIMS01-04-004",
+    "generalName": "X3CrNiMoAl13-8(PH13-8Mo)",
+    "materialType": "BAR",
+    "density": 7760.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5323",
+    "generalName": "AL 7010/7050",
+    "materialType": "PLATE",
+    "density": 2820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5324",
+    "generalName": "AL 7040/7050",
+    "materialType": "PLATE",
+    "density": 2820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5442",
+    "generalName": "CRES (PH13-8Mo)",
+    "materialType": "ROUND BAR",
+    "density": 7760.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5453",
+    "generalName": "Ti Bar 6AL4V",
+    "materialType": "ROUND BAR",
+    "density": 4430.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5454",
+    "generalName": "X5CrNiCu15-5(15-5PH)",
+    "materialType": "PLATE",
+    "density": 7780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5480",
+    "generalName": "AL 2027",
+    "materialType": "PLATE",
+    "density": 2790.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ABS5503",
+    "generalName": "AL 2024",
+    "materialType": "SHEET (CLAD)",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 4050",
+    "generalName": "AL 7050",
+    "materialType": "PLATE",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 4144",
+    "generalName": "AL 2219",
+    "materialType": "HAND FORGE",
+    "density": 2840.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 4342 BAC1520-2932",
+    "generalName": "AL 7050",
+    "materialType": "EXTRUSION",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 4347",
+    "generalName": "AL 6013",
+    "materialType": "SHEET",
+    "density": 2710.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 4533",
+    "generalName": "COPPER BERYLLIUM, 98Cu - 1.9Be",
+    "materialType": "ROUND BAR",
+    "density": 8250.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 4640",
+    "generalName": "AL-Ni-BRONZE",
+    "materialType": "BAR",
+    "density": 7800.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 4911",
+    "generalName": "Ti6Al-4V",
+    "materialType": "PLATE",
+    "density": 4430.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 4921",
+    "generalName": "TI CP70",
+    "materialType": "BAR/FORGING",
+    "density": 4510.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 4928",
+    "generalName": "Ti6Al-4V",
+    "materialType": "BAR",
+    "density": 4430.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5510",
+    "generalName": "321 CRES / 347 CRES",
+    "materialType": "AIRBUS STANDARD PART",
+    "density": 7960.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5510/ AMS 5512/ AMS-QQ-S-763",
+    "generalName": "CRES",
+    "materialType": "WASHER",
+    "density": 7930.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5512",
+    "generalName": "321 CRES / 347 CRES",
+    "materialType": "AIRBUS STANDARD PART",
+    "density": 7960.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5525",
+    "generalName": "CRES A286",
+    "materialType": "MS NUT (LOW-PROFILE, SELF-LOCKING)",
+    "density": 7940.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5629 TYPE I",
+    "generalName": "CRES PH 13-8MO",
+    "materialType": "BAR",
+    "density": 7760.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5643",
+    "generalName": "CRES 17-4 PH",
+    "materialType": "HI-LOK PIN (FASTENER)",
+    "density": 7780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5659",
+    "generalName": "CRES 15-5PH (UNS S1550)",
+    "materialType": "BAR",
+    "density": 7780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5659/H1025",
+    "generalName": "CRES 15-5PH",
+    "materialType": "BOLT",
+    "density": 7780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5662",
+    "generalName": "INCONEL 718",
+    "materialType": "BAR",
+    "density": 8189.999999999999,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5666",
+    "generalName": "INCONEL 625",
+    "materialType": "BAR/FORGING",
+    "density": 8440.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5731",
+    "generalName": "CRES A286",
+    "materialType": "BOLT",
+    "density": 7940.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5732",
+    "generalName": "CRES A286",
+    "materialType": "BOLT",
+    "density": 7940.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5737",
+    "generalName": "CRES A286",
+    "materialType": "BOLT",
+    "density": 7940.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5852",
+    "generalName": "CRES A286",
+    "materialType": "BOLT",
+    "density": 7940.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5853",
+    "generalName": "CRES A286",
+    "materialType": "MS NUT (LOW-PROFILE, SELF-LOCKING)",
+    "density": 7940.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5862",
+    "generalName": "CRES 15-5PH",
+    "materialType": "PLATE",
+    "density": 7780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS 5934",
+    "generalName": "TYPE 2 CRES PH 13-8MO",
+    "materialType": "BAR",
+    "density": 7760.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS-QQ-A-200/11",
+    "generalName": "AL 7075",
+    "materialType": "EXTRUDED BAR",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS-QQ-A-200/15",
+    "generalName": "AL 7075",
+    "materialType": "EXTRUDED BAR",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS-QQ-A-225/9",
+    "generalName": "AL 7075",
+    "materialType": "BAR",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS-QQ-A-250/12",
+    "generalName": "AL 7075",
+    "materialType": "PLATE",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS-QQ-A-250/30",
+    "generalName": "AL 2219",
+    "materialType": "PLATE",
+    "density": 2840.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS-QQ-A-250/4",
+    "generalName": "AL 2024",
+    "materialType": "SHEET",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AMS-T-9047",
+    "generalName": "TI-6AL-4V",
+    "materialType": "BAR",
+    "density": 4430.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AND10136-2401, AMS-QQ-A-200/11",
+    "generalName": "AL 7075",
+    "materialType": "EXTRUSION",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "AND10137-1604 X 19.7, AMS-QQ-A-200/11",
+    "generalName": "AL 7075",
+    "materialType": "EXTRUSION",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "APSL:COMPTOIR GENERAL DU RESSORT (CGR)",
+    "generalName": "ASNA3322-1340 CARBON STEEL WIRE FOR SPRING (⌀3.4)",
+    "materialType": "WIRE",
+    "density": 7850.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3010-8762",
+    "generalName": "AL 2024",
+    "materialType": "SHEET",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3010-8762 OR ASNA3010-8781",
+    "generalName": "AL 2024 T3",
+    "materialType": "SHEET",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3011",
+    "generalName": "AL 2024",
+    "materialType": "PLATE",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3012",
+    "generalName": "AL 2024",
+    "materialType": "SHEET (CLAD)",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3013",
+    "generalName": "AL 2024",
+    "materialType": "CICRULAR DRAWN BARS",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3050",
+    "generalName": "AL 7175",
+    "materialType": "PLATE",
+    "density": 2800.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3058",
+    "generalName": "AL 2024",
+    "materialType": "ROUND BAR",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3098",
+    "generalName": "AL 7010",
+    "materialType": "PLATE",
+    "density": 2820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3106",
+    "generalName": "Stainless Steel, Z6 CNT 18-10, Rm 500 Mpa",
+    "materialType": "ROLLED SHEET",
+    "density": 7900.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3130",
+    "generalName": "STEEL 30 NCD 16",
+    "materialType": "ROUND BAR",
+    "density": 7820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3131",
+    "generalName": "STEEL 35 NC 6",
+    "materialType": "ROUND BAR",
+    "density": 7780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3133",
+    "generalName": "35 NCD 16 STEEL",
+    "materialType": "ROUND BAR",
+    "density": 7820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3139",
+    "generalName": "STAINLESS STEEL Z6 CNT 18-10",
+    "materialType": "ROUND BAR",
+    "density": 7900.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3179",
+    "generalName": "STEEL 35 NCD 6",
+    "materialType": "FLAT BAR",
+    "density": 7780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3181",
+    "generalName": "STEEL 35 NCD 16",
+    "materialType": "FLAT BAR",
+    "density": 7820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3195",
+    "generalName": "35 NC 6 STEEL",
+    "materialType": "ROUND BAR",
+    "density": 7780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3197",
+    "generalName": "STEEL 35 NCD 16",
+    "materialType": "ROUND BAR",
+    "density": 7820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3202",
+    "generalName": "STAINLESS STEEL Z6 CNT 18-10",
+    "materialType": "ROUND BAR",
+    "density": 7900.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3294",
+    "generalName": "STEEL E-Z5 CNU 15-05",
+    "materialType": "ROUND BAR",
+    "density": 7780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3351",
+    "generalName": "AL 2024",
+    "materialType": "ROUND EXTRUDED BAR",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA3388",
+    "generalName": "AL 7175",
+    "materialType": "WASHER",
+    "density": 2800.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASNA35261130",
+    "generalName": "PLASTICS-POLYAMIDE (PA 6.6)",
+    "materialType": "TURNING",
+    "density": 1140.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASTM A580/ A580M",
+    "generalName": "CRES 302/ CRES 304",
+    "materialType": "SELF-LOCKING NUT (SHEAR CONFIGURATION)",
+    "density": 7930.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ASTM D709",
+    "generalName": "LAMINATED PHENOLIC",
+    "materialType": "SHEET",
+    "density": 1450.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BAC1517-2289 X 2.3, AMS-QQ-A-200/11",
+    "generalName": "AL 7075",
+    "materialType": "EXTRUSION",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BAC1517-2289 X 2.5, AMS-QQ-A-200/11",
+    "generalName": "AL 7075",
+    "materialType": "EXTRUSION",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BAEM 1213 (ABM 3-1029)",
+    "generalName": "AL 7010/7050",
+    "materialType": "PLATE",
+    "density": 2820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BAEM1213",
+    "generalName": "Al 7010/7050",
+    "materialType": "PLATE",
+    "density": 2820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BAER0368 (ABR6-0128)",
+    "generalName": "Polyimide Laminate Glass",
+    "materialType": "SHEET",
+    "density": 1850.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BALL: AMS5629 RACE: AMS5643",
+    "generalName": "BALL: PH13-8 CRES RACE: 17-4",
+    "materialType": "BEARING",
+    "density": 7800.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BALL: AMS5630, AMS5880 OR AMS5618 RACE: AMS5643",
+    "generalName": "BALL: 440C RACE: 17-4",
+    "materialType": "NARROW GROOVED SPHERICAL PLAIN BEARING (PHENOLIC LINED)",
+    "density": 7480.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BMS 7-306",
+    "generalName": "AL 7150",
+    "materialType": "EXTRUDED BAR",
+    "density": 2820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BMS 7-323",
+    "generalName": "AL 7050",
+    "materialType": "PLATE",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BMS 7-323, TYPE I",
+    "generalName": "AL 7050",
+    "materialType": "PLATE",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BMS 7-323, TYPE III",
+    "generalName": "AL 7050",
+    "materialType": "PLATE",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BMS7-186",
+    "generalName": "AL 7075",
+    "materialType": "FORGING",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BS 1449 GRADE 304 S16",
+    "generalName": "304S16 Stainless Steel",
+    "materialType": "SHEET",
+    "density": 7900.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BS B23",
+    "generalName": "Cu Al",
+    "materialType": "BUSH",
+    "density": 7700.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BS L164",
+    "generalName": "AL 2014A",
+    "materialType": "SHEET",
+    "density": 2800.0,
+    "status": "Active"
+  },
+  {
+    "specification": "BS2572",
+    "generalName": "Phenolic / Epoxy Laminated Sheet",
+    "materialType": "BAR",
+    "density": 1360.0,
+    "status": "Inactive"
+  },
+  {
+    "specification": "DTD197",
+    "generalName": "Al Bronze Alloy",
+    "materialType": "BAR",
+    "density": 7700.0,
+    "status": "Active"
+  },
+  {
+    "specification": "DTD197A",
+    "generalName": "Al Bronze Alloy",
+    "materialType": "BAR",
+    "density": 7700.0,
+    "status": "Active"
+  },
+  {
+    "specification": "EN 2326",
+    "generalName": "6082 T6",
+    "materialType": "BAR",
+    "density": 2710.0,
+    "status": "Active"
+  },
+  {
+    "specification": "EXTRUSION S700E1767-1, AMS-QQ-A-200/11",
+    "generalName": "AL 7075",
+    "materialType": "EXTRUSION",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "J4301",
+    "generalName": "AL 6082",
+    "materialType": "EXTRUSION",
+    "density": 2710.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L109",
+    "generalName": "AL 2024",
+    "materialType": "SHEET (CLAD)",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L110",
+    "generalName": "AL 2024",
+    "materialType": "SHEET",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L164",
+    "generalName": "AL 2014A",
+    "materialType": "SHEET (CLAD)",
+    "density": 2800.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L165",
+    "generalName": "AL 2014A",
+    "materialType": "SHEET (CLAD)",
+    "density": 2800.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L167",
+    "generalName": "AL 2014A",
+    "materialType": "SHEET",
+    "density": 2800.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L168",
+    "generalName": "AL 2014",
+    "materialType": "PLATE",
+    "density": 2800.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L168 T651",
+    "generalName": "AL 2014A",
+    "materialType": "ROUND BAR",
+    "density": 2800.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L168 T651, ABP6-5232",
+    "generalName": "AL 2014A",
+    "materialType": "BAR",
+    "density": 2800.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L168 T651, ABP6-5232 BSL100 Section 1 and 6",
+    "generalName": "AL 2014A",
+    "materialType": "BAR",
+    "density": 2800.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L97",
+    "generalName": "AL 2024",
+    "materialType": "PLATE",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L97, ABP 0-2017 Class A, AITM6-4003",
+    "generalName": "AL 2024 T351",
+    "materialType": "PLATE",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L97, ABP 0-2017 Class B",
+    "generalName": "AL 2024",
+    "materialType": "EXTRUSION BAR (SQUARE)",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L97, ABP 0-2017 Class B, AITM6-4003",
+    "generalName": "AL 2024 T351",
+    "materialType": "PLATE",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L97, ABP 6-5232",
+    "generalName": "AL 2024",
+    "materialType": "PLATE",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L97, AITM6-4003",
+    "generalName": "AL 2024 T351",
+    "materialType": "PLATE",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "L-P-509",
+    "generalName": "PHENOLIC",
+    "materialType": "PHENOLIC SHEET",
+    "density": 1450.0,
+    "status": "Inactive"
+  },
+  {
+    "specification": "M0005162",
+    "generalName": "AL 7050",
+    "materialType": "EXTRUDED BAR",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MA006W, BMS 7-323 TYPE I",
+    "generalName": "AL 7050",
+    "materialType": "PLATE",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MA171M, AMS 4216",
+    "generalName": "AL 6013",
+    "materialType": "SHEET",
+    "density": 2710.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MAKE FROM BACF3H07NW007HN",
+    "generalName": "AL 2024",
+    "materialType": "SHEET",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MC110Y874, AMS 4201",
+    "generalName": "AL 7050",
+    "materialType": "PLATE",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MF070K0, BMS 7-240 TYPE I",
+    "generalName": "CRES 15-5PH (UNS S1550)",
+    "materialType": "PLATE",
+    "density": 7780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MF731F (AMS 4050)",
+    "generalName": "AL 7050",
+    "materialType": "PLATE",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MF731F, AMS 4050",
+    "generalName": "AL 7050",
+    "materialType": "PLATE",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MF755P, AMS-QQ-A-250/11",
+    "generalName": "AL 6061",
+    "materialType": "SHEET",
+    "density": 2700.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MH457K000A, BMS 7-306",
+    "generalName": "AL 7150",
+    "materialType": "EXTRUDED BAR",
+    "density": 2820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MH841T959M4, BMS 7-306",
+    "generalName": "AL 7150",
+    "materialType": "EXTRUSION",
+    "density": 2820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "ML309E, AMS 5659",
+    "generalName": "15-5PH",
+    "materialType": "BAR",
+    "density": 7780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MN320H238, AMS 4050",
+    "generalName": "AL 7050",
+    "materialType": "PLATE",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MN320H238, AMS4050",
+    "generalName": "AL 7050",
+    "materialType": "PLATE",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MN430H338, AMS 4050",
+    "generalName": "AL 7050",
+    "materialType": "PLATE",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MN430H338, AMS4050",
+    "generalName": "AL 7050",
+    "materialType": "PLATE",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MN983W, BMS 7-323 TYPE III",
+    "generalName": "AL 7050",
+    "materialType": "PLATE",
+    "density": 2830.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MP260T, AMS-QQ-A-250/4",
+    "generalName": "AL 2024",
+    "materialType": "SHEET",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MP260T, QQ-A-250/4",
+    "generalName": "AL 2024",
+    "materialType": "SHEET",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MX211F, AMS-QQ-A-250/5",
+    "generalName": "AL 2024",
+    "materialType": "SHEET",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "MY005H, AMS 4347",
+    "generalName": "AL 6013",
+    "materialType": "SHEET",
+    "density": 2710.0,
+    "status": "Active"
+  },
+  {
+    "specification": "NK310N0, MIL-I-24768/14",
+    "generalName": "Glass Epoxy Laminate",
+    "materialType": "SHEET",
+    "density": 1370.0,
+    "status": "Active"
+  },
+  {
+    "specification": "NM447F0",
+    "generalName": "BONDABLE ONE SIDE, SAINT GOBAIN PERFORMANCE PLASTICS, RULON J",
+    "materialType": "POLYTETRAFLUOROETHYLENE",
+    "density": 1950.0,
+    "status": "Active"
+  },
+  {
+    "specification": "QQ-A-200/11",
+    "generalName": "AL 7075",
+    "materialType": "EXTRUDED BAR",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "QQ-A-200/15",
+    "generalName": "AL 7075",
+    "materialType": "EXTRUDED BAR",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "QQ-A-200/3",
+    "generalName": "AL 2024",
+    "materialType": "EXTRUSION",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "QQ-A-200/3, AND10133-1001 X 3.1",
+    "generalName": "AL 2024",
+    "materialType": "EXTRUSION",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "QQ-A-200/3, AND10138-0505 X 2.6",
+    "generalName": "AL 2024",
+    "materialType": "EXTRUSION",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "QQ-A-225/6",
+    "generalName": "AL 2024",
+    "materialType": "PLATE",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "QQ-A-225/9",
+    "generalName": "AL 7075",
+    "materialType": "BAR",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "QQ-A-250/12",
+    "generalName": "AL 7075",
+    "materialType": "SHEET",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "QQ-A-250/13",
+    "generalName": "AL 7075",
+    "materialType": "EXTRUSION",
+    "density": 2810.0,
+    "status": "Active"
+  },
+  {
+    "specification": "QQ-A-250/4",
+    "generalName": "AL 2024",
+    "materialType": "SHEET",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "RMS 150",
+    "generalName": "CRES PH 13-8MO",
+    "materialType": "BAR",
+    "density": 7760.0,
+    "status": "Active"
+  },
+  {
+    "specification": "RMS 190",
+    "generalName": "6-4 TI",
+    "materialType": "BAR",
+    "density": 4430.0,
+    "status": "Active"
+  },
+  {
+    "specification": "S07-1003 to ABP 0-2021 sec A,B,C",
+    "generalName": "AL 2024",
+    "materialType": "EXTRUSION BAR (SQUARE)",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "S07-1003 to BAEP 4619 sec A,B,C",
+    "generalName": "AL 2024",
+    "materialType": "EXTRUSION BAR (SQUARE)",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "S07-1003, to BAEP4619 SECTION A,B,C",
+    "generalName": "AL 2024",
+    "materialType": "EXTRUSION RECTANGULAR BAR",
+    "density": 2780.0,
+    "status": "Active"
+  },
+  {
+    "specification": "S07-1213",
+    "generalName": "AL 7010/7050",
+    "materialType": "PLATE",
+    "density": 2820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "S07-1213-BAEP4607B",
+    "generalName": "AL 7010/7050",
+    "materialType": "PLATE",
+    "density": 2820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "S130",
+    "generalName": "CRES",
+    "materialType": "BAR",
+    "density": 7930.0,
+    "status": "Active"
+  },
+  {
+    "specification": "S143",
+    "generalName": "CRES",
+    "materialType": "ROUND BAR",
+    "density": 7930.0,
+    "status": "Active"
+  },
+  {
+    "specification": "S145",
+    "generalName": "CRES",
+    "materialType": "ROUND BAR",
+    "density": 7930.0,
+    "status": "Active"
+  },
+  {
+    "specification": "S154",
+    "generalName": "Ni-Cr-Mo Steel Alloy",
+    "materialType": "ROUND BAR",
+    "density": 7820.0,
+    "status": "Active"
+  },
+  {
+    "specification": "S527",
+    "generalName": "CRES 18-10",
+    "materialType": "SHEET",
+    "density": 7900.0,
+    "status": "Active"
+  },
+  {
+    "specification": "S80",
+    "generalName": "CRES",
+    "materialType": "ROUND BAR",
+    "density": 7930.0,
+    "status": "Active"
+  },
+  {
+    "specification": "S98",
+    "generalName": "Steel Bar",
+    "materialType": "ROUND BAR",
+    "density": 7850.0,
+    "status": "Active"
+  },
+  {
+    "specification": "S99E",
+    "generalName": "High Carbon Steel",
+    "materialType": "ROUND BAR",
+    "density": 7850.0,
+    "status": "Active"
+  },
+  {
+    "specification": "TA11",
+    "generalName": "Ti-6Al-4V",
+    "materialType": "BAR",
+    "density": 4430.0,
+    "status": "Active"
+  },
+  {
+    "specification": "TA11, ABP6-5232",
+    "generalName": "Ti-6Al-4V",
+    "materialType": "PLATE",
+    "density": 4430.0,
+    "status": "Active"
+  },
+  {
+    "specification": "TA2",
+    "generalName": "Ti Alloy",
+    "materialType": "SHEET",
+    "density": 4430.0,
+    "status": "Active"
+  },
+  {
+    "specification": "TA59",
+    "generalName": "Ti-6Al-4V",
+    "materialType": "SHEET",
+    "density": 4430.0,
+    "status": "Active"
+  }
+]

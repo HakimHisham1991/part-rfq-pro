@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ThreeDAnalyzer.Web.Data;
+using ThreeDAnalyzer.Web.Middleware;
+using ThreeDAnalyzer.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +20,15 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.AddControllers();
 builder.Services.AddRazorPages();
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromHours(8);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+    options.Cookie.Name = ".PartRfqPro.Session";
+});
+builder.Services.AddScoped<IAuthService, AuthService>();
 
 var app = builder.Build();
 
@@ -35,6 +46,8 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
+app.UseSession();
+app.UseAppAuthentication();
 app.MapControllers();
 app.MapRazorPages();
 

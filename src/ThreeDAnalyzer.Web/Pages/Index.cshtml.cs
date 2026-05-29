@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using ThreeDAnalyzer.Web.Services;
 
 namespace ThreeDAnalyzer.Web.Pages;
 
-public class IndexModel : PageModel
+public class IndexModel(IAuthService authService) : PageModel
 {
-    public IActionResult OnGet() => Redirect("/Projects");
+    public IActionResult OnGet() =>
+        authService.IsAuthenticated(HttpContext) ? Redirect("/Projects") : Redirect("/login");
 }

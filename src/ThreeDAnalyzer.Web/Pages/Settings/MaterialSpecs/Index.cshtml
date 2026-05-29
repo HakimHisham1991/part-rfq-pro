@@ -1,14 +1,20 @@
 @page "/Settings/MaterialSpecs"
+@model ThreeDAnalyzer.Web.Pages.Settings.MaterialSpecs.IndexModel
 @{
     ViewData["Title"] = "Material Specification Management";
     ViewData["Module"] = "settings-material-specs";
 }
 
-<div class="module-page">
+<div class="module-page"
+     id="material-specs-page"
+     data-default-created-by="@Model.DefaultCreatedBy">
     <header class="module-page-header">
         <h1>Material Specification Management</h1>
         <p class="module-subtitle">Settings · Material specifications</p>
     </header>
+    <div class="module-toolbar module-toolbar-actions">
+        <button type="button" id="btn-add-material-spec">Add Material Specification</button>
+    </div>
     <div class="module-page-body">
         <div class="table-wrap">
             <table class="data-table" id="material-specs-table">
@@ -18,7 +24,7 @@
                         <th>Material Specification</th>
                         <th>General Name</th>
                         <th>Material Type</th>
-                        <th>Density</th>
+                        <th>Density kg/m³</th>
                         <th>Created By</th>
                         <th>Created Date</th>
                         <th>Status</th>
@@ -29,6 +35,57 @@
             </table>
         </div>
         <p class="empty-state" id="material-specs-empty" hidden>No material specifications yet.</p>
+    </div>
+</div>
+
+<div id="material-spec-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="material-spec-modal-title">
+    <div class="modal-backdrop" data-modal-close></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="material-spec-modal-title">Edit Material Specification</h3>
+            <button type="button" class="modal-close" data-modal-close aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="material-spec-modal-error" class="modal-error" role="alert"></div>
+            <form id="material-spec-form">
+                <input type="hidden" id="material-spec-id" />
+                <div class="form-group">
+                    <label for="material-spec-specification">Material Specification</label>
+                    <input type="text" id="material-spec-specification" class="form-control" required />
+                </div>
+                <div class="form-group">
+                    <label for="material-spec-general-name">General Name</label>
+                    <input type="text" id="material-spec-general-name" class="form-control" required />
+                </div>
+                <div class="form-group">
+                    <label for="material-spec-material-type">Material Type</label>
+                    <input type="text" id="material-spec-material-type" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label for="material-spec-density">Density kg/m³</label>
+                    <input type="number" id="material-spec-density" class="form-control" min="0" step="any" />
+                </div>
+                <div class="form-group">
+                    <label for="material-spec-created-by">Created By</label>
+                    <input type="text" id="material-spec-created-by" class="form-control" required />
+                </div>
+                <div class="form-group">
+                    <label for="material-spec-created-date">Created Date</label>
+                    <input type="date" id="material-spec-created-date" class="form-control" required />
+                </div>
+                <div class="form-group" id="material-spec-status-group">
+                    <label for="material-spec-status">Status</label>
+                    <select id="material-spec-status" class="form-control" required>
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 

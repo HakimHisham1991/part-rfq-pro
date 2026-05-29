@@ -35,6 +35,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.HasIndex(x => x.Username).IsUnique();
             e.Property(x => x.Username).HasMaxLength(64);
+            e.Property(x => x.Password).HasMaxLength(128);
             e.Property(x => x.DisplayName).HasMaxLength(200);
             e.Property(x => x.Status).HasMaxLength(20);
         });
