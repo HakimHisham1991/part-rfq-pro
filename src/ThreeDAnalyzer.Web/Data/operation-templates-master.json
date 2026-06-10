@@ -1,0 +1,80 @@
+[
+  {
+    "name": "Face Milling Ø63",
+    "operationType": "Face Milling",
+    "params": { "diameter": 63, "ap": 2, "feed": 4000, "area": 120000 },
+    "status": "Active"
+  },
+  {
+    "name": "Adaptive Roughing Ø16",
+    "operationType": "Roughing",
+    "params": { "diameter": 16, "ap": 50, "stepover": 1.5, "feed": 2500, "volume": 500000 },
+    "status": "Active"
+  },
+  {
+    "name": "Corner Cleanup Ø6",
+    "operationType": "Profiling",
+    "params": { "diameter": 6, "ap": 0.3, "stepover": 0.3, "feed": 400, "length": 5000 },
+    "status": "Active"
+  },
+  {
+    "name": "Drill Ø10",
+    "operationType": "Drilling",
+    "params": { "diameter": 10, "depth": 5, "feed": 300, "holeCount": 1 },
+    "status": "Active"
+  },
+  {
+    "name": "Drill Ø6",
+    "operationType": "Drilling",
+    "params": { "diameter": 6, "depth": 5, "feed": 250, "holeCount": 1 },
+    "status": "Active"
+  },
+  {
+    "name": "Finish Profile",
+    "operationType": "Profiling",
+    "params": { "feed": 400, "length": 20000 },
+    "status": "Active"
+  },
+  {
+    "name": "Ballnose Surface",
+    "operationType": "Ballnose Finishing",
+    "params": { "ap": 0.3, "stepover": 0.3, "feed": 5000, "area": 180435, "stockLeft": 0.5 },
+    "status": "Active"
+  },
+  {
+    "name": "Pocket Rough Ø16",
+    "operationType": "Pocketing",
+    "params": { "diameter": 16, "ap": 10, "stepover": 1.5, "feed": 2000, "volume": 300000 },
+    "status": "Active"
+  },
+  {
+    "name": "Slot Ø10",
+    "operationType": "Slotting",
+    "params": { "diameter": 10, "ap": 5, "stepover": 5, "feed": 1500, "volume": 50000 },
+    "status": "Active"
+  },
+  {
+    "name": "Ream Ø10",
+    "operationType": "Reaming",
+    "params": { "diameter": 10, "depth": 5, "feed": 150, "holeCount": 1 },
+    "status": "Active"
+  },
+  {
+    "name": "Tap M6",
+    "operationType": "Tapping",
+    "params": { "diameter": 6, "depth": 12, "feed": 200, "holeCount": 1 },
+    "status": "Active"
+  },
+  {
+    "name": "Engrave Text",
+    "operationType": "Engraving",
+    "params": { "feed": 500, "length": 500 },
+    "status": "Active"
+  },
+  {
+    "name": "Manual Deburr",
+    "operationType": "Manual Operation",
+    "params": { "minutes": 5 },
+    "status": "Active"
+  }
+]

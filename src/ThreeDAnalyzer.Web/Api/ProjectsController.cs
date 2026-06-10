@@ -59,15 +59,44 @@ public class ProjectsController(AppDbContext db) : ControllerBase
         var part = await db.Parts.FirstOrDefaultAsync(p => p.ProjectId == projectId && p.Id == partId);
         if (part == null) return NotFound();
 
-        var envelope = new { values = payload.Values, updatedAt = payload.UpdatedAt ?? DateTime.UtcNow.ToString("o") };
+        var updatedAt = payload.UpdatedAt ?? DateTime.UtcNow.ToString("o");
+        object envelope;
+        if (payload.Version == 2)
+        {
+            envelope = new
+            {
+                version = 2,
+                operations = payload.Operations,
+                other = payload.Other,
+                rawMaterial = payload.RawMaterial,
+                computed = payload.Computed,
+                updatedAt
+            };
+        }
+        else
+        {
+            envelope = new { values = payload.Values, updatedAt };
+        }
+
         part.CycleTimeDataJson = JsonSerializer.Serialize(envelope);
 
-        if (payload.Values is { ValueKind: JsonValueKind.Object } el &&
-            el.TryGetProperty("total.overallMin", out var minEl) &&
-            minEl.TryGetDouble(out var totalMin))
+        double? totalMin = null;
+        if (payload.Version == 2 &&
+            payload.Computed is { ValueKind: JsonValueKind.Object } computed &&
+            computed.TryGetProperty("overallMin", out var v2Min) &&
+            v2Min.TryGetDouble(out var v2Val))
         {
-            part.CycleTotalHrs = Math.Round(totalMin / 60.0, 2);
+            totalMin = v2Val;
         }
+        else if (payload.Values is { ValueKind: JsonValueKind.Object } el &&
+                 el.TryGetProperty("total.overallMin", out var minEl) &&
+                 minEl.TryGetDouble(out var v1Val))
+        {
+            totalMin = v1Val;
+        }
+
+        if (totalMin.HasValue)
+            part.CycleTotalHrs = Math.Round(totalMin.Value / 60.0, 2);
 
         await db.SaveChangesAsync();
         return NoContent();

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ThreeDAnalyzer.Web.Data.Entities;
 
 namespace ThreeDAnalyzer.Web.Api;
@@ -48,4 +49,29 @@ public static class EntityMappers
             m.CreatedBy,
             m.CreatedDate.ToString("yyyy-MM-dd"),
             m.Status);
+
+    public static OperationTemplateDto ToDto(this OperationTemplate t)
+    {
+        object parameters = new { };
+        if (!string.IsNullOrWhiteSpace(t.ParamsJson))
+        {
+            try
+            {
+                parameters = JsonSerializer.Deserialize<object>(t.ParamsJson) ?? new { };
+            }
+            catch
+            {
+                parameters = new { };
+            }
+        }
+
+        return new OperationTemplateDto(
+            t.Id,
+            t.Name,
+            t.OperationType,
+            parameters,
+            t.CreatedBy,
+            t.CreatedDate.ToString("yyyy-MM-dd"),
+            t.Status);
+    }
 }

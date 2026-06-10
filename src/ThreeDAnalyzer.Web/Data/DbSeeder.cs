@@ -12,6 +12,7 @@ public static class DbSeeder
         await EnsureUserPasswordColumnAsync(db);
         await SeedUsersAsync(db);
         await MaterialSpecMasterSeed.EnsureSeededAsync(db);
+        await OperationTemplateMasterSeed.EnsureSeededAsync(db);
 
         if (await db.Projects.AnyAsync()) return;
 

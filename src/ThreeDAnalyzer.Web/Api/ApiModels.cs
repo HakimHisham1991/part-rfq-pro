@@ -41,9 +41,41 @@ public record MaterialSpecDto(
     string CreatedDate,
     string Status);
 
-public record CycleTimePayload(System.Text.Json.JsonElement? Values, string? UpdatedAt);
+public record CycleTimePayload(
+    System.Text.Json.JsonElement? Values,
+    System.Text.Json.JsonElement? Operations,
+    System.Text.Json.JsonElement? Other,
+    System.Text.Json.JsonElement? RawMaterial,
+    System.Text.Json.JsonElement? Computed,
+    int? Version,
+    string? UpdatedAt);
 
 public record CycleTimeResponse(object? CycleTimeData);
+
+public record OperationTemplateDto(
+    int Id,
+    string Name,
+    string OperationType,
+    object Params,
+    string CreatedBy,
+    string CreatedDate,
+    string Status);
+
+public record CreateOperationTemplateRequest(
+    string Name,
+    string OperationType,
+    System.Text.Json.JsonElement? Params,
+    string CreatedBy,
+    string CreatedDate,
+    string? Status);
+
+public record UpdateOperationTemplateRequest(
+    string Name,
+    string OperationType,
+    System.Text.Json.JsonElement? Params,
+    string CreatedBy,
+    string CreatedDate,
+    string Status);
 
 public record CreateUserRequest(string Username, string Password, string DisplayName, string? Status);
 

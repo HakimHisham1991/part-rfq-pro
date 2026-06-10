@@ -71,12 +71,24 @@ export async function getPart(projectId, partId) {
 }
 
 export async function savePartCycleData(projectId, partId, cycleTimeData) {
+  const body =
+    cycleTimeData.version === 2
+      ? {
+          version: 2,
+          operations: cycleTimeData.operations,
+          other: cycleTimeData.other,
+          rawMaterial: cycleTimeData.rawMaterial,
+          computed: cycleTimeData.computed,
+          updatedAt: cycleTimeData.updatedAt
+        }
+      : {
+          values: cycleTimeData.values,
+          updatedAt: cycleTimeData.updatedAt
+        };
+
   await apiPut(
     `/api/projects/${encodeURIComponent(projectId)}/parts/${encodeURIComponent(partId)}/cycle-time`,
-    {
-      values: cycleTimeData.values,
-      updatedAt: cycleTimeData.updatedAt
-    }
+    body
   );
   return true;
 }
@@ -118,4 +130,20 @@ export async function updateMaterialSpec(id, payload) {
 
 export async function deleteMaterialSpec(id) {
   await apiDelete(`/api/material-specs/${encodeURIComponent(id)}`);
+}
+
+export async function getOperationTemplates() {
+  return apiGet('/api/operation-templates');
+}
+
+export async function createOperationTemplate(payload) {
+  return apiPost('/api/operation-templates', payload);
+}
+
+export async function updateOperationTemplate(id, payload) {
+  await apiPut(`/api/operation-templates/${encodeURIComponent(id)}`, payload);
+}
+
+export async function deleteOperationTemplate(id) {
+  await apiDelete(`/api/operation-templates/${encodeURIComponent(id)}`);
 }

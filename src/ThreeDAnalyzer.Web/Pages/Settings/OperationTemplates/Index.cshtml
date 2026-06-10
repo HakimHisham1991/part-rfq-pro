@@ -1,0 +1,86 @@
+@page "/Settings/OperationTemplates"
+@model ThreeDAnalyzer.Web.Pages.Settings.OperationTemplates.IndexModel
+@{
+    ViewData["Title"] = "Operation Template Management";
+    ViewData["Module"] = "settings-operation-templates";
+}
+
+<div class="module-page"
+     id="operation-templates-page"
+     data-default-created-by="@Model.DefaultCreatedBy">
+    <header class="module-page-header">
+        <h1>Operation Template Management</h1>
+        <p class="module-subtitle">Settings · Cycle time operation templates</p>
+    </header>
+    <div class="module-toolbar module-toolbar-actions">
+        <button type="button" id="btn-add-operation-template">Add Operation Template</button>
+    </div>
+    <div class="module-page-body">
+        <div class="table-wrap">
+            <table class="data-table" id="operation-templates-table">
+                <thead>
+                    <tr>
+                        <th>No.</th>
+                        <th>Template Name</th>
+                        <th>Operation Type</th>
+                        <th>Default Params</th>
+                        <th>Created By</th>
+                        <th>Created Date</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <p class="empty-state" id="operation-templates-empty" hidden>No operation templates yet.</p>
+    </div>
+</div>
+
+<div id="operation-template-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="operation-template-modal-title">
+    <div class="modal-backdrop" data-modal-close></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="operation-template-modal-title">Edit Operation Template</h3>
+            <button type="button" class="modal-close" data-modal-close aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="operation-template-modal-error" class="modal-error" role="alert"></div>
+            <form id="operation-template-form">
+                <input type="hidden" id="operation-template-id" />
+                <div class="form-group">
+                    <label for="operation-template-name">Template Name</label>
+                    <input type="text" id="operation-template-name" class="form-control" required placeholder="e.g. Drill Ø10" />
+                </div>
+                <div class="form-group">
+                    <label for="operation-template-type">Operation Type</label>
+                    <select id="operation-template-type" class="form-control" required></select>
+                </div>
+                <div id="operation-template-params" class="operation-template-params"></div>
+                <div class="form-group">
+                    <label for="operation-template-created-by">Created By</label>
+                    <input type="text" id="operation-template-created-by" class="form-control" required />
+                </div>
+                <div class="form-group">
+                    <label for="operation-template-created-date">Created Date</label>
+                    <input type="date" id="operation-template-created-date" class="form-control" required />
+                </div>
+                <div class="form-group" id="operation-template-status-group">
+                    <label for="operation-template-status">Status</label>
+                    <select id="operation-template-status" class="form-control" required>
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script type="module" src="~/js/settings-operation-templates.js"></script>
+}

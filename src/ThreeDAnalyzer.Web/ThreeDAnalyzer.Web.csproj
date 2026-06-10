@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <Content Update="Data\material-specs-master.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Update="Data\operation-templates-master.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

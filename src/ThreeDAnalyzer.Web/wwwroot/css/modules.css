@@ -560,6 +560,259 @@ body.module-analyzer #app {
   letter-spacing: 0.5px;
 }
 
+.cycle-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cycle-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cycle-add-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cycle-ops-table {
+  min-width: 1200px;
+}
+
+.cycle-ops-table th {
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.cycle-ops-table .col-no {
+  width: 40px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+.cycle-ops-table .col-name {
+  min-width: 140px;
+}
+
+.cycle-ops-table .col-type {
+  min-width: 130px;
+}
+
+.cycle-ops-table .col-actions {
+  width: 90px;
+  white-space: nowrap;
+}
+
+.cycle-ops-table .cell-input-sm {
+  width: 72px;
+  min-width: 60px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.cycle-ops-table .cell-input-name {
+  width: 100%;
+  min-width: 120px;
+}
+
+.cycle-ops-table .cell-select-sm {
+  width: 100%;
+  min-width: 120px;
+  padding: 4px 6px;
+  font-size: 11px;
+}
+
+.cycle-ops-table .cell-na {
+  background: var(--color-border-light);
+  color: var(--color-text-muted);
+  text-align: center;
+  font-size: 11px;
+}
+
+.cycle-ops-table .cell-readonly {
+  font-family: var(--font-family);
+  font-size: 12px;
+  color: var(--color-text);
+}
+
+.cycle-ops-table .cell-ct {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.cycle-operations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.cycle-op-card {
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.cycle-op-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--color-primary-light);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.cycle-op-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.cycle-op-order {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-primary);
+  letter-spacing: 0.5px;
+}
+
+.cycle-op-name {
+  min-width: 180px;
+  font-weight: 600;
+}
+
+.cycle-op-type {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  padding: 2px 8px;
+  background: var(--color-bg);
+  border-radius: 4px;
+}
+
+.cycle-op-ct {
+  font-weight: 700;
+  color: var(--color-primary);
+  font-family: var(--font-family);
+}
+
+.cycle-op-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.btn-icon:hover {
+  background: var(--color-row-hover);
+}
+
+.btn-icon-danger:hover {
+  color: var(--color-error, #b91c1c);
+  border-color: #fecaca;
+}
+
+.cycle-op-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  padding: 12px 14px;
+}
+
+.op-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 120px;
+}
+
+.op-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.cycle-other-panel {
+  margin-top: 20px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--color-surface);
+}
+
+.cycle-other-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.cycle-other-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-top: 12px;
+}
+
+.cycle-totals {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  background: var(--color-bg);
+}
+
+.cycle-totals-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+.cycle-totals-overall {
+  border-top: 1px solid var(--color-border-light);
+  margin-top: 6px;
+  padding-top: 10px;
+  font-size: 15px;
+}
+
+.modal-content-sm {
+  max-width: 420px;
+}
+
+.operation-template-params .params-heading {
+  margin: 12px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.params-summary {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  max-width: 220px;
+}
+
 /* Analyzer inside shell */
 body.module-analyzer #app-main {
   display: flex;

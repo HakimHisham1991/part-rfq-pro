@@ -25,6 +25,40 @@ Version numbers use **MAJOR.MINOR.PATCH**:
 
 ---
 
+## [1.4.2] - 2026-06-10
+
+### Changed
+
+- **Cycle Time editor**: operations shown in a fixed-column table (No., Name, Type, Ø, ap, ae, F, MRR, V, Area to scan, Profile Length, No. of Holes, CT); columns not used by an operation type are greyed out (N/A).
+- Operation parameters unified to table column keys (`ae`, `ap` for drill depth, etc.) with legacy `stepover`/`depth` migration on load.
+
+---
+
+## [1.4.1] - 2026-06-10
+
+### Fixed
+
+- **Startup crash on operation template seed**: escape `{}` in raw SQL `DEFAULT` clause so EF Core `ExecuteSqlRaw` does not treat it as a format placeholder.
+
+---
+
+## [1.4.0] - 2026-06-10
+
+### Added
+
+- **Operation-based cycle time estimation**: each machining step is a named operation with its own parameters and cycle time; total CT is the sum of all operations plus other time factors.
+- **Operation types**: Face Milling, Roughing, Pocketing, Profiling, Slotting, Drilling, Reaming, Tapping, Ballnose Finishing, Engraving, and Manual Operation.
+- **Operation Template Management** (Settings): CRUD for reusable templates with default parameters; 13 seed templates (face mill, roughing, drill, ballnose, etc.).
+- Cycle Time editor quick-add buttons: **+ Add Drill**, **+ Add Ballnose**, **+ Add Face Mill**, **+ Add Roughing**, and generic **+ Add Operation**.
+- Automatic migration of legacy volume-based cycle time data (v1) to the new operation-based format (v2) on load.
+
+### Changed
+
+- Cycle Time editor UI replaced flat volume-split spreadsheet with an ordered operations list, per-operation parameter fields, and collapsible other-time factors.
+- Cycle time API payload extended to support v2 (`operations`, `other`, `computed`) while retaining v1 compatibility.
+
+---
+
 ## [1.3.2] - 2026-05-29
 
 ### Fixed
