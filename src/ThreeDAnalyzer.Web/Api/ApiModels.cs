@@ -46,6 +46,7 @@ public record CycleTimePayload(
     System.Text.Json.JsonElement? Operations,
     System.Text.Json.JsonElement? Other,
     System.Text.Json.JsonElement? RawMaterial,
+    System.Text.Json.JsonElement? FinishPart,
     System.Text.Json.JsonElement? Computed,
     int? Version,
     string? UpdatedAt);

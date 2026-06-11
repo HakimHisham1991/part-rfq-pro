@@ -470,6 +470,58 @@ body.module-analyzer #app {
   font-weight: 600;
 }
 
+.cycle-material-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.cycle-material-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.cycle-material-title {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 12px;
+  margin: 0;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.cycle-material-table th,
+.cycle-material-table td {
+  white-space: nowrap;
+}
+
+.cycle-material-table .cell-readonly {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.cycle-material-table .cell-input {
+  width: 100%;
+  min-width: 80px;
+}
+
+.cycle-material-table .cell-select-sm {
+  width: 100%;
+  min-width: 140px;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .cycle-material-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .cycle-table-wrap {
   overflow: auto;
   max-height: calc(100vh - 200px);

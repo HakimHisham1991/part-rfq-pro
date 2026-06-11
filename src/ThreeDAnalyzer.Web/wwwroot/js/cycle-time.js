@@ -1,10 +1,19 @@
 import {
+  getMaterialSpecs,
   getOperationTemplates,
   getPart,
   getPartCycleData,
   savePartCycleData
 } from './data-store.js';
-import { normalizeCycleData, newOpId } from './cycle-time-migration.js';
+import {
+  buildRawMaterialFromPart,
+  calcFinishPartValues,
+  findMaterialSpecById,
+  lookupMaterialSpec,
+  materialDisplayLabel,
+  normalizeCycleData,
+  newOpId
+} from './cycle-time-migration.js';
 import {
   OPERATION_TYPES,
   TABLE_DATA_COLUMNS,
@@ -28,7 +37,10 @@ let state = {
   part: null,
   data: null,
   templates: [],
-  computed: null
+  materialSpecs: [],
+  computed: null,
+  rawMaterial: null,
+  finishComputed: null
 };
 
 function formatNum(n, digits = 2) {
@@ -44,9 +56,50 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
+function activeMaterialSpecs() {
+  return [...state.materialSpecs]
+    .filter((s) => String(s.status).toLowerCase() === 'active')
+    .sort((a, b) => String(a.specification).localeCompare(String(b.specification)));
+}
+
+function getSelectedMaterialSpecRow() {
+  return findMaterialSpecById(state.materialSpecs, state.data?.rawMaterial?.materialSpecId);
+}
+
+function resolveInitialMaterialSpec() {
+  if (!state.data?.rawMaterial) return;
+  const raw = state.data.rawMaterial;
+  if (raw.materialSpecId != null) {
+    if (findMaterialSpecById(state.materialSpecs, raw.materialSpecId)) return;
+    raw.materialSpecId = null;
+  }
+  const matched = lookupMaterialSpec(state.materialSpecs, state.part?.materialSpec);
+  if (matched) raw.materialSpecId = matched.id;
+}
+
+function syncRawMaterialFromPart() {
+  if (!state.part) return;
+  const specRow = getSelectedMaterialSpecRow();
+  state.rawMaterial = buildRawMaterialFromPart(state.part, specRow);
+  if (state.data) {
+    const raw = state.data.rawMaterial;
+    raw.length = state.rawMaterial.length;
+    raw.width = state.rawMaterial.width;
+    raw.thickness = state.rawMaterial.thickness;
+    raw.material = state.rawMaterial.material;
+    raw.density = state.rawMaterial.density;
+  }
+}
+
+function recalcMaterialSize() {
+  syncRawMaterialFromPart();
+  state.finishComputed = calcFinishPartValues(state.rawMaterial, state.data?.finishPart);
+}
+
 function recalcAll() {
   state.data.operations = recalcOperations(state.data.operations);
   state.computed = calcTotals(state.data.operations, state.data.other);
+  recalcMaterialSize();
 }
 
 function refreshSummary() {
@@ -166,6 +219,103 @@ function updateOther(key, raw) {
   persist().catch(console.error);
 }
 
+function updateFinishComputedCells() {
+  const fin = state.finishComputed;
+  const rows = document.getElementById('cycle-finish-part-tbody')?.querySelectorAll('tr');
+  if (!fin || !rows || rows.length < 4) return;
+  rows[2].cells[1].innerHTML = `<span class="cell-readonly">${escapeHtml(formatNum(fin.vOffcutUnmachined))}</span>`;
+  rows[3].cells[1].innerHTML = `<span class="cell-readonly">${escapeHtml(formatNum(fin.vToMachine))}</span>`;
+}
+
+function updateFinishPart(key, raw) {
+  if (!state.data?.finishPart) return;
+  const n = parseFloat(String(raw).replace(/,/g, ''));
+  if (key === 'offcutPct') {
+    state.data.finishPart.offcutPct = Number.isFinite(n) ? n / 100 : 0;
+  } else {
+    state.data.finishPart[key] = Number.isFinite(n) ? n : 0;
+  }
+  recalcMaterialSize();
+  updateFinishComputedCells();
+  persist().catch(console.error);
+}
+
+function updateRawMaterialComputedCells() {
+  const raw = state.rawMaterial;
+  const rows = document.getElementById('cycle-raw-material-tbody')?.querySelectorAll('tr');
+  if (!raw || !rows || rows.length < 7) return;
+  rows[5].cells[1].innerHTML = `<span class="cell-readonly">${escapeHtml(formatNum(raw.density, 0))}</span>`;
+  rows[6].cells[1].innerHTML = `<span class="cell-readonly">${escapeHtml(formatNum(raw.weight, 8))}</span>`;
+}
+
+function updateRawMaterialMaterial(specIdRaw) {
+  if (!state.data?.rawMaterial) return;
+  const specId = specIdRaw ? Number(specIdRaw) : null;
+  state.data.rawMaterial.materialSpecId = specId;
+  syncRawMaterialFromPart();
+  updateRawMaterialComputedCells();
+  updateFinishComputedCells();
+  persist().catch(console.error);
+}
+
+function materialRow(label, value, unit, { editable = false, field = null, digits = 2 } = {}) {
+  const dataCell = editable
+    ? `<input type="number" class="cell-input" step="any" data-finish="${field}" value="${value}" />`
+    : `<span class="cell-readonly">${escapeHtml(value)}</span>`;
+  return `<tr>
+    <td>${escapeHtml(label)}</td>
+    <td>${dataCell}</td>
+    <td>${escapeHtml(unit)}</td>
+  </tr>`;
+}
+
+function materialSelectRow(label, specs, selectedId, unit) {
+  const opts = specs
+    .map((s) => {
+      const optLabel = materialDisplayLabel(null, s);
+      const selected = s.id === selectedId ? ' selected' : '';
+      return `<option value="${s.id}"${selected}>${escapeHtml(optLabel)}</option>`;
+    })
+    .join('');
+  return `<tr>
+    <td>${escapeHtml(label)}</td>
+    <td><select class="cell-input cell-select-sm" data-raw-material="materialSpecId">
+      <option value="">— Select —</option>${opts}</select></td>
+    <td>${escapeHtml(unit)}</td>
+  </tr>`;
+}
+
+function renderMaterialSize() {
+  const rawBody = document.getElementById('cycle-raw-material-tbody');
+  const finishBody = document.getElementById('cycle-finish-part-tbody');
+  if (!rawBody || !finishBody || !state.rawMaterial || !state.finishComputed) return;
+
+  const raw = state.rawMaterial;
+  const selectedId = state.data?.rawMaterial?.materialSpecId ?? null;
+  rawBody.innerHTML = [
+    materialRow('Lraw', formatNum(raw.length), 'mm'),
+    materialRow('Wraw', formatNum(raw.width), 'mm'),
+    materialRow('Traw', formatNum(raw.thickness), 'mm'),
+    materialRow('Vraw', formatNum(raw.vraw), 'mm3'),
+    materialSelectRow('Material', activeMaterialSpecs(), selectedId, '-'),
+    materialRow('Density', formatNum(raw.density, 0), 'kg/m3'),
+    materialRow('Weight', formatNum(raw.weight, 8), 'kg')
+  ].join('');
+
+  const fin = state.finishComputed;
+  const offcutDisplay = formatNum(fin.offcutPct * 100, 0);
+  finishBody.innerHTML = [
+    materialRow('Vfin', fin.vfin, 'mm3', { editable: true, field: 'vfin', digits: 2 }),
+    materialRow('Percent Offcut Unmachined', offcutDisplay, '%', {
+      editable: true,
+      field: 'offcutPct',
+      digits: 0
+    }),
+    materialRow('V offcut unmachined', formatNum(fin.vOffcutUnmachined), 'mm3'),
+    materialRow('V to machine', formatNum(fin.vToMachine), 'mm3')
+  ].join('');
+}
+
 function renderCell(op, col) {
   const active = isColumnActive(op.type, col.key);
   if (!active) {
@@ -278,6 +428,7 @@ function renderTotals() {
 
 function render() {
   recalcAll();
+  renderMaterialSize();
   renderOperationsTable();
   renderOtherFields();
   renderTotals();
@@ -405,6 +556,18 @@ function bindEvents() {
     updateOther(input.getAttribute('data-other'), input.value);
   });
 
+  document.getElementById('cycle-material-size')?.addEventListener('input', (e) => {
+    const input = e.target.closest('[data-finish]');
+    if (!input) return;
+    updateFinishPart(input.getAttribute('data-finish'), input.value);
+  });
+
+  document.getElementById('cycle-material-size')?.addEventListener('change', (e) => {
+    const select = e.target.closest('[data-raw-material]');
+    if (!select) return;
+    updateRawMaterialMaterial(select.value);
+  });
+
   document.getElementById('btn-save-cycle')?.addEventListener('click', () => {
     const saveBtn = document.getElementById('btn-save-cycle');
     persist()
@@ -431,6 +594,7 @@ async function persist() {
     operations: state.data.operations,
     other: state.data.other,
     rawMaterial: state.data.rawMaterial,
+    finishPart: state.data.finishPart,
     computed: state.computed,
     updatedAt: new Date().toISOString()
   });
@@ -455,13 +619,15 @@ async function init() {
   let part;
   let saved;
   let templates;
+  let materialSpecs;
   try {
-    [part, saved, templates] = await Promise.all([
+    [part, saved, templates, materialSpecs] = await Promise.all([
       getPart(projectId, partId),
       getPart(projectId, partId).then((p) =>
         p ? getPartCycleData(projectId, partId) : null
       ),
-      getOperationTemplates()
+      getOperationTemplates(),
+      getMaterialSpecs()
     ]);
   } catch (err) {
     if (subtitle) subtitle.textContent = 'Error loading part.';
@@ -483,7 +649,9 @@ async function init() {
   state.partId = partId;
   state.part = part;
   state.templates = templates ?? [];
+  state.materialSpecs = materialSpecs ?? [];
   state.data = normalizeCycleData(saved, part);
+  resolveInitialMaterialSpec();
 
   if (subtitle) {
     subtitle.textContent = `Project ID ${projectId} · ${part.partDescription}`;

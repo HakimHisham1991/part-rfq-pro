@@ -78,6 +78,7 @@ export async function savePartCycleData(projectId, partId, cycleTimeData) {
           operations: cycleTimeData.operations,
           other: cycleTimeData.other,
           rawMaterial: cycleTimeData.rawMaterial,
+          finishPart: cycleTimeData.finishPart,
           computed: cycleTimeData.computed,
           updatedAt: cycleTimeData.updatedAt
         }

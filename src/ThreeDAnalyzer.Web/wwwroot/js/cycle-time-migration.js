@@ -6,6 +6,67 @@ function n(v) {
   return Number.isFinite(x) ? x : 0;
 }
 
+/** Match part material spec to a master material specification row. */
+export function lookupMaterialSpec(specs, partSpec) {
+  if (!partSpec || !specs?.length) return null;
+  const norm = String(partSpec).trim().toLowerCase();
+  return (
+    specs.find((s) => {
+      const spec = String(s.specification ?? '').trim().toLowerCase();
+      const name = String(s.generalName ?? '').trim().toLowerCase();
+      return spec === norm || name === norm || norm.includes(spec) || spec.includes(norm);
+    }) ?? null
+  );
+}
+
+export function findMaterialSpecById(specs, id) {
+  if (id == null || !specs?.length) return null;
+  return specs.find((s) => s.id === id) ?? null;
+}
+
+export function materialDisplayLabel(part, specRow) {
+  const partSpec = String(part?.materialSpec ?? '').trim();
+  if (specRow) {
+    const generalName = String(specRow.generalName ?? '').trim();
+    const specification = String(specRow.specification ?? '').trim();
+    if (generalName && specification) return `${generalName} (${specification})`;
+    return generalName || specification || partSpec || '—';
+  }
+  return partSpec || '—';
+}
+
+export function buildRawMaterialFromPart(part, specRow) {
+  const length = n(part?.materialLength);
+  const width = n(part?.materialWidth);
+  const thickness = n(part?.materialThickness);
+  const vraw = length * width * thickness;
+  const density = n(specRow?.density);
+  const weight = density > 0 ? (vraw * density) / 1e9 : 0;
+  return {
+    length,
+    width,
+    thickness,
+    vraw,
+    materialSpecId: specRow?.id ?? null,
+    material: materialDisplayLabel(part, specRow),
+    density,
+    weight
+  };
+}
+
+export function calcFinishPartValues(raw, finishPart) {
+  const vraw = n(raw?.vraw);
+  const vfin = n(finishPart?.vfin);
+  const offcutPct = n(finishPart?.offcutPct);
+  const vOffcutUnmachined = offcutPct * vraw;
+  const vToMachine = vraw - vOffcutUnmachined - vfin;
+  return { vfin, offcutPct, vOffcutUnmachined, vToMachine };
+}
+
+function defaultFinishPart() {
+  return { vfin: 0, offcutPct: 0.3 };
+}
+
 function newOpId() {
   return `op-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -116,8 +177,13 @@ export function migrateV1ToV2(values, part) {
       length: n(v['raw.Lraw']) || part?.materialLength || 2032,
       width: n(v['raw.Wraw']) || part?.materialWidth || 266.7,
       thickness: n(v['raw.Traw']) || part?.materialThickness || 50.8,
+      materialSpecId: null,
       material: String(v['raw.Material'] ?? ''),
       density: n(v['raw.Density'])
+    },
+    finishPart: {
+      vfin: n(v['finish.Vfin']),
+      offcutPct: n(v['finish.OffcutPct']) || 0.3
     }
   };
 }
@@ -137,9 +203,11 @@ export function defaultV2(part) {
       length: part?.materialLength ?? 2032,
       width: part?.materialWidth ?? 266.7,
       thickness: part?.materialThickness ?? 50.8,
+      materialSpecId: null,
       material: '',
       density: 0
-    }
+    },
+    finishPart: defaultFinishPart()
   };
 }
 
@@ -160,7 +228,15 @@ export function normalizeCycleData(saved, part) {
         toolChanges: n(saved.other?.toolChanges),
         toolChangeSec: n(saved.other?.toolChangeSec ?? 15)
       },
-      rawMaterial: saved.rawMaterial ?? defaultV2(part).rawMaterial
+      rawMaterial: {
+        ...(saved.rawMaterial ?? defaultV2(part).rawMaterial),
+        materialSpecId: saved.rawMaterial?.materialSpecId ?? null
+      },
+      finishPart: {
+        vfin: n(saved.finishPart?.vfin),
+        offcutPct:
+          saved.finishPart?.offcutPct != null ? n(saved.finishPart.offcutPct) : 0.3
+      }
     };
   }
 

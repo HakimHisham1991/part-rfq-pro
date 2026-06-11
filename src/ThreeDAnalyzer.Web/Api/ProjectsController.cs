@@ -69,6 +69,7 @@ public class ProjectsController(AppDbContext db) : ControllerBase
                 operations = payload.Operations,
                 other = payload.Other,
                 rawMaterial = payload.RawMaterial,
+                finishPart = payload.FinishPart,
                 computed = payload.Computed,
                 updatedAt
             };
