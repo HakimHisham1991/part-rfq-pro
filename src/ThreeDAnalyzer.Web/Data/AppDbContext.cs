@@ -10,6 +10,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<User> Users => Set<User>();
     public DbSet<MaterialSpec> MaterialSpecs => Set<MaterialSpec>();
     public DbSet<OperationTemplate> OperationTemplates => Set<OperationTemplate>();
+    public DbSet<MachineProfile> MachineProfiles => Set<MachineProfile>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -56,6 +57,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(x => x.Name).IsUnique();
             e.Property(x => x.Name).HasMaxLength(120);
             e.Property(x => x.OperationType).HasMaxLength(80);
+            e.Property(x => x.CreatedBy).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(20);
+        });
+
+        modelBuilder.Entity<MachineProfile>(e =>
+        {
+            e.HasIndex(x => x.Name).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(120);
             e.Property(x => x.CreatedBy).HasMaxLength(200);
             e.Property(x => x.Status).HasMaxLength(20);
         });

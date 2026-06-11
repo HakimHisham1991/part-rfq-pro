@@ -24,6 +24,43 @@ export function findMaterialSpecById(specs, id) {
   return specs.find((s) => s.id === id) ?? null;
 }
 
+export function findMachineProfileById(profiles, id) {
+  if (id == null || !profiles?.length) return null;
+  return profiles.find((m) => m.id === id) ?? null;
+}
+
+export function lookupMachineProfile(profiles, machineName) {
+  if (!machineName || !profiles?.length) return null;
+  const norm = String(machineName).trim().toLowerCase();
+  return (
+    profiles.find((m) => String(m.name ?? '').trim().toLowerCase() === norm) ?? null
+  );
+}
+
+export function applyMachineProfileToOther(other, profile) {
+  if (!other || !profile) return other;
+  other.machineProfileId = profile.id;
+  other.machine = String(profile.name ?? '');
+  other.rapidRate = n(profile.rapidRateMmpm);
+  other.spindlePower = n(profile.spindlePowerKw);
+  other.accel = n(profile.accelDecelFactor) || 1;
+  other.toolChangeSec = n(profile.toolChangeTimeSec);
+  return other;
+}
+
+function defaultOther() {
+  return {
+    loadUnload: 15,
+    machineProfileId: null,
+    machine: 'Hartford Aero-426',
+    rapidRate: 30000,
+    spindlePower: 15,
+    accel: 1.3,
+    toolChanges: 0,
+    toolChangeSec: 15
+  };
+}
+
 export function materialDisplayLabel(part, specRow) {
   const partSpec = String(part?.materialSpec ?? '').trim();
   if (specRow) {
@@ -35,11 +72,17 @@ export function materialDisplayLabel(part, specRow) {
   return partSpec || '—';
 }
 
-export function buildRawMaterialFromPart(part, specRow) {
-  const length = n(part?.materialLength);
-  const width = n(part?.materialWidth);
-  const thickness = n(part?.materialThickness);
-  const vraw = length * width * thickness;
+function defaultStockOffsets() {
+  return { px: 0, nx: 0, py: 0, ny: 0, pz: 0, nz: 0 };
+}
+
+export function buildRawMaterialFromPart(part, specRow, savedRaw = null) {
+  const length = savedRaw?.length != null ? n(savedRaw.length) : n(part?.materialLength);
+  const width = savedRaw?.width != null ? n(savedRaw.width) : n(part?.materialWidth);
+  const thickness =
+    savedRaw?.thickness != null ? n(savedRaw.thickness) : n(part?.materialThickness);
+  const vraw =
+    savedRaw?.vraw != null && savedRaw.vraw > 0 ? n(savedRaw.vraw) : length * width * thickness;
   const density = n(specRow?.density);
   const weight = density > 0 ? (vraw * density) / 1e9 : 0;
   return {
@@ -65,6 +108,31 @@ export function calcFinishPartValues(raw, finishPart) {
 
 function defaultFinishPart() {
   return { vfin: 0, offcutPct: 0.3 };
+}
+
+function defaultModel3d() {
+  return {
+    fileName: '',
+    stockOffsets: defaultStockOffsets(),
+    analysis: null
+  };
+}
+
+export function normalizeModel3d(saved) {
+  if (!saved || typeof saved !== 'object') return defaultModel3d();
+  const offsets = saved.stockOffsets ?? {};
+  return {
+    fileName: String(saved.fileName ?? ''),
+    stockOffsets: {
+      px: n(offsets.px),
+      nx: n(offsets.nx),
+      py: n(offsets.py),
+      ny: n(offsets.ny),
+      pz: n(offsets.pz),
+      nz: n(offsets.nz)
+    },
+    analysis: saved.analysis ?? null
+  };
 }
 
 function newOpId() {
@@ -168,7 +236,10 @@ export function migrateV1ToV2(values, part) {
     operations,
     other: {
       loadUnload: n(v['other.LoadUnload']),
+      machineProfileId: null,
       machine: String(v['other.Machine'] ?? 'Hartford Aero-426'),
+      rapidRate: 0,
+      spindlePower: 0,
       accel: n(v['other.Accel']) || 1.3,
       toolChanges: n(v['other.ToolChanges']),
       toolChangeSec: n(v['other.ToolChangeSec'])
@@ -177,10 +248,14 @@ export function migrateV1ToV2(values, part) {
       length: n(v['raw.Lraw']) || part?.materialLength || 2032,
       width: n(v['raw.Wraw']) || part?.materialWidth || 266.7,
       thickness: n(v['raw.Traw']) || part?.materialThickness || 50.8,
+      vraw:
+        n(v['raw.Lraw']) * n(v['raw.Wraw']) * n(v['raw.Traw']) ||
+        (part?.materialLength ?? 2032) * (part?.materialWidth ?? 266.7) * (part?.materialThickness ?? 50.8),
       materialSpecId: null,
       material: String(v['raw.Material'] ?? ''),
       density: n(v['raw.Density'])
     },
+    model3d: defaultModel3d(),
     finishPart: {
       vfin: n(v['finish.Vfin']),
       offcutPct: n(v['finish.OffcutPct']) || 0.3
@@ -192,22 +267,21 @@ export function defaultV2(part) {
   return {
     version: 2,
     operations: [],
-    other: {
-      loadUnload: 15,
-      machine: 'Hartford Aero-426',
-      accel: 1.3,
-      toolChanges: 0,
-      toolChangeSec: 15
-    },
+    other: defaultOther(),
     rawMaterial: {
       length: part?.materialLength ?? 2032,
       width: part?.materialWidth ?? 266.7,
       thickness: part?.materialThickness ?? 50.8,
+      vraw:
+        (part?.materialLength ?? 2032) *
+        (part?.materialWidth ?? 266.7) *
+        (part?.materialThickness ?? 50.8),
       materialSpecId: null,
       material: '',
       density: 0
     },
-    finishPart: defaultFinishPart()
+    finishPart: defaultFinishPart(),
+    model3d: defaultModel3d()
   };
 }
 
@@ -222,21 +296,27 @@ export function normalizeCycleData(saved, part) {
         ctMin: calcOperationCt({ type: op.type, params: mergeParams(op.type, op.params) })
       })),
       other: {
+        ...defaultOther(),
         loadUnload: n(saved.other?.loadUnload ?? 15),
+        machineProfileId: saved.other?.machineProfileId ?? null,
         machine: String(saved.other?.machine ?? 'Hartford Aero-426'),
+        rapidRate: n(saved.other?.rapidRate),
+        spindlePower: n(saved.other?.spindlePower),
         accel: n(saved.other?.accel) || 1.3,
         toolChanges: n(saved.other?.toolChanges),
         toolChangeSec: n(saved.other?.toolChangeSec ?? 15)
       },
       rawMaterial: {
         ...(saved.rawMaterial ?? defaultV2(part).rawMaterial),
-        materialSpecId: saved.rawMaterial?.materialSpecId ?? null
+        materialSpecId: saved.rawMaterial?.materialSpecId ?? null,
+        vraw: n(saved.rawMaterial?.vraw)
       },
       finishPart: {
         vfin: n(saved.finishPart?.vfin),
         offcutPct:
           saved.finishPart?.offcutPct != null ? n(saved.finishPart.offcutPct) : 0.3
-      }
+      },
+      model3d: normalizeModel3d(saved.model3d)
     };
   }
 

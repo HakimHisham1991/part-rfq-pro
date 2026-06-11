@@ -50,6 +50,18 @@ public static class EntityMappers
             m.CreatedDate.ToString("yyyy-MM-dd"),
             m.Status);
 
+    public static MachineProfileDto ToDto(this MachineProfile m) =>
+        new(
+            m.Id,
+            m.Name,
+            m.RapidRateMmpm,
+            m.SpindlePowerKw,
+            m.AccelDecelFactor,
+            m.ToolChangeTimeSec,
+            m.CreatedBy,
+            m.CreatedDate.ToString("yyyy-MM-dd"),
+            m.Status);
+
     public static OperationTemplateDto ToDto(this OperationTemplate t)
     {
         object parameters = new { };

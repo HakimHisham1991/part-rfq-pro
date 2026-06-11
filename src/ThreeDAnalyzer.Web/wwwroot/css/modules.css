@@ -443,18 +443,72 @@ body.module-analyzer #app {
 
 /* ── Cycle time editor ───────────────────────────────────────────────────── */
 
+.cycle-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
 .cycle-summary {
   display: grid;
   grid-template-columns: auto 1fr auto auto;
   gap: 8px 16px;
   align-items: center;
+  flex: 1 1 320px;
   max-width: 520px;
-  margin-bottom: 16px;
   padding: 12px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 4px;
   box-shadow: var(--shadow-sm);
+}
+
+.cycle-3d-model-panel {
+  flex: 1 1 320px;
+  max-width: 480px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.cycle-3d-model-title {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 12px;
+  margin: 0;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.cycle-3d-model-table th,
+.cycle-3d-model-table td {
+  white-space: nowrap;
+}
+
+.cycle-3d-model-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cycle-3d-model-actions .btn-xs {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.cycle-3d-model-table a.link-primary {
+  color: var(--color-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.cycle-3d-model-table a.link-primary:hover {
+  text-decoration: underline;
 }
 
 .cycle-summary label {
@@ -485,13 +539,33 @@ body.module-analyzer #app {
   overflow: hidden;
 }
 
+.cycle-material-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.cycle-material-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.cycle-material-panel-header .btn-xs {
+  padding: 4px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .cycle-material-title {
   font-size: 13px;
   font-weight: 600;
-  padding: 10px 12px;
   margin: 0;
-  background: var(--color-bg);
-  border-bottom: 1px solid var(--color-border);
   color: var(--color-text);
 }
 

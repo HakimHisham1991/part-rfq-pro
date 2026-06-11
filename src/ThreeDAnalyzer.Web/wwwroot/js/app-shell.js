@@ -39,7 +39,10 @@
   const settingsGroup = document.getElementById('nav-group-settings');
   const settingsToggle = document.getElementById('settings-nav-toggle');
   const isSettingsModule =
-    module === 'settings-users' || module === 'settings-material-specs';
+    module === 'settings-users' ||
+    module === 'settings-material-specs' ||
+    module === 'settings-operation-templates' ||
+    module === 'settings-machine-profiles';
 
   if (settingsGroup && settingsToggle) {
     let expanded = isSettingsModule;
@@ -77,5 +80,10 @@
   const cycleNav = document.getElementById('nav-cycle-time');
   if (cycleNav && projectId && partId) {
     cycleNav.href = `/CycleTime/Edit?projectId=${encodeURIComponent(projectId)}&partId=${encodeURIComponent(partId)}`;
+  }
+
+  const analyzerNav = document.querySelector('.nav-link[data-module="analyzer"]');
+  if (analyzerNav && projectId && partId) {
+    analyzerNav.href = `/Analyzer?projectId=${encodeURIComponent(projectId)}&partId=${encodeURIComponent(partId)}`;
   }
 })();

@@ -13,6 +13,7 @@ public static class DbSeeder
         await SeedUsersAsync(db);
         await MaterialSpecMasterSeed.EnsureSeededAsync(db);
         await OperationTemplateMasterSeed.EnsureSeededAsync(db);
+        await MachineProfileMasterSeed.EnsureSeededAsync(db);
 
         if (await db.Projects.AnyAsync()) return;
 

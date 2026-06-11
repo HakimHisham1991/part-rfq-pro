@@ -79,6 +79,7 @@ export async function savePartCycleData(projectId, partId, cycleTimeData) {
           other: cycleTimeData.other,
           rawMaterial: cycleTimeData.rawMaterial,
           finishPart: cycleTimeData.finishPart,
+          model3d: cycleTimeData.model3d,
           computed: cycleTimeData.computed,
           updatedAt: cycleTimeData.updatedAt
         }
@@ -147,4 +148,20 @@ export async function updateOperationTemplate(id, payload) {
 
 export async function deleteOperationTemplate(id) {
   await apiDelete(`/api/operation-templates/${encodeURIComponent(id)}`);
+}
+
+export async function getMachineProfiles() {
+  return apiGet('/api/machine-profiles');
+}
+
+export async function createMachineProfile(payload) {
+  return apiPost('/api/machine-profiles', payload);
+}
+
+export async function updateMachineProfile(id, payload) {
+  await apiPut(`/api/machine-profiles/${encodeURIComponent(id)}`, payload);
+}
+
+export async function deleteMachineProfile(id) {
+  await apiDelete(`/api/machine-profiles/${encodeURIComponent(id)}`);
 }

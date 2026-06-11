@@ -25,6 +25,36 @@ Version numbers use **MAJOR.MINOR.PATCH**:
 
 ---
 
+## [1.6.0] - 2026-06-11
+
+### Added
+
+- **Settings — Machine Profiles:** CRUD page for machine profiles (rapid rate, spindle power, accel/decel factor, tool change time) with seeded examples Hartford Aero-426, Mazak VRX i500, and DMU65.
+- **Edit Cycle Time — Other Time Factors:** Machine is now a dropdown loaded from Settings; selecting a profile auto-fills rapid rate, spindle power, accel/decel factor, and tool change time used in cycle-time calculations.
+
+---
+
+## [1.5.1] - 2026-06-11
+
+### Added
+
+- **Edit Cycle Time — Raw Material:** **RETRIEVE FROM RFQ** button resets Lraw, Wraw, Traw, and Vraw from the part’s Project RFQ material dimensions.
+
+---
+
+## [1.5.0] - 2026-06-11
+
+### Added
+
+- **Edit Cycle Time — 3D Model section:** Part summary row now includes a 3D Model table (CAD filename link plus ADD, DELETE, EDIT). STEP files are stored per part in IndexedDB; EDIT and the filename link open 3D Analyzer with the model loaded automatically.
+- **Edit Cycle Time — RETRIEVE FROM 3D:** Raw Material panel fills Lraw, Wraw, Traw, and Vraw from bounding-box dimensions and raw stock volume; Finish Part panel fills Vfin from part volume. Shows a warning and clears values when no 3D file is linked.
+
+### Changed
+
+- 3D Analyzer persists stock offsets and analysis metrics back to cycle-time data when a part-linked model is loaded or stock is applied.
+
+---
+
 ## [1.4.2] - 2026-06-10
 
 ### Changed

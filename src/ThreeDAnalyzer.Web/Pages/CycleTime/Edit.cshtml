@@ -29,20 +29,50 @@
         </p>
 
         <div id="cycle-editor-wrap" hidden>
-            <div class="cycle-summary">
-                <label>Part Number:</label>
-                <span class="summary-value" id="cycle-part-number">—</span>
-                <span></span>
-                <span></span>
-                <label>Cycle Time to Quote:</label>
-                <span class="summary-value" id="cycle-quote-hr">—</span>
-                <span>hr</span>
-                <span class="col-formula">=CEILING((Total Overall CT),0.5)</span>
+            <div class="cycle-summary-row">
+                <div class="cycle-summary">
+                    <label>Part Number:</label>
+                    <span class="summary-value" id="cycle-part-number">—</span>
+                    <span></span>
+                    <span></span>
+                    <label>Cycle Time to Quote:</label>
+                    <span class="summary-value" id="cycle-quote-hr">—</span>
+                    <span>hr</span>
+                    <span class="col-formula">=CEILING((Total Overall CT),0.5)</span>
+                </div>
+                <div class="cycle-3d-model-panel">
+                    <h2 class="cycle-3d-model-title">3D Model</h2>
+                    <table class="cycle-table cycle-3d-model-table" id="cycle-3d-model-table">
+                        <thead>
+                            <tr>
+                                <th>CAD Model</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cycle-3d-model-tbody">
+                            <tr>
+                                <td id="cycle-3d-model-name">—</td>
+                                <td class="cycle-3d-model-actions">
+                                    <button type="button" class="btn btn-secondary btn-xs" id="btn-3d-model-add">ADD</button>
+                                    <button type="button" class="btn btn-secondary btn-xs" id="btn-3d-model-delete" disabled>DELETE</button>
+                                    <button type="button" class="btn btn-secondary btn-xs" id="btn-3d-model-edit" disabled>EDIT</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <input type="file" id="cycle-3d-model-input" accept=".step,.stp" hidden />
+                </div>
             </div>
 
             <div class="cycle-material-grid" id="cycle-material-size">
                 <div class="cycle-material-panel">
-                    <h2 class="cycle-material-title">Raw Material</h2>
+                    <div class="cycle-material-panel-header">
+                        <h2 class="cycle-material-title">Raw Material</h2>
+                        <div class="cycle-material-panel-actions">
+                            <button type="button" class="btn btn-secondary btn-xs" id="btn-retrieve-raw-rfq">RETRIEVE FROM RFQ</button>
+                            <button type="button" class="btn btn-secondary btn-xs" id="btn-retrieve-raw-3d">RETRIEVE FROM 3D</button>
+                        </div>
+                    </div>
                     <table class="cycle-table cycle-material-table" id="cycle-raw-material-table">
                         <thead>
                             <tr>
@@ -55,7 +85,10 @@
                     </table>
                 </div>
                 <div class="cycle-material-panel">
-                    <h2 class="cycle-material-title">Finish Part</h2>
+                    <div class="cycle-material-panel-header">
+                        <h2 class="cycle-material-title">Finish Part</h2>
+                        <button type="button" class="btn btn-secondary btn-xs" id="btn-retrieve-finish-3d">RETRIEVE FROM 3D</button>
+                    </div>
                     <table class="cycle-table cycle-material-table" id="cycle-finish-part-table">
                         <thead>
                             <tr>

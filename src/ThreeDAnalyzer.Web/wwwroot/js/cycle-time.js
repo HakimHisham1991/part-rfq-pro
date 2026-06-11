@@ -1,4 +1,5 @@
 import {
+  getMachineProfiles,
   getMaterialSpecs,
   getOperationTemplates,
   getPart,
@@ -6,14 +7,23 @@ import {
   savePartCycleData
 } from './data-store.js';
 import {
+  applyMachineProfileToOther,
   buildRawMaterialFromPart,
   calcFinishPartValues,
+  findMachineProfileById,
   findMaterialSpecById,
+  lookupMachineProfile,
   lookupMaterialSpec,
   materialDisplayLabel,
   normalizeCycleData,
   newOpId
 } from './cycle-time-migration.js';
+import {
+  deletePartModelFile,
+  getPartModelFile,
+  savePartModelFile
+} from './part-model-store.js';
+import { analyzeStepFile } from './step-analyzer.js';
 import {
   OPERATION_TYPES,
   TABLE_DATA_COLUMNS,
@@ -38,6 +48,7 @@ let state = {
   data: null,
   templates: [],
   materialSpecs: [],
+  machineProfiles: [],
   computed: null,
   rawMaterial: null,
   finishComputed: null
@@ -77,15 +88,63 @@ function resolveInitialMaterialSpec() {
   if (matched) raw.materialSpecId = matched.id;
 }
 
+function activeMachineProfiles() {
+  return [...state.machineProfiles]
+    .filter((m) => String(m.status).toLowerCase() === 'active')
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+
+function resolveInitialMachineProfile() {
+  if (!state.data?.other) return;
+  const other = state.data.other;
+  if (other.machineProfileId != null) {
+    if (findMachineProfileById(state.machineProfiles, other.machineProfileId)) return;
+    other.machineProfileId = null;
+  }
+  const matched = lookupMachineProfile(state.machineProfiles, other.machine);
+  if (!matched) return;
+  other.machineProfileId = matched.id;
+  if (!other.rapidRate && !other.spindlePower) {
+    applyMachineProfileToOther(other, matched);
+  }
+}
+
+function applySelectedMachineProfile(profileIdRaw) {
+  if (!state.data?.other) return;
+  const profileId = profileIdRaw ? Number(profileIdRaw) : null;
+  if (!profileId) {
+    state.data.other.machineProfileId = null;
+    state.data.other.machine = '';
+    recalcAll();
+    renderOtherFields();
+    renderTotals();
+    refreshSummary();
+    persist().catch(console.error);
+    return;
+  }
+
+  const profile = findMachineProfileById(state.machineProfiles, profileId);
+  if (!profile) return;
+
+  applyMachineProfileToOther(state.data.other, profile);
+  recalcAll();
+  renderOtherFields();
+  renderTotals();
+  refreshSummary();
+  persist().catch(console.error);
+}
+
 function syncRawMaterialFromPart() {
   if (!state.part) return;
   const specRow = getSelectedMaterialSpecRow();
-  state.rawMaterial = buildRawMaterialFromPart(state.part, specRow);
+  const savedRaw = state.data?.rawMaterial;
+  state.rawMaterial = buildRawMaterialFromPart(state.part, specRow, savedRaw);
   if (state.data) {
     const raw = state.data.rawMaterial;
     raw.length = state.rawMaterial.length;
     raw.width = state.rawMaterial.width;
     raw.thickness = state.rawMaterial.thickness;
+    raw.vraw = state.rawMaterial.vraw;
     raw.material = state.rawMaterial.material;
     raw.density = state.rawMaterial.density;
   }
@@ -109,6 +168,173 @@ function refreshSummary() {
   if (quoteEl && state.computed) {
     quoteEl.textContent = formatNum(state.computed.quoteHr);
   }
+}
+
+function analyzerUrl() {
+  if (!state.projectId || !state.partId) return '/Analyzer';
+  return `/Analyzer?projectId=${encodeURIComponent(state.projectId)}&partId=${encodeURIComponent(state.partId)}`;
+}
+
+function hasModel3d() {
+  return Boolean(state.data?.model3d?.fileName);
+}
+
+function renderModel3d() {
+  const nameCell = document.getElementById('cycle-3d-model-name');
+  const deleteBtn = document.getElementById('btn-3d-model-delete');
+  const editBtn = document.getElementById('btn-3d-model-edit');
+  if (!nameCell) return;
+
+  const fileName = state.data?.model3d?.fileName ?? '';
+  if (fileName) {
+    const url = analyzerUrl();
+    nameCell.innerHTML = `<a class="link-primary" href="${url}" data-3d-model-open>${escapeHtml(fileName)}</a>`;
+    if (deleteBtn) deleteBtn.disabled = false;
+    if (editBtn) editBtn.disabled = false;
+  } else {
+    nameCell.textContent = '—';
+    if (deleteBtn) deleteBtn.disabled = true;
+    if (editBtn) editBtn.disabled = true;
+  }
+}
+
+function clearRawMaterialFrom3d() {
+  if (!state.data?.rawMaterial) return;
+  state.data.rawMaterial.length = 0;
+  state.data.rawMaterial.width = 0;
+  state.data.rawMaterial.thickness = 0;
+  state.data.rawMaterial.vraw = 0;
+}
+
+function clearFinishPartFrom3d() {
+  if (!state.data?.finishPart) return;
+  state.data.finishPart.vfin = 0;
+}
+
+async function getStoredModelAnalysis() {
+  const model = state.data?.model3d;
+  if (!model?.fileName) return null;
+  const stored = await getPartModelFile(state.projectId, state.partId);
+  if (!stored?.arrayBuffer?.byteLength) return null;
+  const analysis = await analyzeStepFile(stored.arrayBuffer, model.stockOffsets);
+  model.analysis = analysis;
+  return analysis;
+}
+
+function retrieveRawFromRfq() {
+  if (!state.part || !state.data?.rawMaterial) return;
+  const length = Number(state.part.materialLength) || 0;
+  const width = Number(state.part.materialWidth) || 0;
+  const thickness = Number(state.part.materialThickness) || 0;
+  state.data.rawMaterial.length = length;
+  state.data.rawMaterial.width = width;
+  state.data.rawMaterial.thickness = thickness;
+  state.data.rawMaterial.vraw = length * width * thickness;
+  recalcAll();
+  renderMaterialSize();
+  persist().catch(console.error);
+}
+
+async function retrieveRawFrom3d() {
+  if (!hasModel3d()) {
+    alert('No 3D model available. Add a STEP file in the 3D Model section first.');
+    clearRawMaterialFrom3d();
+    recalcAll();
+    renderMaterialSize();
+    persist().catch(console.error);
+    return;
+  }
+
+  try {
+    const analysis = await getStoredModelAnalysis();
+    if (!analysis) {
+      alert('3D model file not found. Re-add the STEP file in the 3D Model section.');
+      clearRawMaterialFrom3d();
+      recalcAll();
+      renderMaterialSize();
+      persist().catch(console.error);
+      return;
+    }
+
+    state.data.rawMaterial.length = analysis.bboxW;
+    state.data.rawMaterial.width = analysis.bboxH;
+    state.data.rawMaterial.thickness = analysis.bboxD;
+    state.data.rawMaterial.vraw = analysis.stockVolume;
+    recalcAll();
+    renderMaterialSize();
+    await persist();
+  } catch (err) {
+    console.error(err);
+    alert(`Failed to retrieve raw material from 3D model: ${err.message}`);
+    clearRawMaterialFrom3d();
+    recalcAll();
+    renderMaterialSize();
+    persist().catch(console.error);
+  }
+}
+
+async function retrieveFinishFrom3d() {
+  if (!hasModel3d()) {
+    alert('No 3D model available. Add a STEP file in the 3D Model section first.');
+    clearFinishPartFrom3d();
+    recalcAll();
+    renderMaterialSize();
+    persist().catch(console.error);
+    return;
+  }
+
+  try {
+    const analysis = await getStoredModelAnalysis();
+    if (!analysis) {
+      alert('3D model file not found. Re-add the STEP file in the 3D Model section.');
+      clearFinishPartFrom3d();
+      recalcAll();
+      renderMaterialSize();
+      persist().catch(console.error);
+      return;
+    }
+
+    state.data.finishPart.vfin = analysis.partVolume;
+    recalcAll();
+    renderMaterialSize();
+    await persist();
+  } catch (err) {
+    console.error(err);
+    alert(`Failed to retrieve finish part from 3D model: ${err.message}`);
+    clearFinishPartFrom3d();
+    recalcAll();
+    renderMaterialSize();
+    persist().catch(console.error);
+  }
+}
+
+async function addModel3dFile(file) {
+  if (!file || !state.data) return;
+  const buffer = await file.arrayBuffer();
+  await savePartModelFile(state.projectId, state.partId, file.name, buffer);
+  const analysis = await analyzeStepFile(buffer, state.data.model3d.stockOffsets);
+  state.data.model3d.fileName = file.name;
+  state.data.model3d.analysis = analysis;
+  renderModel3d();
+  await persist();
+}
+
+async function deleteModel3d() {
+  if (!state.data?.model3d?.fileName) return;
+  if (!confirm('Delete the 3D model for this part?')) return;
+  await deletePartModelFile(state.projectId, state.partId);
+  state.data.model3d.fileName = '';
+  state.data.model3d.analysis = null;
+  renderModel3d();
+  await persist();
+}
+
+function openModelInAnalyzer() {
+  if (!hasModel3d()) {
+    alert('No 3D model available. Add a STEP file first.');
+    return;
+  }
+  window.location.href = analyzerUrl();
 }
 
 function sortedOperations() {
@@ -207,12 +433,8 @@ function updateOperationParam(id, paramKey, raw) {
 }
 
 function updateOther(key, raw) {
-  if (key === 'machine') {
-    state.data.other.machine = String(raw);
-  } else {
-    const n = parseFloat(String(raw).replace(/,/g, ''));
-    state.data.other[key] = Number.isFinite(n) ? n : 0;
-  }
+  const n = parseFloat(String(raw).replace(/,/g, ''));
+  state.data.other[key] = Number.isFinite(n) ? n : 0;
   recalcAll();
   refreshSummary();
   renderTotals();
@@ -393,6 +615,13 @@ function renderOtherFields() {
   const wrap = document.getElementById('cycle-other-fields');
   if (!wrap || !state.data) return;
   const o = state.data.other;
+  const selectedId = o.machineProfileId ?? '';
+  const machineOptions = activeMachineProfiles()
+    .map((m) => {
+      const selected = m.id === selectedId ? ' selected' : '';
+      return `<option value="${m.id}"${selected}>${escapeHtml(m.name)}</option>`;
+    })
+    .join('');
   wrap.innerHTML = `
     <label class="op-field">
       <span class="op-field-label">Load/Unload (min)</span>
@@ -400,7 +629,16 @@ function renderOtherFields() {
     </label>
     <label class="op-field">
       <span class="op-field-label">Machine</span>
-      <input type="text" class="cell-input" data-other="machine" value="${escapeHtml(o.machine)}" />
+      <select class="cell-input cell-select-sm" data-machine-profile>
+        <option value="">— Select —</option>${machineOptions}</select>
+    </label>
+    <label class="op-field">
+      <span class="op-field-label">Rapid Rate (mmpm)</span>
+      <input type="number" class="cell-input" data-other="rapidRate" step="any" value="${o.rapidRate}" />
+    </label>
+    <label class="op-field">
+      <span class="op-field-label">Spindle Power (kW)</span>
+      <input type="number" class="cell-input" data-other="spindlePower" step="any" value="${o.spindlePower}" />
     </label>
     <label class="op-field">
       <span class="op-field-label">Accel/Decel Factor</span>
@@ -428,6 +666,7 @@ function renderTotals() {
 
 function render() {
   recalcAll();
+  renderModel3d();
   renderMaterialSize();
   renderOperationsTable();
   renderOtherFields();
@@ -551,6 +790,11 @@ function bindEvents() {
   });
 
   document.getElementById('cycle-other-fields')?.addEventListener('change', (e) => {
+    const machineSelect = e.target.closest('[data-machine-profile]');
+    if (machineSelect) {
+      applySelectedMachineProfile(machineSelect.value);
+      return;
+    }
     const input = e.target.closest('[data-other]');
     if (!input) return;
     updateOther(input.getAttribute('data-other'), input.value);
@@ -566,6 +810,46 @@ function bindEvents() {
     const select = e.target.closest('[data-raw-material]');
     if (!select) return;
     updateRawMaterialMaterial(select.value);
+  });
+
+  document.getElementById('btn-3d-model-add')?.addEventListener('click', () => {
+    document.getElementById('cycle-3d-model-input')?.click();
+  });
+
+  document.getElementById('cycle-3d-model-input')?.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    addModel3dFile(file).catch((err) => {
+      console.error(err);
+      alert(`Failed to add 3D model: ${err.message}`);
+    });
+  });
+
+  document.getElementById('btn-3d-model-delete')?.addEventListener('click', () => {
+    deleteModel3d().catch((err) => {
+      console.error(err);
+      alert(`Failed to delete 3D model: ${err.message}`);
+    });
+  });
+
+  document.getElementById('btn-3d-model-edit')?.addEventListener('click', openModelInAnalyzer);
+
+  document.getElementById('cycle-3d-model-table')?.addEventListener('click', (e) => {
+    const link = e.target.closest('[data-3d-model-open]');
+    if (!link) return;
+    e.preventDefault();
+    openModelInAnalyzer();
+  });
+
+  document.getElementById('btn-retrieve-raw-rfq')?.addEventListener('click', retrieveRawFromRfq);
+
+  document.getElementById('btn-retrieve-raw-3d')?.addEventListener('click', () => {
+    retrieveRawFrom3d().catch(console.error);
+  });
+
+  document.getElementById('btn-retrieve-finish-3d')?.addEventListener('click', () => {
+    retrieveFinishFrom3d().catch(console.error);
   });
 
   document.getElementById('btn-save-cycle')?.addEventListener('click', () => {
@@ -595,6 +879,7 @@ async function persist() {
     other: state.data.other,
     rawMaterial: state.data.rawMaterial,
     finishPart: state.data.finishPart,
+    model3d: state.data.model3d,
     computed: state.computed,
     updatedAt: new Date().toISOString()
   });
@@ -620,14 +905,16 @@ async function init() {
   let saved;
   let templates;
   let materialSpecs;
+  let machineProfiles;
   try {
-    [part, saved, templates, materialSpecs] = await Promise.all([
+    [part, saved, templates, materialSpecs, machineProfiles] = await Promise.all([
       getPart(projectId, partId),
       getPart(projectId, partId).then((p) =>
         p ? getPartCycleData(projectId, partId) : null
       ),
       getOperationTemplates(),
-      getMaterialSpecs()
+      getMaterialSpecs(),
+      getMachineProfiles()
     ]);
   } catch (err) {
     if (subtitle) subtitle.textContent = 'Error loading part.';
@@ -650,8 +937,10 @@ async function init() {
   state.part = part;
   state.templates = templates ?? [];
   state.materialSpecs = materialSpecs ?? [];
+  state.machineProfiles = machineProfiles ?? [];
   state.data = normalizeCycleData(saved, part);
   resolveInitialMaterialSpec();
+  resolveInitialMachineProfile();
 
   if (subtitle) {
     subtitle.textContent = `Project ID ${projectId} · ${part.partDescription}`;

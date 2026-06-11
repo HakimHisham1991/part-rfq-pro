@@ -1,4 +1,6 @@
 import * as THREE from '/lib/three.module.min.js';
+import { getPartCycleData, savePartCycleData } from './data-store.js';
+import { getPartModelFile } from './part-model-store.js';
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('three-canvas');
@@ -419,6 +421,8 @@ animate();
 
 // ── State ───────────────────────────────────────────────────────────────────
 let partGroup = null;
+let loadedFileName = '';
+const activePartContext = { projectId: null, partId: null };
 let partBboxMesh = null;
 let stockMesh = null;
 let partVolumeMm3 = 0;
@@ -771,6 +775,13 @@ function getOffsets() {
   return offsets;
 }
 
+function setStockOffsets(offsets = {}) {
+  stockOffsetsEl.querySelectorAll('input[data-face]').forEach((input) => {
+    const face = input.dataset.face;
+    input.value = String(offsets[face] ?? 0);
+  });
+}
+
 function computeStockVolume(box, offsets) {
   const min = box.min.clone();
   const max = box.max.clone();
@@ -982,8 +993,10 @@ async function loadStepFile(arrayBuffer, fileName) {
     customCoordSystem = null;
     btnApplyCoord.disabled = true;
     disposeCoordAxisGroup();
+    loadedFileName = fileName || '';
     displayProperties(partGroup);
     setStatus(`Loaded ${result.meshes.length} mesh(es) from ${fileName || 'file'}`);
+    persistPartModelAnalysis().catch(console.error);
 
     pickPoints = [];
     resetAllMeasurements();
@@ -1038,6 +1051,7 @@ btnApplyStock.addEventListener('click', () => {
   if (!partBBox) return;
   refreshStockBox();
   setStatus('Raw stock box applied');
+  persistPartModelAnalysis().catch(console.error);
 });
 
 btnApplyCoord.addEventListener('click', () => {
@@ -1048,7 +1062,10 @@ btnApplyCoord.disabled = true;
 
 stockOffsetsEl.querySelectorAll('input[data-face]').forEach((input) => {
   input.addEventListener('input', () => refreshStockBox());
-  input.addEventListener('change', () => refreshStockBox());
+  input.addEventListener('change', () => {
+    refreshStockBox();
+    persistPartModelAnalysis().catch(console.error);
+  });
 });
 
 canvas.addEventListener('click', (e) => {
@@ -1320,3 +1337,71 @@ function completeCoord(p1, p2, p3) {
 
   setStatus('Coordinate system defined — click Apply to update bounding box and stock');
 }
+
+async function persistPartModelAnalysis() {
+  const { projectId, partId } = activePartContext;
+  if (!projectId || !partId || !partBBox) return;
+
+  const saved = await getPartCycleData(projectId, partId);
+  if (!saved || saved.version !== 2) return;
+
+  const offsets = getOffsets();
+  const stock = computeStockVolume(partBBox.box, offsets);
+  const fileName = saved.model3d?.fileName || loadedFileName;
+  if (!fileName) return;
+
+  await savePartCycleData(projectId, partId, {
+    version: 2,
+    operations: saved.operations ?? [],
+    other: saved.other,
+    rawMaterial: saved.rawMaterial,
+    finishPart: saved.finishPart,
+    model3d: {
+      fileName,
+      stockOffsets: offsets,
+      analysis: {
+        bboxW: partBBox.w,
+        bboxH: partBBox.h,
+        bboxD: partBBox.d,
+        partVolume: partVolumeMm3,
+        stockVolume: stock.volume
+      }
+    },
+    computed: saved.computed,
+    updatedAt: new Date().toISOString()
+  });
+}
+
+async function initPartModelFromContext() {
+  const params = new URLSearchParams(window.location.search);
+  const projectId = params.get('projectId');
+  const partId = params.get('partId');
+  if (!projectId || !partId) return;
+
+  activePartContext.projectId = projectId;
+  activePartContext.partId = partId;
+
+  const cycleData = await getPartCycleData(projectId, partId);
+  const model3d = cycleData?.model3d;
+  if (!model3d?.fileName) {
+    setStatus('No 3D model linked to this part');
+    return;
+  }
+
+  const stored = await getPartModelFile(projectId, partId);
+  if (!stored?.arrayBuffer?.byteLength) {
+    setStatus('3D model file not found — re-add it from Edit Cycle Time');
+    return;
+  }
+
+  if (model3d.stockOffsets) {
+    setStockOffsets(model3d.stockOffsets);
+  }
+
+  await loadStepFile(stored.arrayBuffer, stored.fileName || model3d.fileName);
+}
+
+initPartModelFromContext().catch((err) => {
+  console.error(err);
+  setStatus(`Error loading part model: ${err.message}`);
+});

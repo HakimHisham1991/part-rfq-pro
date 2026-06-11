@@ -1,0 +1,99 @@
+@page "/Settings/MachineProfiles"
+@model ThreeDAnalyzer.Web.Pages.Settings.MachineProfiles.IndexModel
+@{
+    ViewData["Title"] = "Machine Profile Management";
+    ViewData["Module"] = "settings-machine-profiles";
+}
+
+<div class="module-page"
+     id="machine-profiles-page"
+     data-default-created-by="@Model.DefaultCreatedBy">
+    <header class="module-page-header">
+        <h1>Machine Profile Management</h1>
+        <p class="module-subtitle">Settings · Machine profiles</p>
+    </header>
+    <div class="module-toolbar module-toolbar-actions">
+        <button type="button" id="btn-add-machine-profile">Add Machine Profile</button>
+    </div>
+    <div class="module-page-body">
+        <div class="table-wrap">
+            <table class="data-table" id="machine-profiles-table">
+                <thead>
+                    <tr>
+                        <th>No.</th>
+                        <th>Machine</th>
+                        <th>Rapid Rate (mmpm)</th>
+                        <th>Spindle Power (kW)</th>
+                        <th>Accel/Decel Factor</th>
+                        <th>Tool Change Time (s)</th>
+                        <th>Created By</th>
+                        <th>Created Date</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <p class="empty-state" id="machine-profiles-empty" hidden>No machine profiles yet.</p>
+    </div>
+</div>
+
+<div id="machine-profile-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="machine-profile-modal-title">
+    <div class="modal-backdrop" data-modal-close></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="machine-profile-modal-title">Edit Machine Profile</h3>
+            <button type="button" class="modal-close" data-modal-close aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="machine-profile-modal-error" class="modal-error" role="alert"></div>
+            <form id="machine-profile-form">
+                <input type="hidden" id="machine-profile-id" />
+                <div class="form-group">
+                    <label for="machine-profile-name">Machine</label>
+                    <input type="text" id="machine-profile-name" class="form-control" required />
+                </div>
+                <div class="form-group">
+                    <label for="machine-profile-rapid-rate">Rapid Rate (mmpm)</label>
+                    <input type="number" id="machine-profile-rapid-rate" class="form-control" min="0" step="any" required />
+                </div>
+                <div class="form-group">
+                    <label for="machine-profile-spindle-power">Spindle Power (kW)</label>
+                    <input type="number" id="machine-profile-spindle-power" class="form-control" min="0" step="any" required />
+                </div>
+                <div class="form-group">
+                    <label for="machine-profile-accel-decel">Acceleration/Deceleration Factor</label>
+                    <input type="number" id="machine-profile-accel-decel" class="form-control" min="0.01" step="any" required />
+                </div>
+                <div class="form-group">
+                    <label for="machine-profile-tool-change">Tool Change Time (s)</label>
+                    <input type="number" id="machine-profile-tool-change" class="form-control" min="0" step="any" required />
+                </div>
+                <div class="form-group">
+                    <label for="machine-profile-created-by">Created By</label>
+                    <input type="text" id="machine-profile-created-by" class="form-control" required />
+                </div>
+                <div class="form-group">
+                    <label for="machine-profile-created-date">Created Date</label>
+                    <input type="date" id="machine-profile-created-date" class="form-control" required />
+                </div>
+                <div class="form-group" id="machine-profile-status-group">
+                    <label for="machine-profile-status">Status</label>
+                    <select id="machine-profile-status" class="form-control" required>
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script type="module" src="~/js/settings-machine-profiles.js"></script>
+}

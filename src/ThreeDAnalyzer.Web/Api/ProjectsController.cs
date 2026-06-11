@@ -70,6 +70,7 @@ public class ProjectsController(AppDbContext db) : ControllerBase
                 other = payload.Other,
                 rawMaterial = payload.RawMaterial,
                 finishPart = payload.FinishPart,
+                model3d = payload.Model3d,
                 computed = payload.Computed,
                 updatedAt
             };

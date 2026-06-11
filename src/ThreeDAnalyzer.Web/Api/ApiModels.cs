@@ -47,11 +47,42 @@ public record CycleTimePayload(
     System.Text.Json.JsonElement? Other,
     System.Text.Json.JsonElement? RawMaterial,
     System.Text.Json.JsonElement? FinishPart,
+    System.Text.Json.JsonElement? Model3d,
     System.Text.Json.JsonElement? Computed,
     int? Version,
     string? UpdatedAt);
 
 public record CycleTimeResponse(object? CycleTimeData);
+
+public record MachineProfileDto(
+    int Id,
+    string Name,
+    double RapidRateMmpm,
+    double SpindlePowerKw,
+    double AccelDecelFactor,
+    double ToolChangeTimeSec,
+    string CreatedBy,
+    string CreatedDate,
+    string Status);
+
+public record CreateMachineProfileRequest(
+    string Name,
+    double RapidRateMmpm,
+    double SpindlePowerKw,
+    double AccelDecelFactor,
+    double ToolChangeTimeSec,
+    string CreatedBy,
+    string CreatedDate,
+    string? Status);
+
+public record UpdateMachineProfileRequest(
+    double RapidRateMmpm,
+    double SpindlePowerKw,
+    double AccelDecelFactor,
+    double ToolChangeTimeSec,
+    string CreatedBy,
+    string CreatedDate,
+    string Status);
 
 public record OperationTemplateDto(
     int Id,

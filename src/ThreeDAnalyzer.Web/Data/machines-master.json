@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Hartford Aero-426",
+    "rapidRateMmpm": 30000,
+    "spindlePowerKw": 15,
+    "accelDecelFactor": 1.3,
+    "toolChangeTimeSec": 15,
+    "status": "Active"
+  },
+  {
+    "name": "Mazak VRX i500",
+    "rapidRateMmpm": 36000,
+    "spindlePowerKw": 18,
+    "accelDecelFactor": 1.2,
+    "toolChangeTimeSec": 12,
+    "status": "Active"
+  },
+  {
+    "name": "DMU65",
+    "rapidRateMmpm": 42000,
+    "spindlePowerKw": 35,
+    "accelDecelFactor": 1.15,
+    "toolChangeTimeSec": 10,
+    "status": "Active"
+  }
+]
