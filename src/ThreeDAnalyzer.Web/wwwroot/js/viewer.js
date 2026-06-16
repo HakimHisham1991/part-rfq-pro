@@ -1,5 +1,5 @@
 import * as THREE from '/lib/three.module.min.js';
-import { getPartCycleData, savePartCycleData } from './data-store.js';
+import { getPart, getPartCycleData, savePartCycleData } from './data-store.js';
 import { getPartModelFile } from './part-model-store.js';
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
@@ -13,6 +13,8 @@ const measurementsList = document.getElementById('measurements-list');
 const coordStatus = document.getElementById('coord-status');
 const stockOffsetsEl = document.getElementById('stock-offsets');
 const btnOpen = document.getElementById('btn-open');
+const btnClose = document.getElementById('btn-close');
+const partNumberEl = document.getElementById('analyzer-part-number');
 const fileInput = document.getElementById('file-input');
 const btnApplyStock = document.getElementById('btn-apply-stock');
 const btnApplyCoord = document.getElementById('btn-apply-coord');
@@ -634,9 +636,88 @@ function disposePartGroup() {
   partGroup = null;
 }
 
-// ── SECTION J — Status Bar ───────────────────────────────────────────────────
+const DEFAULT_PART_NUMBER = 'Unknown';
+const DEFAULT_COORD_STATUS = 'Click 3 points on model to define';
+
 function setStatus(message) {
   statusBar.textContent = message;
+}
+
+function setPartNumberTitle(value) {
+  if (partNumberEl) {
+    partNumberEl.textContent = value || DEFAULT_PART_NUMBER;
+  }
+}
+
+function clearPartContextFromUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('projectId');
+  url.searchParams.delete('partId');
+  window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+}
+
+function resetCameraToDefault() {
+  target.set(0, 0, 0);
+  setOrbitFromAngles(ISOMETRIC_THETA, ISOMETRIC_PHI);
+  orbitRadius = 500;
+  updateCamera();
+}
+
+function resetAnalyzerSession() {
+  deactivateAllTools();
+
+  disposePartGroup();
+  disposePartBboxMesh();
+  disposeStockMesh();
+  disposeCoordAxisGroup();
+
+  resetAllMeasurements();
+
+  customCoordSystem = null;
+  partVolumeMm3 = 0;
+  partBBox = null;
+  loadedFileName = '';
+  activePartContext.projectId = null;
+  activePartContext.partId = null;
+
+  propVolume.textContent = '—';
+  propBbox.textContent = '—';
+  propStockVolume.textContent = '—';
+  propUtilization.textContent = '—';
+
+  setStockOffsets({});
+  coordStatus.textContent = DEFAULT_COORD_STATUS;
+  btnApplyCoord.disabled = true;
+
+  resetCameraToDefault();
+  setStatus('No file loaded');
+  setPartNumberTitle(DEFAULT_PART_NUMBER);
+  clearPartContextFromUrl();
+  if (fileInput) fileInput.value = '';
+}
+
+function closeAnalyzer() {
+  if (!confirm('Close the current model? All graphics, measurements, and analysis data will be cleared.')) {
+    return;
+  }
+  resetAnalyzerSession();
+}
+
+async function resolvePartNumberFromContext() {
+  const params = new URLSearchParams(window.location.search);
+  const projectId = params.get('projectId');
+  const partId = params.get('partId');
+  if (!projectId || !partId) {
+    setPartNumberTitle(DEFAULT_PART_NUMBER);
+    return;
+  }
+
+  try {
+    const part = await getPart(projectId, partId);
+    setPartNumberTitle(part?.partNumber || DEFAULT_PART_NUMBER);
+  } catch {
+    setPartNumberTitle(DEFAULT_PART_NUMBER);
+  }
 }
 
 // ── SECTION F — Properties Computation ────────────────────────────────────────
@@ -934,6 +1015,7 @@ async function loadOcctLibrary() {
 
 // ── SECTION E — File Loading ────────────────────────────────────────────────
 btnOpen.addEventListener('click', () => fileInput.click());
+btnClose?.addEventListener('click', closeAnalyzer);
 
 fileInput.addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -1373,6 +1455,8 @@ async function persistPartModelAnalysis() {
 }
 
 async function initPartModelFromContext() {
+  await resolvePartNumberFromContext();
+
   const params = new URLSearchParams(window.location.search);
   const projectId = params.get('projectId');
   const partId = params.get('partId');

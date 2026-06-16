@@ -6,8 +6,13 @@
 
 <div class="analyzer-shell">
     <header id="toolbar">
+        <h1 id="analyzer-part-heading" class="analyzer-part-heading">
+            <span class="analyzer-part-label">Part Number:</span>
+            <span id="analyzer-part-number">Unknown</span>
+        </h1>
         <div id="toolbar-row">
             <button id="btn-open" type="button">Open STEP / STP</button>
+            <button id="btn-close" type="button">Close</button>
             <input id="file-input" type="file" accept=".step,.stp" style="display:none" />
             <span class="sep"></span>
             <button class="tool-btn" type="button" data-tool="distance">Distance</button>

@@ -25,6 +25,58 @@ public class ProjectsController(AppDbContext db) : ControllerBase
         return project == null ? NotFound() : project.ToDto();
     }
 
+    [HttpPost]
+    public async Task<ActionResult<ProjectDto>> Create([FromBody] CreateProjectRequest request)
+    {
+        var name = (request.Name ?? "").Trim();
+        if (string.IsNullOrEmpty(name))
+            return BadRequest("Project name is required.");
+
+        if (await db.Projects.AnyAsync(p => p.Name == name))
+            return BadRequest($"Project \"{name}\" already exists.");
+
+        var status = (request.Status ?? "Open").Trim();
+        if (status is not "Open" and not "Closed")
+            return BadRequest("Status must be Open or Closed.");
+
+        DateOnly dateRegistered;
+        if (string.IsNullOrWhiteSpace(request.DateRegistered))
+        {
+            dateRegistered = DateOnly.FromDateTime(DateTime.UtcNow);
+        }
+        else if (!DateOnly.TryParse(request.DateRegistered, out dateRegistered))
+        {
+            return BadRequest("Date Registered must be a valid date (yyyy-MM-dd).");
+        }
+
+        var project = new Project
+        {
+            Name = name,
+            Owner = (request.Owner ?? "").Trim(),
+            DateRegistered = dateRegistered,
+            Status = status
+        };
+
+        db.Projects.Add(project);
+        await db.SaveChangesAsync();
+        return StatusCode(StatusCodes.Status201Created, project.ToDto());
+    }
+
+    [HttpPut("{id:int}/status")]
+    public async Task<ActionResult<ProjectDto>> UpdateStatus(int id, [FromBody] UpdateProjectStatusRequest request)
+    {
+        var project = await db.Projects.FindAsync(id);
+        if (project == null) return NotFound();
+
+        var status = (request.Status ?? "").Trim();
+        if (status is not "Open" and not "Closed")
+            return BadRequest("Status must be Open or Closed.");
+
+        project.Status = status;
+        await db.SaveChangesAsync();
+        return project.ToDto();
+    }
+
     [HttpGet("{projectId:int}/parts")]
     public async Task<ActionResult<List<PartDto>>> ListParts(int projectId)
     {
@@ -196,6 +248,28 @@ public class ProjectsController(AppDbContext db) : ControllerBase
         db.Parts.Remove(part);
         await db.SaveChangesAsync();
         return NoContent();
+    }
+
+    [HttpGet("{projectId:int}/parts/export")]
+    public async Task<IActionResult> ExportParts(int projectId)
+    {
+        var project = await db.Projects.FindAsync(projectId);
+        if (project == null) return NotFound();
+
+        var parts = await db.Parts
+            .Where(p => p.ProjectId == projectId)
+            .OrderBy(p => p.No)
+            .ToListAsync();
+
+        var bytes = PartExcelExporter.Export(parts);
+        var safeName = string.Join("_", project.Name.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim();
+        if (string.IsNullOrEmpty(safeName)) safeName = $"project-{projectId}";
+        var fileName = $"{safeName}-rfq.xlsx";
+
+        return File(
+            bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            fileName);
     }
 
     [HttpPost("{projectId:int}/parts/import")]

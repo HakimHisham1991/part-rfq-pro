@@ -48,6 +48,26 @@ export async function getProjects() {
   return apiGet('/api/projects');
 }
 
+export async function createProject(payload) {
+  return apiPost('/api/projects', payload);
+}
+
+export async function updateProjectStatus(projectId, status) {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/status`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ status })
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function getProject(id) {
   try {
     return await apiGet(`/api/projects/${encodeURIComponent(id)}`);
@@ -84,6 +104,28 @@ export async function deletePart(projectId, partId) {
   await apiDelete(
     `/api/projects/${encodeURIComponent(projectId)}/parts/${encodeURIComponent(partId)}`
   );
+}
+
+export async function exportPartsToExcel(projectId) {
+  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/parts/export`, {
+    headers: { Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Export failed.');
+  }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') ?? '';
+  const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+  const fileName = match ? decodeURIComponent(match[1].replace(/"/g, '')) : 'project-rfq.xlsx';
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 export async function importPartsFromExcel(projectId, file) {

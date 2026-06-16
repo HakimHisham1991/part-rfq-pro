@@ -996,15 +996,26 @@ body.module-analyzer #app {
 }
 
 .cycle-other-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 20px;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 12px;
   margin-top: 12px;
+  width: 100%;
+}
+
+.cycle-other-grid .op-field {
+  min-width: 0;
+  width: 100%;
+}
+
+.cycle-other-grid .op-field-label {
+  line-height: 1.25;
 }
 
 .cycle-other-grid input.cell-input,
 .cycle-other-grid select.cell-input {
-  width: 120px;
+  width: 100%;
+  min-width: 0;
   box-sizing: border-box;
   border: 1px solid var(--color-border);
   font-family: var(--font-family);
@@ -1085,6 +1096,24 @@ body.module-analyzer .analyzer-shell {
 
 body.module-analyzer #toolbar {
   flex-shrink: 0;
+}
+
+body.module-analyzer .analyzer-part-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35em;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-primary);
+  letter-spacing: 0.01em;
+  margin: 0;
+  padding: 0;
+}
+
+body.module-analyzer .analyzer-part-label {
+  font-weight: 600;
+  color: var(--color-text-secondary);
 }
 
 body.module-analyzer #main-area {

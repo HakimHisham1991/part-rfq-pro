@@ -1,10 +1,12 @@
 import {
   createPart,
   deletePart,
+  exportPartsToExcel,
   getPartsForProject,
   getProject,
   importPartsFromExcel,
-  updatePart
+  updatePart,
+  updateProjectStatus
 } from './data-store.js';
 import { bindModal, closeModal, openModal, showModalError } from './settings-modal.js';
 
@@ -37,8 +39,37 @@ const RFQ_EDIT_FIELDS = [
 ];
 
 let currentProjectId = null;
+let currentProject = null;
 let partsCache = [];
 const savingRows = new Set();
+
+function normalizeProjectStatus(status) {
+  return String(status ?? '').trim().toLowerCase() === 'closed' ? 'Closed' : 'Open';
+}
+
+function updateProjectHeader() {
+  const subtitle = document.getElementById('rfq-subtitle');
+  if (!subtitle || !currentProject) return;
+  subtitle.textContent = `Project: ${currentProject.name} · ${currentProject.status}`;
+}
+
+function updateStatusToggleButton() {
+  const btn = document.getElementById('btn-toggle-project-status');
+  if (!btn || !currentProject) return;
+  btn.textContent = currentProject.status === 'Closed' ? 'Set as Open' : 'Set as Closed';
+}
+
+function setCurrentProject(project) {
+  currentProject = project
+    ? {
+        id: project.id,
+        name: project.name,
+        status: normalizeProjectStatus(project.status)
+      }
+    : null;
+  updateProjectHeader();
+  updateStatusToggleButton();
+}
 
 function escapeHtml(s) {
   return String(s)
@@ -147,6 +178,36 @@ function openAddPartModal() {
   openModal(ADD_PART_MODAL_ID);
 }
 
+async function saveAllParts() {
+  const rows = [...document.querySelectorAll('#rfq-table tbody tr')];
+  if (rows.length === 0) return { saved: 0, failed: 0 };
+
+  let saved = 0;
+  let failed = 0;
+
+  for (const tr of rows) {
+    const partId = Number(tr.dataset.partId);
+    if (!partId || savingRows.has(partId)) continue;
+
+    savingRows.add(partId);
+    const payload = buildPartPayload(tr);
+
+    try {
+      const updated = await updatePart(currentProjectId, partId, payload);
+      const idx = partsCache.findIndex((p) => p.id === partId);
+      if (idx >= 0) partsCache[idx] = updated;
+      updatePicturePreview(tr, updated.picture);
+      saved++;
+    } catch {
+      failed++;
+    } finally {
+      savingRows.delete(partId);
+    }
+  }
+
+  return { saved, failed };
+}
+
 function renderPartRows(projectId, parts) {
   const tbody = document.querySelector('#rfq-table tbody');
   const empty = document.getElementById('rfq-empty');
@@ -165,6 +226,14 @@ function renderPartRows(projectId, parts) {
     const tr = document.createElement('tr');
     tr.dataset.partId = String(part.id);
 
+    const actionCell = `
+      <td class="rfq-action-col">
+        <span class="table-action-btns">
+          <a class="btn-link" href="${editUrl}">Edit</a>
+          <button type="button" class="btn-link btn-link-danger" data-delete-part="${part.id}">Delete</button>
+        </span>
+      </td>`;
+
     const cells = RFQ_EDIT_FIELDS.map((field) => {
       if (field.picture) {
         return `<td class="rfq-editable-cell">${renderPictureCell(part)}</td>`;
@@ -172,15 +241,7 @@ function renderPartRows(projectId, parts) {
       return `<td class="rfq-editable-cell">${rfqInput(part, field)}</td>`;
     }).join('');
 
-    tr.innerHTML = `
-      ${cells}
-      <td>
-        <span class="table-action-btns">
-          <a class="btn-link" href="${editUrl}">Edit</a>
-          <button type="button" class="btn-link btn-link-danger" data-delete-part="${part.id}">Delete</button>
-        </span>
-      </td>
-    `;
+    tr.innerHTML = `${actionCell}${cells}`;
     tbody.appendChild(tr);
   });
 }
@@ -192,8 +253,11 @@ async function render() {
   const subtitle = document.getElementById('rfq-subtitle');
   const empty = document.getElementById('rfq-empty');
   const backLink = document.getElementById('back-to-projects');
+  const saveBtn = document.getElementById('btn-save-rfq');
+  const statusBtn = document.getElementById('btn-toggle-project-status');
   const addBtn = document.getElementById('btn-add-part');
   const importBtn = document.getElementById('btn-import-excel');
+  const exportBtn = document.getElementById('btn-export-excel');
 
   if (!projectId) {
     if (subtitle) subtitle.textContent = 'Select a project from Project Manager.';
@@ -201,8 +265,12 @@ async function render() {
       empty.hidden = false;
       empty.textContent = 'No project selected. Open Project Manager and click a project name.';
     }
+    currentProject = null;
+    if (saveBtn) saveBtn.disabled = true;
+    if (statusBtn) statusBtn.disabled = true;
     if (addBtn) addBtn.disabled = true;
     if (importBtn) importBtn.disabled = true;
+    if (exportBtn) exportBtn.disabled = true;
     return;
   }
 
@@ -222,6 +290,7 @@ async function render() {
   }
 
   if (!project) {
+    setCurrentProject(null);
     if (subtitle) subtitle.textContent = 'Project not found.';
     if (empty) {
       empty.hidden = false;
@@ -230,10 +299,13 @@ async function render() {
     return;
   }
 
-  if (subtitle) subtitle.textContent = `Project: ${project.name} · ${project.status}`;
+  setCurrentProject(project);
   if (backLink) backLink.href = '/Projects';
+  if (saveBtn) saveBtn.disabled = false;
+  if (statusBtn) statusBtn.disabled = false;
   if (addBtn) addBtn.disabled = false;
   if (importBtn) importBtn.disabled = false;
+  if (exportBtn) exportBtn.disabled = false;
 
   renderPartRows(projectId, parts);
 }
@@ -241,6 +313,52 @@ async function render() {
 document.addEventListener('DOMContentLoaded', () => {
   bindModal(ADD_PART_MODAL_ID, {
     onClose: () => showModalError(document.getElementById('rfq-add-part-modal-error'), '')
+  });
+
+  document.getElementById('btn-save-rfq')?.addEventListener('click', async () => {
+    if (!currentProjectId) return;
+
+    const btn = document.getElementById('btn-save-rfq');
+    if (btn) btn.disabled = true;
+
+    try {
+      const { saved, failed } = await saveAllParts();
+      if (failed > 0) {
+        alert(`Saved ${saved} part(s). ${failed} part(s) failed to save.`);
+      } else if (saved > 0) {
+        alert(`Saved ${saved} part(s).`);
+      } else {
+        alert('No parts to save.');
+      }
+    } catch (err) {
+      alert(err.message || 'Failed to save parts.');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  document.getElementById('btn-toggle-project-status')?.addEventListener('click', async () => {
+    if (!currentProjectId || !currentProject) return;
+
+    const nextStatus = currentProject.status === 'Closed' ? 'Open' : 'Closed';
+    const projectName = currentProject.name;
+    const message =
+      nextStatus === 'Closed'
+        ? `Set project "${projectName}" as Closed?`
+        : `Set project "${projectName}" as Open?`;
+    if (!confirm(message)) return;
+
+    const btn = document.getElementById('btn-toggle-project-status');
+    if (btn) btn.disabled = true;
+
+    try {
+      const updated = await updateProjectStatus(currentProjectId, nextStatus);
+      setCurrentProject(updated);
+    } catch (err) {
+      alert(err.message || 'Failed to update project status.');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   });
 
   document.getElementById('btn-add-part')?.addEventListener('click', () => {
@@ -251,6 +369,22 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-import-excel')?.addEventListener('click', () => {
     if (!currentProjectId) return;
     document.getElementById('rfq-import-input')?.click();
+  });
+
+  document.getElementById('btn-export-excel')?.addEventListener('click', async () => {
+    if (!currentProjectId) return;
+
+    const btn = document.getElementById('btn-export-excel');
+    if (btn) btn.disabled = true;
+
+    try {
+      await saveAllParts();
+      await exportPartsToExcel(currentProjectId);
+    } catch (err) {
+      alert(err.message || 'Failed to export Excel file.');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   });
 
   document.getElementById('rfq-import-input')?.addEventListener('change', async (e) => {

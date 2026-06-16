@@ -4,11 +4,14 @@
     ViewData["Module"] = "projects";
 }
 
-<div class="module-page">
+<div class="module-page" id="projects-page" data-current-owner="@(HttpContext.Session.GetString("DisplayName") ?? HttpContext.Session.GetString("Username") ?? "")">
     <header class="module-page-header">
         <h1>Project Manager</h1>
         <p class="module-subtitle">All RFQ projects</p>
     </header>
+    <div class="module-toolbar module-toolbar-actions">
+        <button type="button" id="btn-add-project">Add Project</button>
+    </div>
     <div class="module-page-body">
         <div class="table-wrap">
             <table class="data-table" id="projects-table">
@@ -29,6 +32,44 @@
     </div>
 </div>
 
+<div id="project-add-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="project-add-modal-title">
+    <div class="modal-backdrop" data-modal-close></div>
+    <div class="modal-content modal-content-sm">
+        <div class="modal-header">
+            <h3 id="project-add-modal-title">Add Project</h3>
+            <button type="button" class="modal-close" data-modal-close aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="project-add-modal-error" class="modal-error" role="alert"></div>
+            <form id="project-add-form">
+                <div class="form-group">
+                    <label for="project-name">Project Name</label>
+                    <input type="text" id="project-name" class="form-control" required />
+                </div>
+                <div class="form-group">
+                    <label for="project-owner">Owner</label>
+                    <input type="text" id="project-owner" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label for="project-date-registered">Date Registered</label>
+                    <input type="date" id="project-date-registered" class="form-control" required />
+                </div>
+                <div class="form-group">
+                    <label for="project-status">Status</label>
+                    <select id="project-status" class="form-control" required>
+                        <option value="Open" selected>Open</option>
+                        <option value="Closed">Closed</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
-    <script type="module" src="~/js/projects.js"></script>
+    <script type="module" src="~/js/projects.js?v=1.12.0"></script>
 }

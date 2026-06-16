@@ -1,4 +1,7 @@
-import { getProjects } from './data-store.js';
+import { createProject, getProjects } from './data-store.js';
+import { bindModal, closeModal, openModal, showModalError } from './settings-modal.js';
+
+const ADD_PROJECT_MODAL_ID = 'project-add-modal';
 
 function formatDate(iso) {
   if (!iso) return '—';
@@ -7,12 +10,32 @@ function formatDate(iso) {
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function todayIsoDate() {
+  const d = new Date();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
 function escapeHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function getDefaultOwner() {
+  return document.getElementById('projects-page')?.dataset.currentOwner?.trim() ?? '';
+}
+
+function openAddProjectModal() {
+  document.getElementById('project-name').value = '';
+  document.getElementById('project-owner').value = getDefaultOwner();
+  document.getElementById('project-date-registered').value = todayIsoDate();
+  document.getElementById('project-status').value = 'Open';
+  showModalError(document.getElementById('project-add-modal-error'), '');
+  openModal(ADD_PROJECT_MODAL_ID);
 }
 
 async function renderTable() {
@@ -56,5 +79,39 @@ async function renderTable() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  bindModal(ADD_PROJECT_MODAL_ID, {
+    onClose: () => showModalError(document.getElementById('project-add-modal-error'), '')
+  });
+
+  document.getElementById('btn-add-project')?.addEventListener('click', openAddProjectModal);
+
+  document.getElementById('project-add-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const errorEl = document.getElementById('project-add-modal-error');
+    const name = document.getElementById('project-name').value.trim();
+    const owner = document.getElementById('project-owner').value.trim();
+    const dateRegistered = document.getElementById('project-date-registered').value;
+    const status = document.getElementById('project-status').value;
+
+    if (!name) {
+      showModalError(errorEl, 'Project name is required.');
+      return;
+    }
+
+    const saveBtn = e.submitter ?? e.target.querySelector('[type="submit"]');
+    if (saveBtn) saveBtn.disabled = true;
+
+    try {
+      await createProject({ name, owner, dateRegistered, status });
+      closeModal(ADD_PROJECT_MODAL_ID);
+      await renderTable();
+    } catch (err) {
+      showModalError(errorEl, err.message || 'Failed to add project.');
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  });
+
   renderTable().catch(console.error);
 });

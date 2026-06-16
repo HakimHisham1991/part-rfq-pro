@@ -2,6 +2,10 @@ namespace ThreeDAnalyzer.Web.Api;
 
 public record ProjectDto(int Id, string Name, string DateRegistered, string Owner, string Status);
 
+public record CreateProjectRequest(string Name, string? Owner, string? DateRegistered, string? Status);
+
+public record UpdateProjectStatusRequest(string Status);
+
 public record PartDto(
     int Id,
     int ProjectId,

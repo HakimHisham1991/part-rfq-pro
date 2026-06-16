@@ -25,6 +25,58 @@ Version numbers use **MAJOR.MINOR.PATCH**:
 
 ---
 
+## [1.13.0] - 2026-06-16
+
+### Added
+
+- **Project RFQ:** **Set as Closed** / **Set as Open** button (after **Save**) toggles project status with confirmation; header subtitle and Project Manager table reflect the updated status.
+
+---
+
+## [1.12.0] - 2026-06-16
+
+### Added
+
+- **Project Manager:** **Add Project** button opens a dialog to create a new RFQ project (name, owner, date registered, status).
+
+---
+
+## [1.11.1] - 2026-06-16
+
+### Changed
+
+- **3D Analyzer:** part title now displays as **Part Number:** followed by the value (e.g. `Part Number: 141T1380-31`).
+
+---
+
+## [1.11.0] - 2026-06-16
+
+### Added
+
+- **3D Analyzer:** **Part Number** title above the toolbar (defaults to **Unknown** when not linked to a project part); **Close** button clears the loaded model, measurements, properties, and resets the title to **Unknown** after confirmation.
+
+---
+
+## [1.10.1] - 2026-06-16
+
+### Changed
+
+- **Edit Cycle Time — Other Time Factors:** all eight fields now span the full panel width in equal columns (Load/Unload through Tool Change Time).
+
+---
+
+## [1.10.0] - 2026-06-16
+
+### Added
+
+- **Project RFQ:** **Save** toolbar button to save all part rows at once; **Export to Excel** button to download the current project RFQ table (Action column excluded).
+
+### Changed
+
+- **Project RFQ:** **Action** column moved to the first column (web UI only; not included in Excel export).
+
+---
+
 ## [1.9.0] - 2026-06-16
 
 ### Added
