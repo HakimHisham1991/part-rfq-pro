@@ -54,6 +54,7 @@ public static class EntityMappers
         new(
             m.Id,
             m.Name,
+            m.AxisTypes,
             m.RapidRateMmpm,
             m.SpindlePowerKw,
             m.AccelDecelFactor,

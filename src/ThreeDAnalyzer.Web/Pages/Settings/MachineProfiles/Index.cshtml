@@ -18,20 +18,7 @@
     <div class="module-page-body">
         <div class="table-wrap">
             <table class="data-table" id="machine-profiles-table">
-                <thead>
-                    <tr>
-                        <th>No.</th>
-                        <th>Machine</th>
-                        <th>Rapid Rate (mmpm)</th>
-                        <th>Spindle Power (kW)</th>
-                        <th>Accel/Decel Factor</th>
-                        <th>Tool Change Time (s)</th>
-                        <th>Created By</th>
-                        <th>Created Date</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
+                <thead></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -51,8 +38,18 @@
             <form id="machine-profile-form">
                 <input type="hidden" id="machine-profile-id" />
                 <div class="form-group">
-                    <label for="machine-profile-name">Machine</label>
+                    <label for="machine-profile-name">Machine Model</label>
                     <input type="text" id="machine-profile-name" class="form-control" required />
+                </div>
+                <div class="form-group">
+                    <label for="machine-profile-axis-types">Axis Types</label>
+                    <select id="machine-profile-axis-types" class="form-control" required>
+                        <option value="">— Select —</option>
+                        <option value="2X">2X</option>
+                        <option value="3X">3X</option>
+                        <option value="4X">4X</option>
+                        <option value="5X">5X</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label for="machine-profile-rapid-rate">Rapid Rate (mmpm)</label>
@@ -95,5 +92,5 @@
 </div>
 
 @section Scripts {
-    <script type="module" src="~/js/settings-machine-profiles.js"></script>
+    <script type="module" src="~/js/settings-machine-profiles.js?v=1.7.1"></script>
 }

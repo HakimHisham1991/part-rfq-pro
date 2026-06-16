@@ -57,6 +57,7 @@ public record CycleTimeResponse(object? CycleTimeData);
 public record MachineProfileDto(
     int Id,
     string Name,
+    string AxisTypes,
     double RapidRateMmpm,
     double SpindlePowerKw,
     double AccelDecelFactor,
@@ -67,6 +68,7 @@ public record MachineProfileDto(
 
 public record CreateMachineProfileRequest(
     string Name,
+    string AxisTypes,
     double RapidRateMmpm,
     double SpindlePowerKw,
     double AccelDecelFactor,
@@ -76,6 +78,7 @@ public record CreateMachineProfileRequest(
     string? Status);
 
 public record UpdateMachineProfileRequest(
+    string AxisTypes,
     double RapidRateMmpm,
     double SpindlePowerKw,
     double AccelDecelFactor,

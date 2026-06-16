@@ -1,6 +1,16 @@
 [
   {
+    "name": "Generic Machine",
+    "axisTypes": "5X",
+    "rapidRateMmpm": 60000,
+    "spindlePowerKw": 30,
+    "accelDecelFactor": 1.2,
+    "toolChangeTimeSec": 10,
+    "status": "Active"
+  },
+  {
     "name": "Hartford Aero-426",
+    "axisTypes": "5X",
     "rapidRateMmpm": 30000,
     "spindlePowerKw": 15,
     "accelDecelFactor": 1.3,
@@ -9,6 +19,7 @@
   },
   {
     "name": "Mazak VRX i500",
+    "axisTypes": "5X",
     "rapidRateMmpm": 36000,
     "spindlePowerKw": 18,
     "accelDecelFactor": 1.2,
@@ -17,10 +28,38 @@
   },
   {
     "name": "DMU65",
+    "axisTypes": "5X",
     "rapidRateMmpm": 42000,
     "spindlePowerKw": 35,
     "accelDecelFactor": 1.15,
     "toolChangeTimeSec": 10,
+    "status": "Active"
+  },
+  {
+    "name": "DMG NVX5100",
+    "axisTypes": "4X",
+    "rapidRateMmpm": 40000,
+    "spindlePowerKw": 30,
+    "accelDecelFactor": 1.2,
+    "toolChangeTimeSec": 11,
+    "status": "Active"
+  },
+  {
+    "name": "Mazak VCS430A",
+    "axisTypes": "3X",
+    "rapidRateMmpm": 32000,
+    "spindlePowerKw": 22,
+    "accelDecelFactor": 1.25,
+    "toolChangeTimeSec": 14,
+    "status": "Active"
+  },
+  {
+    "name": "Mazak QTN150",
+    "axisTypes": "2X",
+    "rapidRateMmpm": 24000,
+    "spindlePowerKw": 15,
+    "accelDecelFactor": 1.4,
+    "toolChangeTimeSec": 8,
     "status": "Active"
   }
 ]

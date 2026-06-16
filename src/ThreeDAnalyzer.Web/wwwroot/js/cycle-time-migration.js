@@ -33,31 +33,48 @@ export function lookupMachineProfile(profiles, machineName) {
   if (!machineName || !profiles?.length) return null;
   const norm = String(machineName).trim().toLowerCase();
   return (
-    profiles.find((m) => String(m.name ?? '').trim().toLowerCase() === norm) ?? null
+    profiles.find((m) => String(m.name ?? m.Name ?? '').trim().toLowerCase() === norm) ?? null
   );
+}
+
+export const GENERIC_MACHINE_NAME = 'Generic Machine';
+
+export function sortMachineProfiles(profiles) {
+  return [...(profiles ?? [])].sort((a, b) => {
+    const nameA = String(a.name ?? a.Name ?? '');
+    const nameB = String(b.name ?? b.Name ?? '');
+    const rankA = nameA === GENERIC_MACHINE_NAME ? 0 : 1;
+    const rankB = nameB === GENERIC_MACHINE_NAME ? 0 : 1;
+    if (rankA !== rankB) return rankA - rankB;
+    return nameA.localeCompare(nameB);
+  });
 }
 
 export function applyMachineProfileToOther(other, profile) {
   if (!other || !profile) return other;
-  other.machineProfileId = profile.id;
-  other.machine = String(profile.name ?? '');
-  other.rapidRate = n(profile.rapidRateMmpm);
-  other.spindlePower = n(profile.spindlePowerKw);
-  other.accel = n(profile.accelDecelFactor) || 1;
-  other.toolChangeSec = n(profile.toolChangeTimeSec);
+  const profileId = profile.id ?? profile.Id;
+  other.machineProfileId = profileId;
+  other.machine = String(profile.name ?? profile.Name ?? '');
+  other.axisTypes = String(profile.axisTypes ?? profile.AxisTypes ?? '');
+  other.rapidRate = n(profile.rapidRateMmpm ?? profile.RapidRateMmpm);
+  other.spindlePower = n(profile.spindlePowerKw ?? profile.SpindlePowerKw);
+  other.accel = n(profile.accelDecelFactor ?? profile.AccelDecelFactor) || 1;
+  other.toolChangeSec = n(profile.toolChangeTimeSec ?? profile.ToolChangeTimeSec);
   return other;
 }
 
 function defaultOther() {
   return {
+    enabled: true,
     loadUnload: 15,
     machineProfileId: null,
-    machine: 'Hartford Aero-426',
-    rapidRate: 30000,
-    spindlePower: 15,
-    accel: 1.3,
+    machine: GENERIC_MACHINE_NAME,
+    axisTypes: '5X',
+    rapidRate: 60000,
+    spindlePower: 30,
+    accel: 1.2,
     toolChanges: 0,
-    toolChangeSec: 15
+    toolChangeSec: 10
   };
 }
 
@@ -235,9 +252,11 @@ export function migrateV1ToV2(values, part) {
     version: 2,
     operations,
     other: {
+      enabled: true,
       loadUnload: n(v['other.LoadUnload']),
       machineProfileId: null,
       machine: String(v['other.Machine'] ?? 'Hartford Aero-426'),
+      axisTypes: '',
       rapidRate: 0,
       spindlePower: 0,
       accel: n(v['other.Accel']) || 1.3,
@@ -297,9 +316,11 @@ export function normalizeCycleData(saved, part) {
       })),
       other: {
         ...defaultOther(),
+        enabled: saved.other?.enabled !== false,
         loadUnload: n(saved.other?.loadUnload ?? 15),
         machineProfileId: saved.other?.machineProfileId ?? null,
         machine: String(saved.other?.machine ?? 'Hartford Aero-426'),
+        axisTypes: String(saved.other?.axisTypes ?? ''),
         rapidRate: n(saved.other?.rapidRate),
         spindlePower: n(saved.other?.spindlePower),
         accel: n(saved.other?.accel) || 1.3,

@@ -65,6 +65,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.HasIndex(x => x.Name).IsUnique();
             e.Property(x => x.Name).HasMaxLength(120);
+            e.Property(x => x.AxisTypes).HasMaxLength(10);
             e.Property(x => x.CreatedBy).HasMaxLength(200);
             e.Property(x => x.Status).HasMaxLength(20);
         });

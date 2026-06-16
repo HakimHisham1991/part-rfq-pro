@@ -25,6 +25,73 @@ Version numbers use **MAJOR.MINOR.PATCH**:
 
 ---
 
+## [1.7.6] - 2026-06-16
+
+### Fixed
+
+- **Edit Cycle Time — Other Time Factors:** Axis Types field height now matches neighboring inputs (e.g. Rapid Rate).
+
+---
+
+## [1.7.5] - 2026-06-16
+
+### Changed
+
+- **Edit Cycle Time — Other Time Factors:** toggling back ON now sets **No. of Tool Changes** to **10** (with Generic Machine auto-selected).
+
+---
+
+## [1.7.4] - 2026-06-16
+
+### Added
+
+- **Settings — Machine Profiles:** seeded **Generic Machine** profile (5X, 60,000 mmpm, 30 kW, 1.2 accel/decel, 10 s tool change) listed first in the table.
+
+### Changed
+
+- **Edit Cycle Time — Other Time Factors:** when toggle is OFF, all fields are blank, greyed out, and non-editable; when toggled back ON, **Generic Machine** is auto-selected with its machine-library values.
+
+---
+
+## [1.7.3] - 2026-06-16
+
+### Fixed
+
+- **Edit Cycle Time — Other Time Factors:** Axis Types is now always synced from the selected machine profile (Machine Profile Management) and shown as a read-only value, not an editable field.
+
+---
+
+## [1.7.2] - 2026-06-16
+
+### Fixed
+
+- **Edit Cycle Time — Other Time Factors:** hardened enable/disable toggle (zeros all fields including machine selection when off), blocks edits to machine-library fields, and refreshes cached cycle-time script.
+
+---
+
+## [1.7.1] - 2026-06-16
+
+### Fixed
+
+- **Settings — Machine Profiles:** table headers and row cells now render from one shared column definition so columns stay aligned (including after the Axis Types column was added).
+
+---
+
+## [1.7.0] - 2026-06-16
+
+### Added
+
+- **Settings — Machine Profiles:** **Axis Types** column (2X, 3X, 4X, 5X) after Machine Model; three new seeded models (DMG NVX5100, Mazak VCS430A, Mazak QTN150).
+- **Edit Cycle Time — Other Time Factors:** enable/disable toggle; **Axis Types** auto-filled from the selected machine profile.
+
+### Changed
+
+- **Settings — Machine Profiles:** **Machine** column renamed to **Machine Model**.
+- **Edit Cycle Time — Other Time Factors:** panel is always expanded (no collapse); **Machine** renamed to **Machine Model**; Rapid Rate, Spindle Power, Accel/Decel Factor, and Tool Change Time are read-only from Machine Library.
+- When Other Time Factors toggle is OFF, factor values reset to zero, fields are greyed out, and related cycle-time calculations are excluded.
+
+---
+
 ## [1.6.0] - 2026-06-11
 
 ### Added

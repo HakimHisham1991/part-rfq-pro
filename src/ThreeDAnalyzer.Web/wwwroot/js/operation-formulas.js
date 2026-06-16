@@ -83,13 +83,16 @@ export function ceilingTo(value, step) {
 
 /**
  * @param {Array<{ ctMin?: number }>} operations
- * @param {{ loadUnload?: number, accel?: number, toolChanges?: number, toolChangeSec?: number }} other
+ * @param {{ enabled?: boolean, loadUnload?: number, accel?: number, toolChanges?: number, toolChangeSec?: number }} other
  */
 export function calcTotals(operations, other) {
+  const enabled = other?.enabled !== false;
   const machiningMin = (operations ?? []).reduce((s, o) => s + n(o.ctMin), 0);
-  const toolChangeMin = (n(other?.toolChangeSec) / 60) * n(other?.toolChanges);
-  const otherMin = n(other?.loadUnload) + toolChangeMin;
-  const accel = n(other?.accel) || 1;
+  const toolChangeMin = enabled
+    ? (n(other?.toolChangeSec) / 60) * n(other?.toolChanges)
+    : 0;
+  const otherMin = enabled ? n(other?.loadUnload) + toolChangeMin : 0;
+  const accel = enabled ? n(other?.accel) || 1 : 1;
   const overallMin = machiningMin * accel + otherMin;
   const overallHr = overallMin / 60;
   return {

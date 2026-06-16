@@ -4,6 +4,8 @@ public class MachineProfile
 {
     public int Id { get; set; }
     public string Name { get; set; } = "";
+    /// <summary>Axis configuration label, e.g. 2X, 3X, 4X, 5X.</summary>
+    public string AxisTypes { get; set; } = "";
     /// <summary>Rapid rate in mm/min.</summary>
     public double RapidRateMmpm { get; set; }
     /// <summary>Spindle power in kW.</summary>

@@ -12,11 +12,13 @@ import {
   calcFinishPartValues,
   findMachineProfileById,
   findMaterialSpecById,
+  GENERIC_MACHINE_NAME,
   lookupMachineProfile,
   lookupMaterialSpec,
   materialDisplayLabel,
   normalizeCycleData,
-  newOpId
+  newOpId,
+  sortMachineProfiles
 } from './cycle-time-migration.js';
 import {
   deletePartModelFile,
@@ -89,23 +91,62 @@ function resolveInitialMaterialSpec() {
 }
 
 function activeMachineProfiles() {
-  return [...state.machineProfiles]
-    .filter((m) => String(m.status).toLowerCase() === 'active')
-    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  return sortMachineProfiles(
+    state.machineProfiles.filter((m) => String(m.status ?? m.Status).toLowerCase() === 'active')
+  );
+}
+
+function findGenericMachineProfile() {
+  return lookupMachineProfile(state.machineProfiles, GENERIC_MACHINE_NAME);
+}
+
+function applyGenericMachineProfile() {
+  if (!state.data?.other) return false;
+  const profile = findGenericMachineProfile();
+  if (!profile) return false;
+  applyMachineProfileToOther(state.data.other, profile);
+  state.data.other.loadUnload = 15;
+  state.data.other.toolChanges = 10;
+  return true;
+}
+
+function getSelectedMachineProfile(other) {
+  if (!other) return null;
+  if (other.machineProfileId != null) {
+    const profile = findMachineProfileById(state.machineProfiles, other.machineProfileId);
+    if (profile) return profile;
+  }
+  return lookupMachineProfile(state.machineProfiles, other.machine);
+}
+
+function syncOtherFromMachineProfile(other) {
+  if (!other) return;
+  const profile = getSelectedMachineProfile(other);
+  if (profile) {
+    applyMachineProfileToOther(other, profile);
+    return;
+  }
+  other.axisTypes = '';
 }
 
 function resolveInitialMachineProfile() {
   if (!state.data?.other) return;
   const other = state.data.other;
   if (other.machineProfileId != null) {
-    if (findMachineProfileById(state.machineProfiles, other.machineProfileId)) return;
+    const profile = findMachineProfileById(state.machineProfiles, other.machineProfileId);
+    if (profile) {
+      syncOtherFromMachineProfile(other);
+      return;
+    }
     other.machineProfileId = null;
   }
   const matched = lookupMachineProfile(state.machineProfiles, other.machine);
-  if (!matched) return;
-  other.machineProfileId = matched.id;
-  if (!other.rapidRate && !other.spindlePower) {
-    applyMachineProfileToOther(other, matched);
+  if (matched) {
+    syncOtherFromMachineProfile(other);
+    return;
+  }
+  if (isOtherFactorsEnabled()) {
+    applyGenericMachineProfile();
   }
 }
 
@@ -115,6 +156,11 @@ function applySelectedMachineProfile(profileIdRaw) {
   if (!profileId) {
     state.data.other.machineProfileId = null;
     state.data.other.machine = '';
+    state.data.other.axisTypes = '';
+    state.data.other.rapidRate = 0;
+    state.data.other.spindlePower = 0;
+    state.data.other.accel = 0;
+    state.data.other.toolChangeSec = 0;
     recalcAll();
     renderOtherFields();
     renderTotals();
@@ -132,6 +178,39 @@ function applySelectedMachineProfile(profileIdRaw) {
   renderTotals();
   refreshSummary();
   persist().catch(console.error);
+}
+
+function zeroOtherFactors() {
+  if (!state.data?.other) return;
+  const other = state.data.other;
+  other.loadUnload = 0;
+  other.toolChanges = 0;
+  other.machineProfileId = null;
+  other.machine = '';
+  other.axisTypes = '';
+  other.rapidRate = 0;
+  other.spindlePower = 0;
+  other.accel = 0;
+  other.toolChangeSec = 0;
+}
+
+function setOtherFactorsEnabled(enabled) {
+  if (!state.data?.other) return;
+  state.data.other.enabled = enabled;
+  if (!enabled) {
+    zeroOtherFactors();
+  } else {
+    applyGenericMachineProfile();
+  }
+  recalcAll();
+  renderOtherFields();
+  renderTotals();
+  refreshSummary();
+  persist().catch(console.error);
+}
+
+function isOtherFactorsEnabled() {
+  return state.data?.other?.enabled !== false;
 }
 
 function syncRawMaterialFromPart() {
@@ -433,6 +512,8 @@ function updateOperationParam(id, paramKey, raw) {
 }
 
 function updateOther(key, raw) {
+  if (!isOtherFactorsEnabled()) return;
+  if (['rapidRate', 'spindlePower', 'accel', 'toolChangeSec'].includes(key)) return;
   const n = parseFloat(String(raw).replace(/,/g, ''));
   state.data.other[key] = Number.isFinite(n) ? n : 0;
   recalcAll();
@@ -612,45 +693,64 @@ function renderOperationsTable() {
 }
 
 function renderOtherFields() {
+  const panel = document.getElementById('cycle-other-panel');
+  const toggle = document.getElementById('cycle-other-enabled');
   const wrap = document.getElementById('cycle-other-fields');
   if (!wrap || !state.data) return;
   const o = state.data.other;
-  const selectedId = o.machineProfileId ?? '';
+  const enabled = isOtherFactorsEnabled();
+  const disabledAttr = enabled ? '' : ' disabled';
+  const readonlyAttr = ' readonly';
+  const readonlyClass = ' cell-input-readonly';
+
+  if (panel) panel.classList.toggle('is-disabled', !enabled);
+  if (toggle) toggle.checked = enabled;
+  if (enabled) syncOtherFromMachineProfile(o);
+
+  const show = (value) => (enabled ? value : '');
+  const showAxisTypes = enabled ? (o.axisTypes || '—') : '';
+  const selectedId = enabled ? (o.machineProfileId ?? '') : '';
   const machineOptions = activeMachineProfiles()
     .map((m) => {
-      const selected = m.id === selectedId ? ' selected' : '';
-      return `<option value="${m.id}"${selected}>${escapeHtml(m.name)}</option>`;
+      const id = m.id ?? m.Id;
+      const selected = id === selectedId ? ' selected' : '';
+      return `<option value="${id}"${selected}>${escapeHtml(m.name ?? m.Name)}</option>`;
     })
     .join('');
+
   wrap.innerHTML = `
     <label class="op-field">
       <span class="op-field-label">Load/Unload (min)</span>
-      <input type="number" class="cell-input" data-other="loadUnload" step="any" value="${o.loadUnload}" />
+      <input type="number" class="cell-input" data-other="loadUnload" step="any" value="${show(o.loadUnload)}"${disabledAttr} />
     </label>
     <label class="op-field">
-      <span class="op-field-label">Machine</span>
-      <select class="cell-input cell-select-sm" data-machine-profile>
+      <span class="op-field-label">Machine Model</span>
+      <select class="cell-input cell-select-sm" data-machine-profile${disabledAttr}>
         <option value="">— Select —</option>${machineOptions}</select>
     </label>
     <label class="op-field">
+      <span class="op-field-label">Axis Types</span>
+      <input type="text" class="cell-input${readonlyClass}" value="${escapeHtml(showAxisTypes)}"${readonlyAttr} tabindex="-1"${disabledAttr} />
+    </label>
+    <label class="op-field">
       <span class="op-field-label">Rapid Rate (mmpm)</span>
-      <input type="number" class="cell-input" data-other="rapidRate" step="any" value="${o.rapidRate}" />
+      <input type="number" class="cell-input${readonlyClass}" data-other="rapidRate" step="any" value="${show(o.rapidRate)}"${readonlyAttr}${disabledAttr} />
     </label>
     <label class="op-field">
       <span class="op-field-label">Spindle Power (kW)</span>
-      <input type="number" class="cell-input" data-other="spindlePower" step="any" value="${o.spindlePower}" />
+      <input type="number" class="cell-input${readonlyClass}" data-other="spindlePower" step="any" value="${show(o.spindlePower)}"${readonlyAttr}${disabledAttr} />
     </label>
     <label class="op-field">
       <span class="op-field-label">Accel/Decel Factor</span>
-      <input type="number" class="cell-input" data-other="accel" step="any" value="${o.accel}" />
+      <input type="number" class="cell-input${readonlyClass}" data-other="accel" step="any" value="${show(o.accel)}"${readonlyAttr}${disabledAttr} />
     </label>
     <label class="op-field">
       <span class="op-field-label">No. of Tool Changes</span>
-      <input type="number" class="cell-input" data-other="toolChanges" step="any" value="${o.toolChanges}" />
+      <input type="number" class="cell-input" data-other="toolChanges" step="any" value="${show(o.toolChanges)}"${disabledAttr} />
     </label>
     <label class="op-field">
       <span class="op-field-label">Tool Change Time (sec)</span>
-      <input type="number" class="cell-input" data-other="toolChangeSec" step="any" value="${o.toolChangeSec}" />
+      <input type="number" class="cell-input${readonlyClass}" data-other="toolChangeSec" step="any" value="${show(o.toolChangeSec)}"${readonlyAttr}${disabledAttr} />
     </label>`;
 }
 
@@ -789,14 +889,26 @@ function bindEvents() {
     }
   });
 
+  document.getElementById('cycle-other-enabled')?.addEventListener('change', (e) => {
+    setOtherFactorsEnabled(e.target.checked);
+  });
+
+  document.getElementById('cycle-other-fields')?.addEventListener('input', (e) => {
+    if (!isOtherFactorsEnabled()) return;
+    const input = e.target.closest('[data-other]');
+    if (!input || input.readOnly) return;
+    updateOther(input.getAttribute('data-other'), input.value);
+  });
+
   document.getElementById('cycle-other-fields')?.addEventListener('change', (e) => {
+    if (!isOtherFactorsEnabled()) return;
     const machineSelect = e.target.closest('[data-machine-profile]');
     if (machineSelect) {
       applySelectedMachineProfile(machineSelect.value);
       return;
     }
     const input = e.target.closest('[data-other]');
-    if (!input) return;
+    if (!input || input.readOnly) return;
     updateOther(input.getAttribute('data-other'), input.value);
   });
 
@@ -941,6 +1053,9 @@ async function init() {
   state.data = normalizeCycleData(saved, part);
   resolveInitialMaterialSpec();
   resolveInitialMachineProfile();
+  if (!isOtherFactorsEnabled()) {
+    zeroOtherFactors();
+  }
 
   if (subtitle) {
     subtitle.textContent = `Project ID ${projectId} · ${part.partDescription}`;

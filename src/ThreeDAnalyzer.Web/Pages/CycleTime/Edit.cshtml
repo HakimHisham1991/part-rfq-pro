@@ -129,10 +129,17 @@
                 </p>
             </div>
 
-            <details class="cycle-other-panel" id="cycle-other-panel">
-                <summary>Other Time Factors</summary>
+            <section class="cycle-other-panel" id="cycle-other-panel">
+                <div class="cycle-other-header">
+                    <label class="cycle-other-toggle" title="Enable or disable other time factor calculations">
+                        <input type="checkbox" id="cycle-other-enabled" checked />
+                        <span class="cycle-other-toggle-switch" aria-hidden="true"></span>
+                        <span class="sr-only">Enable Other Time Factors</span>
+                    </label>
+                    <h2 class="cycle-other-title">Other Time Factors</h2>
+                </div>
                 <div class="cycle-other-grid" id="cycle-other-fields"></div>
-            </details>
+            </section>
 
             <div class="cycle-totals" id="cycle-totals"></div>
         </div>
@@ -166,5 +173,5 @@
 </div>
 
 @section Scripts {
-    <script type="module" src="~/js/cycle-time.js"></script>
+    <script type="module" src="~/js/cycle-time.js?v=1.7.6"></script>
 }

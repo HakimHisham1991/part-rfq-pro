@@ -9,10 +9,19 @@ namespace ThreeDAnalyzer.Web.Api;
 [Route("api/machine-profiles")]
 public class MachineProfilesController(AppDbContext db) : ControllerBase
 {
+    private static readonly HashSet<string> ValidAxisTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "2X", "3X", "4X", "5X"
+    };
+
     [HttpGet]
     public async Task<ActionResult<List<MachineProfileDto>>> List()
     {
-        var items = await db.MachineProfiles.OrderBy(m => m.Name).ToListAsync();
+        var items = await db.MachineProfiles.ToListAsync();
+        items = items
+            .OrderBy(m => m.Name == MachineProfileDefaults.GenericName ? 0 : 1)
+            .ThenBy(m => m.Name)
+            .ToList();
         return items.Select(m => m.ToDto()).ToList();
     }
 
@@ -20,11 +29,14 @@ public class MachineProfilesController(AppDbContext db) : ControllerBase
     public async Task<ActionResult<MachineProfileDto>> Create([FromBody] CreateMachineProfileRequest request)
     {
         var name = (request.Name ?? "").Trim();
+        var axisTypes = NormalizeAxisTypes(request.AxisTypes);
         var createdBy = (request.CreatedBy ?? "").Trim();
         var status = NormalizeStatus(request.Status);
 
         if (string.IsNullOrEmpty(name))
-            return BadRequest("Machine name is required.");
+            return BadRequest("Machine model name is required.");
+        if (string.IsNullOrEmpty(axisTypes))
+            return BadRequest("Axis types must be one of: 2X, 3X, 4X, 5X.");
         if (string.IsNullOrEmpty(createdBy))
             return BadRequest("Created by is required.");
         if (!DateOnly.TryParse(request.CreatedDate, out var createdDate))
@@ -45,6 +57,7 @@ public class MachineProfilesController(AppDbContext db) : ControllerBase
         var profile = new MachineProfile
         {
             Name = name,
+            AxisTypes = axisTypes,
             RapidRateMmpm = request.RapidRateMmpm,
             SpindlePowerKw = request.SpindlePowerKw,
             AccelDecelFactor = request.AccelDecelFactor,
@@ -66,10 +79,13 @@ public class MachineProfilesController(AppDbContext db) : ControllerBase
         if (profile == null) return NotFound();
 
         var createdBy = (request.CreatedBy ?? "").Trim();
+        var axisTypes = NormalizeAxisTypes(request.AxisTypes);
         var status = NormalizeStatus(request.Status);
 
         if (string.IsNullOrEmpty(createdBy))
             return BadRequest("Created by is required.");
+        if (string.IsNullOrEmpty(axisTypes))
+            return BadRequest("Axis types must be one of: 2X, 3X, 4X, 5X.");
         if (!DateOnly.TryParse(request.CreatedDate, out var createdDate))
             return BadRequest("Created date is invalid.");
 
@@ -86,6 +102,7 @@ public class MachineProfilesController(AppDbContext db) : ControllerBase
         profile.SpindlePowerKw = request.SpindlePowerKw;
         profile.AccelDecelFactor = request.AccelDecelFactor;
         profile.ToolChangeTimeSec = request.ToolChangeTimeSec;
+        profile.AxisTypes = axisTypes;
         profile.CreatedBy = createdBy;
         profile.CreatedDate = createdDate;
         profile.Status = status;
@@ -111,5 +128,11 @@ public class MachineProfilesController(AppDbContext db) : ControllerBase
         if (s.Equals("inactive", StringComparison.OrdinalIgnoreCase))
             return "Inactive";
         return "Active";
+    }
+
+    private static string NormalizeAxisTypes(string? axisTypes)
+    {
+        var value = (axisTypes ?? "").Trim().ToUpperInvariant();
+        return ValidAxisTypes.Contains(value) ? value : "";
     }
 }
