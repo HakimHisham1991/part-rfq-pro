@@ -2,6 +2,8 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ThreeDAnalyzer.Web.Data;
+using ThreeDAnalyzer.Web.Data.Entities;
+using ThreeDAnalyzer.Web.Services;
 
 namespace ThreeDAnalyzer.Web.Api;
 
@@ -102,5 +104,155 @@ public class ProjectsController(AppDbContext db) : ControllerBase
 
         await db.SaveChangesAsync();
         return NoContent();
+    }
+
+    [HttpPost("{projectId:int}/parts")]
+    public async Task<ActionResult<PartDto>> CreatePart(int projectId, [FromBody] CreatePartRequest request)
+    {
+        var project = await db.Projects.FindAsync(projectId);
+        if (project == null) return NotFound();
+
+        var partNumber = (request.PartNumber ?? "").Trim();
+        if (string.IsNullOrEmpty(partNumber))
+            return BadRequest("Part number is required.");
+
+        if (await db.Parts.AnyAsync(p => p.ProjectId == projectId && p.PartNumber == partNumber))
+            return BadRequest($"Part number \"{partNumber}\" already exists in this project.");
+
+        var nextNo = await db.Parts.Where(p => p.ProjectId == projectId).MaxAsync(p => (int?)p.No) ?? 0;
+        var aircraft = await db.Parts
+            .Where(p => p.ProjectId == projectId && p.Aircraft != "")
+            .Select(p => p.Aircraft)
+            .FirstOrDefaultAsync();
+
+        var part = new Part
+        {
+            ProjectId = projectId,
+            PartNumber = partNumber,
+            PartDescription = (request.PartDescription ?? "").Trim(),
+            Aircraft = aircraft ?? "",
+            No = nextNo + 1
+        };
+
+        db.Parts.Add(part);
+        await db.SaveChangesAsync();
+        return StatusCode(StatusCodes.Status201Created, part.ToDto());
+    }
+
+    [HttpPut("{projectId:int}/parts/{partId:int}")]
+    public async Task<ActionResult<PartDto>> UpdatePart(
+        int projectId,
+        int partId,
+        [FromBody] UpdatePartRequest request)
+    {
+        var part = await db.Parts.FirstOrDefaultAsync(p => p.ProjectId == projectId && p.Id == partId);
+        if (part == null) return NotFound();
+
+        var partNumber = (request.PartNumber ?? "").Trim();
+        if (string.IsNullOrEmpty(partNumber))
+            return BadRequest("Part number is required.");
+
+        if (request.No <= 0)
+            return BadRequest("No. must be greater than zero.");
+
+        if (await db.Parts.AnyAsync(p =>
+                p.ProjectId == projectId && p.Id != partId && p.PartNumber == partNumber))
+            return BadRequest($"Part number \"{partNumber}\" already exists in this project.");
+
+        part.Aircraft = (request.Aircraft ?? "").Trim();
+        part.No = request.No;
+        part.PartNumber = partNumber;
+        part.PartDescription = (request.PartDescription ?? "").Trim();
+        part.Picture = (request.Picture ?? "").Trim();
+        part.Qpa = request.Qpa;
+        part.FirstLaunchQty = request.FirstLaunchQty;
+        part.FirstDelivery = (request.FirstDelivery ?? "").Trim();
+        part.MaterialSpec = (request.MaterialSpec ?? "").Trim();
+        part.FinishThickness = request.FinishThickness;
+        part.FinishWidth = request.FinishWidth;
+        part.FinishLength = request.FinishLength;
+        part.MaterialRulingDim = request.MaterialRulingDim;
+        part.MaterialThickness = request.MaterialThickness;
+        part.MaterialWidth = request.MaterialWidth;
+        part.MaterialLength = request.MaterialLength;
+        part.QtyPerBillet = request.QtyPerBillet;
+        part.SetupTimeHour = request.SetupTimeHour;
+        part.CycleTurnMill = request.CycleTurnMill;
+        part.Cycle3x = request.Cycle3x;
+        part.Cycle4x = request.Cycle4x;
+        part.Cycle5x = request.Cycle5x;
+        part.CycleTotalHrs = request.CycleTotalHrs;
+
+        await db.SaveChangesAsync();
+        return part.ToDto();
+    }
+
+    [HttpDelete("{projectId:int}/parts/{partId:int}")]
+    public async Task<IActionResult> DeletePart(int projectId, int partId)
+    {
+        var part = await db.Parts.FirstOrDefaultAsync(p => p.ProjectId == projectId && p.Id == partId);
+        if (part == null) return NotFound();
+
+        db.Parts.Remove(part);
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpPost("{projectId:int}/parts/import")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<ActionResult<ImportPartsResult>> ImportParts(int projectId, IFormFile? file)
+    {
+        var project = await db.Projects.FindAsync(projectId);
+        if (project == null) return NotFound();
+
+        if (file == null || file.Length == 0)
+            return BadRequest("Excel file is required.");
+
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (extension is not ".xlsx" and not ".xls")
+            return BadRequest("Only .xlsx and .xls files are supported.");
+
+        var startNo = await db.Parts.Where(p => p.ProjectId == projectId).MaxAsync(p => (int?)p.No) ?? 0;
+
+        PartExcelImportResult importResult;
+        await using (var stream = file.OpenReadStream())
+        {
+            importResult = PartExcelImporter.Import(stream, projectId, startNo + 1);
+        }
+
+        if (importResult.Errors.Count > 0)
+            return BadRequest(new ImportPartsResult(0, importResult.Skipped, importResult.Errors));
+
+        if (importResult.Parts.Count == 0)
+            return BadRequest(new ImportPartsResult(0, importResult.Skipped, ["No part rows found in the Excel file."]));
+
+        var existingNumbers = await db.Parts
+            .Where(p => p.ProjectId == projectId)
+            .Select(p => p.PartNumber)
+            .ToListAsync();
+        var existingSet = existingNumbers.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var errors = new List<string>();
+        var toAdd = new List<Part>();
+        foreach (var part in importResult.Parts)
+        {
+            if (existingSet.Contains(part.PartNumber))
+            {
+                errors.Add($"Skipped duplicate part number \"{part.PartNumber}\".");
+                importResult.Skipped++;
+                continue;
+            }
+
+            existingSet.Add(part.PartNumber);
+            toAdd.Add(part);
+        }
+
+        if (toAdd.Count == 0)
+            return BadRequest(new ImportPartsResult(0, importResult.Skipped, errors));
+
+        db.Parts.AddRange(toAdd);
+        await db.SaveChangesAsync();
+
+        return new ImportPartsResult(toAdd.Count, importResult.Skipped, errors);
     }
 }

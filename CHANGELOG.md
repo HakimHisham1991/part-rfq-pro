@@ -25,6 +25,27 @@ Version numbers use **MAJOR.MINOR.PATCH**:
 
 ---
 
+## [1.9.0] - 2026-06-16
+
+### Added
+
+- **Project RFQ:** all part columns are now inline-editable; changes save automatically when a cell is updated.
+
+### Changed
+
+- REST API: `PUT /api/projects/{projectId}/parts/{partId}` updates full part row data.
+
+---
+
+## [1.8.0] - 2026-06-16
+
+### Added
+
+- **Project RFQ:** **Add Part Number** and **Import from Excel** toolbar buttons; **Delete** action per part with confirmation dialog.
+- REST API: create/delete project parts and Excel import (`POST` / `DELETE` / `POST …/import` on `/api/projects/{id}/parts`).
+
+---
+
 ## [1.7.6] - 2026-06-16
 
 ### Fixed

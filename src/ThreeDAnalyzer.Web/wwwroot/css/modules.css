@@ -359,6 +359,41 @@ body.module-analyzer #app {
   object-fit: contain;
 }
 
+#rfq-table .rfq-editable-cell {
+  min-width: 88px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#rfq-table input.rfq-cell-input {
+  width: 100%;
+  min-width: 72px;
+  box-sizing: border-box;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 3px;
+}
+
+#rfq-table input.rfq-cell-input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+#rfq-table .rfq-picture-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 120px;
+}
+
+#rfq-table .rfq-picture-preview {
+  align-self: flex-start;
+}
+
 .empty-state {
   padding: 24px;
   text-align: center;

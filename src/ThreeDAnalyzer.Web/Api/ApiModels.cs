@@ -29,6 +29,35 @@ public record PartDto(
     double Cycle5x,
     double CycleTotalHrs);
 
+public record CreatePartRequest(string PartNumber, string? PartDescription);
+
+public record UpdatePartRequest(
+    string Aircraft,
+    int No,
+    string PartNumber,
+    string PartDescription,
+    string Picture,
+    int Qpa,
+    int FirstLaunchQty,
+    string FirstDelivery,
+    string MaterialSpec,
+    double FinishThickness,
+    double FinishWidth,
+    double FinishLength,
+    double MaterialRulingDim,
+    double MaterialThickness,
+    double MaterialWidth,
+    double MaterialLength,
+    int QtyPerBillet,
+    double SetupTimeHour,
+    double CycleTurnMill,
+    double Cycle3x,
+    double Cycle4x,
+    double Cycle5x,
+    double CycleTotalHrs);
+
+public record ImportPartsResult(int Imported, int Skipped, IReadOnlyList<string> Errors);
+
 public record UserDto(int Id, string Username, string Password, string DisplayName, string Status);
 
 public record MaterialSpecDto(

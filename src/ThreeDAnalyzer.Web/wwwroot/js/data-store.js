@@ -60,6 +60,58 @@ export async function getPartsForProject(projectId) {
   return apiGet(`/api/projects/${encodeURIComponent(projectId)}/parts`);
 }
 
+export async function createPart(projectId, payload) {
+  return apiPost(`/api/projects/${encodeURIComponent(projectId)}/parts`, payload);
+}
+
+export async function updatePart(projectId, partId, payload) {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/parts/${encodeURIComponent(partId)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload)
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function deletePart(projectId, partId) {
+  await apiDelete(
+    `/api/projects/${encodeURIComponent(projectId)}/parts/${encodeURIComponent(partId)}`
+  );
+}
+
+export async function importPartsFromExcel(projectId, file) {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/parts/import`, {
+    method: 'POST',
+    body: form
+  });
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+  if (!res.ok) {
+    const message =
+      data?.errors?.join?.('\n') ??
+      data?.title ??
+      (typeof data === 'string' ? data : 'Import failed.');
+    throw new Error(message);
+  }
+  return data;
+}
+
 export async function getPart(projectId, partId) {
   try {
     return await apiGet(
