@@ -9,7 +9,7 @@ namespace ThreeDAnalyzer.Web.Api;
 
 [ApiController]
 [Route("api/projects")]
-public class ProjectsController(AppDbContext db) : ControllerBase
+public class ProjectsController(AppDbContext db, PartPictureService pictureService) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<List<ProjectDto>>> List()
@@ -73,6 +73,24 @@ public class ProjectsController(AppDbContext db) : ControllerBase
             return BadRequest("Status must be Open or Closed.");
 
         project.Status = status;
+        await db.SaveChangesAsync();
+        return project.ToDto();
+    }
+
+    [HttpPut("{id:int}/name")]
+    public async Task<ActionResult<ProjectDto>> Rename(int id, [FromBody] RenameProjectRequest request)
+    {
+        var project = await db.Projects.FindAsync(id);
+        if (project == null) return NotFound();
+
+        var name = (request.Name ?? "").Trim();
+        if (string.IsNullOrEmpty(name))
+            return BadRequest("Project name is required.");
+
+        if (await db.Projects.AnyAsync(p => p.Id != id && p.Name == name))
+            return BadRequest($"Project \"{name}\" already exists.");
+
+        project.Name = name;
         await db.SaveChangesAsync();
         return project.ToDto();
     }
@@ -245,9 +263,51 @@ public class ProjectsController(AppDbContext db) : ControllerBase
         var part = await db.Parts.FirstOrDefaultAsync(p => p.ProjectId == projectId && p.Id == partId);
         if (part == null) return NotFound();
 
+        pictureService.Delete(projectId, partId);
         db.Parts.Remove(part);
         await db.SaveChangesAsync();
         return NoContent();
+    }
+
+    [HttpPost("{projectId:int}/parts/{partId:int}/picture")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    public async Task<ActionResult<PartDto>> UploadPartPicture(
+        int projectId,
+        int partId,
+        IFormFile? file)
+    {
+        var part = await db.Parts.FirstOrDefaultAsync(p => p.ProjectId == projectId && p.Id == partId);
+        if (part == null) return NotFound();
+
+        if (file == null || file.Length == 0)
+            return BadRequest("Image file is required.");
+
+        if (!PartPictureService.IsAllowedExtension(file.FileName))
+            return BadRequest("Allowed formats: jpeg, jpg, png, gif, bmp, wmf, tif.");
+
+        try
+        {
+            part.Picture = await pictureService.SaveAsync(projectId, partId, file);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+
+        await db.SaveChangesAsync();
+        return part.ToDto();
+    }
+
+    [HttpDelete("{projectId:int}/parts/{partId:int}/picture")]
+    public async Task<ActionResult<PartDto>> DeletePartPicture(int projectId, int partId)
+    {
+        var part = await db.Parts.FirstOrDefaultAsync(p => p.ProjectId == projectId && p.Id == partId);
+        if (part == null) return NotFound();
+
+        pictureService.Delete(projectId, partId);
+        part.Picture = "";
+        await db.SaveChangesAsync();
+        return part.ToDto();
     }
 
     [HttpGet("{projectId:int}/parts/export")]
@@ -256,20 +316,53 @@ public class ProjectsController(AppDbContext db) : ControllerBase
         var project = await db.Projects.FindAsync(projectId);
         if (project == null) return NotFound();
 
-        var parts = await db.Parts
-            .Where(p => p.ProjectId == projectId)
-            .OrderBy(p => p.No)
-            .ToListAsync();
-
+        var parts = await GetOrderedParts(projectId);
         var bytes = PartExcelExporter.Export(parts);
-        var safeName = string.Join("_", project.Name.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim();
-        if (string.IsNullOrEmpty(safeName)) safeName = $"project-{projectId}";
-        var fileName = $"{safeName}-rfq.xlsx";
+        var fileName = BuildExportFileName(project, projectId, "xlsx");
 
         return File(
             bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             fileName);
+    }
+
+    [HttpGet("{projectId:int}/parts/export/csv")]
+    public async Task<IActionResult> ExportPartsCsv(int projectId)
+    {
+        var project = await db.Projects.FindAsync(projectId);
+        if (project == null) return NotFound();
+
+        var parts = await GetOrderedParts(projectId);
+        var bytes = PartDelimitedExporter.Export(parts);
+        var fileName = BuildExportFileName(project, projectId, "csv");
+
+        return File(bytes, "text/csv", fileName);
+    }
+
+    [HttpGet("{projectId:int}/parts/export/txt")]
+    public async Task<IActionResult> ExportPartsTxt(int projectId)
+    {
+        var project = await db.Projects.FindAsync(projectId);
+        if (project == null) return NotFound();
+
+        var parts = await GetOrderedParts(projectId);
+        var bytes = PartDelimitedExporter.Export(parts);
+        var fileName = BuildExportFileName(project, projectId, "txt");
+
+        return File(bytes, "text/plain", fileName);
+    }
+
+    private async Task<List<Part>> GetOrderedParts(int projectId) =>
+        await db.Parts
+            .Where(p => p.ProjectId == projectId)
+            .OrderBy(p => p.No)
+            .ToListAsync();
+
+    private static string BuildExportFileName(Project project, int projectId, string extension)
+    {
+        var safeName = string.Join("_", project.Name.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim();
+        if (string.IsNullOrEmpty(safeName)) safeName = $"project-{projectId}";
+        return $"{safeName}-rfq.{extension}";
     }
 
     [HttpPost("{projectId:int}/parts/import")]

@@ -37,8 +37,10 @@ import {
   calcMrr,
   calcOperationCt,
   calcTotals,
-  recalcOperations
-} from './operation-formulas.js';
+  QUOTE_HR_STEP,
+  recalcOperations,
+  roundUpTo
+} from './operation-formulas.js?v=1.15.2';
 import { bindModal, closeModal, openModal } from './settings-modal.js';
 
 const ADD_MODAL_ID = 'cycle-add-modal';
@@ -245,7 +247,8 @@ function refreshSummary() {
   const quoteEl = document.getElementById('cycle-quote-hr');
   if (partEl && state.part) partEl.textContent = state.part.partNumber;
   if (quoteEl && state.computed) {
-    quoteEl.textContent = formatNum(state.computed.quoteHr);
+    const quoteHr = roundUpTo(state.computed.overallHr, QUOTE_HR_STEP);
+    quoteEl.textContent = formatNum(quoteHr, 1);
   }
 }
 

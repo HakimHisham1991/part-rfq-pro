@@ -39,6 +39,7 @@ builder.Services.AddSession(options =>
     options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
 });
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddSingleton<PartPictureService>();
 
 var app = builder.Build();
 

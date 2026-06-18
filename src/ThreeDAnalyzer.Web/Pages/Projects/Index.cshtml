@@ -70,6 +70,30 @@
     </div>
 </div>
 
+<div id="project-rename-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="project-rename-modal-title">
+    <div class="modal-backdrop" data-modal-close></div>
+    <div class="modal-content modal-content-sm">
+        <div class="modal-header">
+            <h3 id="project-rename-modal-title">Rename Project</h3>
+            <button type="button" class="modal-close" data-modal-close aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="project-rename-modal-error" class="modal-error" role="alert"></div>
+            <form id="project-rename-form">
+                <input type="hidden" id="project-rename-id" />
+                <div class="form-group">
+                    <label for="project-rename-name">Project Name</label>
+                    <input type="text" id="project-rename-name" class="form-control" required />
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
-    <script type="module" src="~/js/projects.js?v=1.12.0"></script>
+    <script type="module" src="~/js/projects.js?v=1.14.0"></script>
 }

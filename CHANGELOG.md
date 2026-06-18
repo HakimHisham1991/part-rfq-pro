@@ -2,26 +2,42 @@
 
 All notable changes to **3D Part Analyzer** are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+---
 
-Version numbers use **MAJOR.MINOR.PATCH**:
+## [1.15.2] - 2026-06-16
 
-| Segment | When to increment |
-|---------|-------------------|
-| **MAJOR** | Incompatible API or behavior changes |
-| **MINOR** | New functionality, backwards compatible |
-| **PATCH** | Backwards compatible bug fixes |
+### Fixed
+
+- **Edit Cycle Time:** **Cycle Time to Quote** now correctly applies `ROUNDUP` to 0.1 hr (fixes stale cached formula still rounding to 0.5 hr).
 
 ---
 
-## [Unreleased]
-
-### Added
+## [1.15.1] - 2026-06-16
 
 ### Changed
 
-### Fixed
+- **Edit Cycle Time:** **Cycle Time to Quote** formula updated to `=ROUNDUP((Total Overall CT),0.1)` (was CEILING to 0.5 hr).
+
+---
+
+## [1.15.0] - 2026-06-16
+
+### Added
+
+- **Project RFQ:** Picture column shows the actual image; **Upload** and **Delete** controls in a web-only column (excluded from export). Supported formats: jpeg, jpg, png, gif, bmp, wmf, tif.
+- **Project RFQ:** **Export to CSV** and **Export to TXT** buttons (pipe-separated, same columns as Excel).
+
+### Changed
+
+- **Project RFQ:** Picture path/URL is still included in Excel, CSV, and TXT exports.
+
+---
+
+## [1.14.0] - 2026-06-16
+
+### Added
+
+- **Project Manager:** **Rename** action in the Action column opens a dialog to rename a project.
 
 ---
 

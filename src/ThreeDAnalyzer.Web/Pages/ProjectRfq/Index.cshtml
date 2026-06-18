@@ -19,7 +19,10 @@
             <button type="button" id="btn-add-part">Add Part Number</button>
             <button type="button" id="btn-import-excel">Import from Excel</button>
             <button type="button" id="btn-export-excel">Export to Excel</button>
+            <button type="button" id="btn-export-csv">Export to CSV</button>
+            <button type="button" id="btn-export-txt">Export to TXT</button>
             <input type="file" id="rfq-import-input" accept=".xlsx,.xls" hidden />
+            <input type="file" id="rfq-picture-input" accept=".jpeg,.jpg,.png,.gif,.bmp,.wmf,.tif,.tiff,image/jpeg,image/png,image/gif,image/bmp,image/wmf,image/tiff" hidden />
         </div>
         <div class="table-wrap">
             <table class="data-table" id="rfq-table">
@@ -31,6 +34,7 @@
                         <th>Part Number</th>
                         <th>Part Description</th>
                         <th>Picture</th>
+                        <th class="rfq-picture-actions-col" aria-label="Picture actions"></th>
                         <th>QPA</th>
                         <th>1st launch quantity</th>
                         <th>1st delivery</th>
@@ -86,5 +90,5 @@
 </div>
 
 @section Scripts {
-    <script type="module" src="~/js/project-rfq.js?v=1.13.0"></script>
+    <script type="module" src="~/js/project-rfq.js?v=1.15.0"></script>
 }

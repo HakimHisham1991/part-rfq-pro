@@ -76,10 +76,18 @@ export function calcOperationCt(operation) {
   return fn(operation.params ?? {});
 }
 
-export function ceilingTo(value, step) {
+export function roundUpTo(value, step) {
   if (!Number.isFinite(value) || step <= 0) return 0;
-  return Math.ceil(value / step) * step;
+  if (value <= 0) return 0;
+  return Math.ceil(value / step - 1e-9) * step;
 }
+
+/** @deprecated Use roundUpTo */
+export function ceilingTo(value, step) {
+  return roundUpTo(value, step);
+}
+
+export const QUOTE_HR_STEP = 0.1;
 
 /**
  * @param {Array<{ ctMin?: number }>} operations
@@ -101,7 +109,7 @@ export function calcTotals(operations, other) {
     otherMin,
     overallMin,
     overallHr,
-    quoteHr: ceilingTo(overallHr, 0.5)
+    quoteHr: roundUpTo(overallHr, QUOTE_HR_STEP)
   };
 }
 

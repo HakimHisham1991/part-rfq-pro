@@ -1,7 +1,8 @@
-import { createProject, getProjects } from './data-store.js';
+import { createProject, getProjects, renameProject } from './data-store.js';
 import { bindModal, closeModal, openModal, showModalError } from './settings-modal.js';
 
 const ADD_PROJECT_MODAL_ID = 'project-add-modal';
+const RENAME_PROJECT_MODAL_ID = 'project-rename-modal';
 
 function formatDate(iso) {
   if (!iso) return '—';
@@ -29,6 +30,8 @@ function getDefaultOwner() {
   return document.getElementById('projects-page')?.dataset.currentOwner?.trim() ?? '';
 }
 
+let projectsCache = [];
+
 function openAddProjectModal() {
   document.getElementById('project-name').value = '';
   document.getElementById('project-owner').value = getDefaultOwner();
@@ -36,6 +39,15 @@ function openAddProjectModal() {
   document.getElementById('project-status').value = 'Open';
   showModalError(document.getElementById('project-add-modal-error'), '');
   openModal(ADD_PROJECT_MODAL_ID);
+}
+
+function openRenameProjectModal(project) {
+  document.getElementById('project-rename-id').value = String(project.id);
+  document.getElementById('project-rename-name').value = project.name ?? '';
+  showModalError(document.getElementById('project-rename-modal-error'), '');
+  openModal(RENAME_PROJECT_MODAL_ID);
+  document.getElementById('project-rename-name')?.focus();
+  document.getElementById('project-rename-name')?.select();
 }
 
 async function renderTable() {
@@ -46,6 +58,7 @@ async function renderTable() {
   let projects;
   try {
     projects = await getProjects();
+    projectsCache = projects;
   } catch (err) {
     if (empty) {
       empty.hidden = false;
@@ -72,7 +85,12 @@ async function renderTable() {
       <td>${formatDate(p.dateRegistered)}</td>
       <td>${escapeHtml(p.owner)}</td>
       <td class="${statusClass}">${escapeHtml(p.status)}</td>
-      <td><a class="btn-link" href="${rfqUrl}">Edit</a></td>
+      <td>
+        <span class="table-action-btns">
+          <a class="btn-link" href="${rfqUrl}">Edit</a>
+          <button type="button" class="btn-link" data-rename-project="${p.id}">Rename</button>
+        </span>
+      </td>
     `;
     tbody.appendChild(tr);
   });
@@ -83,7 +101,22 @@ document.addEventListener('DOMContentLoaded', () => {
     onClose: () => showModalError(document.getElementById('project-add-modal-error'), '')
   });
 
+  bindModal(RENAME_PROJECT_MODAL_ID, {
+    onClose: () => showModalError(document.getElementById('project-rename-modal-error'), '')
+  });
+
   document.getElementById('btn-add-project')?.addEventListener('click', openAddProjectModal);
+
+  document.querySelector('#projects-table tbody')?.addEventListener('click', (e) => {
+    const renameBtn = e.target.closest('[data-rename-project]');
+    if (!renameBtn) return;
+
+    const projectId = Number(renameBtn.getAttribute('data-rename-project'));
+    const project = projectsCache.find((p) => p.id === projectId);
+    if (!project) return;
+
+    openRenameProjectModal(project);
+  });
 
   document.getElementById('project-add-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -108,6 +141,34 @@ document.addEventListener('DOMContentLoaded', () => {
       await renderTable();
     } catch (err) {
       showModalError(errorEl, err.message || 'Failed to add project.');
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  });
+
+  document.getElementById('project-rename-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const errorEl = document.getElementById('project-rename-modal-error');
+    const projectId = Number(document.getElementById('project-rename-id').value);
+    const name = document.getElementById('project-rename-name').value.trim();
+
+    if (!projectId) return;
+
+    if (!name) {
+      showModalError(errorEl, 'Project name is required.');
+      return;
+    }
+
+    const saveBtn = e.submitter ?? e.target.querySelector('[type="submit"]');
+    if (saveBtn) saveBtn.disabled = true;
+
+    try {
+      await renameProject(projectId, name);
+      closeModal(RENAME_PROJECT_MODAL_ID);
+      await renderTable();
+    } catch (err) {
+      showModalError(errorEl, err.message || 'Failed to rename project.');
     } finally {
       if (saveBtn) saveBtn.disabled = false;
     }

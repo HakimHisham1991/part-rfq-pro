@@ -1,16 +1,21 @@
 import {
   createPart,
   deletePart,
+  deletePartPicture,
+  exportPartsToCsv,
   exportPartsToExcel,
+  exportPartsToTxt,
   getPartsForProject,
   getProject,
   importPartsFromExcel,
   updatePart,
-  updateProjectStatus
+  updateProjectStatus,
+  uploadPartPicture
 } from './data-store.js';
 import { bindModal, closeModal, openModal, showModalError } from './settings-modal.js';
 
 const ADD_PART_MODAL_ID = 'rfq-add-part-modal';
+const PICTURE_EXTENSIONS = new Set(['.jpeg', '.jpg', '.png', '.gif', '.bmp', '.wmf', '.tif', '.tiff']);
 
 const RFQ_EDIT_FIELDS = [
   { key: 'aircraft', type: 'text' },
@@ -41,6 +46,7 @@ const RFQ_EDIT_FIELDS = [
 let currentProjectId = null;
 let currentProject = null;
 let partsCache = [];
+let pendingPicturePartId = null;
 const savingRows = new Set();
 
 function normalizeProjectStatus(status) {
@@ -119,8 +125,24 @@ function renderPictureCell(part) {
   const url = String(part.picture ?? '').trim();
   const preview = url
     ? `<img src="${escapeHtml(url)}" alt="" class="part-thumb rfq-picture-preview" data-rfq-picture-preview />`
-    : '<img alt="" class="part-thumb rfq-picture-preview" data-rfq-picture-preview hidden />';
-  return `<div class="rfq-picture-cell">${rfqInput(part, { key: 'picture', type: 'text' })}${preview}</div>`;
+    : '<span class="rfq-picture-placeholder" data-rfq-picture-placeholder>No image</span>';
+  return `<div class="rfq-picture-cell">
+    <input type="hidden" data-field="picture" data-type="text" value="${escapeAttr(url)}" />
+    ${preview}
+  </div>`;
+}
+
+function renderPictureActionsCell(part) {
+  return `<div class="rfq-picture-actions">
+    <button type="button" class="btn-link" data-upload-picture="${part.id}" title="Upload image">Upload</button>
+    <button type="button" class="btn-link btn-link-danger" data-delete-picture="${part.id}" title="Delete image">Delete</button>
+  </div>`;
+}
+
+function isAllowedPictureFile(file) {
+  if (!file?.name) return false;
+  const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')).toLowerCase() : '';
+  return PICTURE_EXTENSIONS.has(ext);
 }
 
 function buildPartPayload(tr) {
@@ -133,15 +155,28 @@ function buildPartPayload(tr) {
 }
 
 function updatePicturePreview(tr, url) {
-  const img = tr.querySelector('[data-rfq-picture-preview]');
-  if (!img) return;
+  const hidden = tr.querySelector('[data-field="picture"]');
+  if (hidden) hidden.value = String(url ?? '').trim();
+
+  const cell = tr.querySelector('.rfq-picture-cell');
+  if (!cell) return;
+
+  cell.querySelectorAll('[data-rfq-picture-preview], [data-rfq-picture-placeholder]').forEach((el) => el.remove());
+
   const value = String(url ?? '').trim();
   if (value) {
+    const img = document.createElement('img');
     img.src = value;
-    img.hidden = false;
+    img.alt = '';
+    img.className = 'part-thumb rfq-picture-preview';
+    img.dataset.rfqPicturePreview = '';
+    cell.appendChild(img);
   } else {
-    img.removeAttribute('src');
-    img.hidden = true;
+    const span = document.createElement('span');
+    span.className = 'rfq-picture-placeholder';
+    span.dataset.rfqPicturePlaceholder = '';
+    span.textContent = 'No image';
+    cell.appendChild(span);
   }
 }
 
@@ -236,7 +271,8 @@ function renderPartRows(projectId, parts) {
 
     const cells = RFQ_EDIT_FIELDS.map((field) => {
       if (field.picture) {
-        return `<td class="rfq-editable-cell">${renderPictureCell(part)}</td>`;
+        return `<td class="rfq-picture-col rfq-editable-cell">${renderPictureCell(part)}</td>
+          <td class="rfq-picture-actions-col">${renderPictureActionsCell(part)}</td>`;
       }
       return `<td class="rfq-editable-cell">${rfqInput(part, field)}</td>`;
     }).join('');
@@ -257,7 +293,9 @@ async function render() {
   const statusBtn = document.getElementById('btn-toggle-project-status');
   const addBtn = document.getElementById('btn-add-part');
   const importBtn = document.getElementById('btn-import-excel');
-  const exportBtn = document.getElementById('btn-export-excel');
+  const exportExcelBtn = document.getElementById('btn-export-excel');
+  const exportCsvBtn = document.getElementById('btn-export-csv');
+  const exportTxtBtn = document.getElementById('btn-export-txt');
 
   if (!projectId) {
     if (subtitle) subtitle.textContent = 'Select a project from Project Manager.';
@@ -270,7 +308,9 @@ async function render() {
     if (statusBtn) statusBtn.disabled = true;
     if (addBtn) addBtn.disabled = true;
     if (importBtn) importBtn.disabled = true;
-    if (exportBtn) exportBtn.disabled = true;
+    if (exportExcelBtn) exportExcelBtn.disabled = true;
+    if (exportCsvBtn) exportCsvBtn.disabled = true;
+    if (exportTxtBtn) exportTxtBtn.disabled = true;
     return;
   }
 
@@ -305,9 +345,27 @@ async function render() {
   if (statusBtn) statusBtn.disabled = false;
   if (addBtn) addBtn.disabled = false;
   if (importBtn) importBtn.disabled = false;
-  if (exportBtn) exportBtn.disabled = false;
+  if (exportExcelBtn) exportExcelBtn.disabled = false;
+  if (exportCsvBtn) exportCsvBtn.disabled = false;
+  if (exportTxtBtn) exportTxtBtn.disabled = false;
 
   renderPartRows(projectId, parts);
+}
+
+async function runPartsExport(exportFn, buttonId, errorMessage) {
+  if (!currentProjectId) return;
+
+  const btn = document.getElementById(buttonId);
+  if (btn) btn.disabled = true;
+
+  try {
+    await saveAllParts();
+    await exportFn(currentProjectId);
+  } catch (err) {
+    alert(err.message || errorMessage);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -371,19 +429,39 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('rfq-import-input')?.click();
   });
 
-  document.getElementById('btn-export-excel')?.addEventListener('click', async () => {
-    if (!currentProjectId) return;
+  document.getElementById('btn-export-excel')?.addEventListener('click', () => {
+    runPartsExport(exportPartsToExcel, 'btn-export-excel', 'Failed to export Excel file.').catch(console.error);
+  });
 
-    const btn = document.getElementById('btn-export-excel');
-    if (btn) btn.disabled = true;
+  document.getElementById('btn-export-csv')?.addEventListener('click', () => {
+    runPartsExport(exportPartsToCsv, 'btn-export-csv', 'Failed to export CSV file.').catch(console.error);
+  });
+
+  document.getElementById('btn-export-txt')?.addEventListener('click', () => {
+    runPartsExport(exportPartsToTxt, 'btn-export-txt', 'Failed to export TXT file.').catch(console.error);
+  });
+
+  document.getElementById('rfq-picture-input')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    const partId = pendingPicturePartId;
+    pendingPicturePartId = null;
+    if (!file || !partId || !currentProjectId) return;
+
+    if (!isAllowedPictureFile(file)) {
+      alert('Allowed formats: jpeg, jpg, png, gif, bmp, wmf, tif.');
+      return;
+    }
+
+    const tr = document.querySelector(`#rfq-table tbody tr[data-part-id="${partId}"]`);
 
     try {
-      await saveAllParts();
-      await exportPartsToExcel(currentProjectId);
+      const updated = await uploadPartPicture(currentProjectId, partId, file);
+      const idx = partsCache.findIndex((p) => p.id === partId);
+      if (idx >= 0) partsCache[idx] = updated;
+      if (tr) updatePicturePreview(tr, updated.picture);
     } catch (err) {
-      alert(err.message || 'Failed to export Excel file.');
-    } finally {
-      if (btn) btn.disabled = false;
+      alert(err.message || 'Failed to upload picture.');
     }
   });
 
@@ -444,6 +522,33 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.querySelector('#rfq-table')?.addEventListener('click', async (e) => {
+    const uploadBtn = e.target.closest('[data-upload-picture]');
+    if (uploadBtn && currentProjectId) {
+      pendingPicturePartId = Number(uploadBtn.getAttribute('data-upload-picture'));
+      document.getElementById('rfq-picture-input')?.click();
+      return;
+    }
+
+    const deletePictureBtn = e.target.closest('[data-delete-picture]');
+    if (deletePictureBtn && currentProjectId) {
+      const partId = Number(deletePictureBtn.getAttribute('data-delete-picture'));
+      const part = partsCache.find((p) => p.id === partId);
+      if (!part) return;
+
+      if (!confirm(`Delete picture for part "${part.partNumber}"?`)) return;
+
+      const tr = deletePictureBtn.closest('tr');
+      try {
+        const updated = await deletePartPicture(currentProjectId, partId);
+        const idx = partsCache.findIndex((p) => p.id === partId);
+        if (idx >= 0) partsCache[idx] = updated;
+        if (tr) updatePicturePreview(tr, updated.picture);
+      } catch (err) {
+        alert(err.message || 'Failed to delete picture.');
+      }
+      return;
+    }
+
     const deleteBtn = e.target.closest('[data-delete-part]');
     if (!deleteBtn || !currentProjectId) return;
 

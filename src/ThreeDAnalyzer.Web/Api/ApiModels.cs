@@ -6,6 +6,8 @@ public record CreateProjectRequest(string Name, string? Owner, string? DateRegis
 
 public record UpdateProjectStatusRequest(string Status);
 
+public record RenameProjectRequest(string Name);
+
 public record PartDto(
     int Id,
     int ProjectId,

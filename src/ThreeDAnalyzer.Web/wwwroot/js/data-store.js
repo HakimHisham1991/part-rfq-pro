@@ -68,6 +68,22 @@ export async function updateProjectStatus(projectId, status) {
   return res.json();
 }
 
+export async function renameProject(projectId, name) {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/name`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ name })
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function getProject(id) {
   try {
     return await apiGet(`/api/projects/${encodeURIComponent(id)}`);
@@ -106,10 +122,34 @@ export async function deletePart(projectId, partId) {
   );
 }
 
-export async function exportPartsToExcel(projectId) {
-  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/parts/export`, {
-    headers: { Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
-  });
+export async function uploadPartPicture(projectId, partId, file) {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/parts/${encodeURIComponent(partId)}/picture`,
+    { method: 'POST', body: form }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Failed to upload picture.');
+  }
+  return res.json();
+}
+
+export async function deletePartPicture(projectId, partId) {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/parts/${encodeURIComponent(partId)}/picture`,
+    { method: 'DELETE', headers: { Accept: 'application/json' } }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Failed to delete picture.');
+  }
+  return res.json();
+}
+
+async function downloadProjectExport(projectId, path, defaultFileName) {
+  const res = await fetch(path, { headers: { Accept: '*/*' } });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(text || 'Export failed.');
@@ -118,7 +158,7 @@ export async function exportPartsToExcel(projectId) {
   const blob = await res.blob();
   const disposition = res.headers.get('Content-Disposition') ?? '';
   const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
-  const fileName = match ? decodeURIComponent(match[1].replace(/"/g, '')) : 'project-rfq.xlsx';
+  const fileName = match ? decodeURIComponent(match[1].replace(/"/g, '')) : defaultFileName;
 
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -126,6 +166,30 @@ export async function exportPartsToExcel(projectId) {
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+export async function exportPartsToExcel(projectId) {
+  await downloadProjectExport(
+    projectId,
+    `/api/projects/${encodeURIComponent(projectId)}/parts/export`,
+    'project-rfq.xlsx'
+  );
+}
+
+export async function exportPartsToCsv(projectId) {
+  await downloadProjectExport(
+    projectId,
+    `/api/projects/${encodeURIComponent(projectId)}/parts/export/csv`,
+    'project-rfq.csv'
+  );
+}
+
+export async function exportPartsToTxt(projectId) {
+  await downloadProjectExport(
+    projectId,
+    `/api/projects/${encodeURIComponent(projectId)}/parts/export/txt`,
+    'project-rfq.txt'
+  );
 }
 
 export async function importPartsFromExcel(projectId, file) {
