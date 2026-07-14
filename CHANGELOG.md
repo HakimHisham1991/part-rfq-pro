@@ -4,6 +4,51 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.16.3] - 2026-07-14
+
+### Added
+
+- **3D Analyzer:** live progress popup when opening STEP files (OCCT load, parse, mesh build, properties).
+- **3D Analyzer — Hole Detection:** **Stop** button cancels the running job, terminates the worker, and clears all detection remnants.
+- **3D Analyzer — Hole Detection:** settings and actions are greyed out / non-selectable while detection runs; re-enabled when finished or stopped.
+
+---
+
+## [1.16.2] - 2026-07-14
+
+### Added
+
+- **3D Analyzer — Hole Detection:** non-intrusive progress popup with live log and percent bar; **Hide** / **Show Progress** controls.
+- **3D Analyzer:** **Show Floor** / **Hide Floor** toolbar toggle for the floor grid (default: hidden).
+
+---
+
+## [1.16.1] - 2026-07-14
+
+### Added
+
+- **3D Analyzer — Hole Detection:** **Select All Bodies** button selects every surface across all mesh bodies.
+- **3D Analyzer — Surface selection:** click-and-drag rectangle pick adds all visible faces in the area to the current selection.
+
+---
+
+## [1.16.0] - 2026-07-14
+
+### Added
+
+- **3D Analyzer — Hole Feature Detection:** comprehensive cylindrical hole detection using curvature analysis on OCCT meshes.
+- **Circle fitting methods:** RANSAC + Taubin (default), Taubin, Kåsa Least Squares, and Geometric Iterative — selectable in the Properties panel.
+- **Adaptive RANSAC** with configurable iterations (50–5000); preference persisted in localStorage.
+- **Depth estimation** via point projection along hole axis with raycasting fallback (handles partial/broken surfaces).
+- **Surface selection mode:** toggle crosshair cursor, click faces to multi-select, visual highlight overlay, Clear Selection.
+- **Detect Holes** toolbar button (next to Reset Measurement); panel actions for whole-part and selected-surface detection.
+- **Hole visualization:** semi-transparent cylinders and torus rings aligned to hole axis.
+- **Detected Holes sidebar:** list with count badge showing diameter, radius, depth, and fit quality per hole.
+- **Add as Drilling Operations:** populates Cycle Time Estimator with grouped Drilling ops (by diameter).
+- **Web Worker** offloads heavy detection from the main thread.
+
+---
+
 ## [1.15.2] - 2026-06-16
 
 ### Fixed
