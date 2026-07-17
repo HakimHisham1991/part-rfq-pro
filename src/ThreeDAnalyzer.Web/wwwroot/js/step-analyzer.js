@@ -9,27 +9,33 @@ async function loadOcctLibrary() {
     locateFile: (path) => `/lib/${path}`
   };
 
+  // Lazy OCCT/WASM — only when analyzeStepFile runs (saves mobile memory at idle)
   occtInstancePromise = (async () => {
-    const initFn =
-      typeof globalThis.occtimportjs === 'function' ? globalThis.occtimportjs : null;
+    try {
+      const initFn =
+        typeof globalThis.occtimportjs === 'function' ? globalThis.occtimportjs : null;
 
-    if (initFn) {
-      return initFn(moduleOptions);
+      if (initFn) {
+        return initFn(moduleOptions);
+      }
+
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = '/lib/occt-import-js.js';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load occt-import-js.js'));
+        document.head.appendChild(script);
+      });
+
+      if (typeof globalThis.occtimportjs !== 'function') {
+        throw new Error('occt-import-js initializer not available');
+      }
+
+      return globalThis.occtimportjs(moduleOptions);
+    } catch (err) {
+      occtInstancePromise = null; // allow retry after OOM / network failure
+      throw err;
     }
-
-    await new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = '/lib/occt-import-js.js';
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Failed to load occt-import-js.js'));
-      document.head.appendChild(script);
-    });
-
-    if (typeof globalThis.occtimportjs !== 'function') {
-      throw new Error('occt-import-js initializer not available');
-    }
-
-    return globalThis.occtimportjs(moduleOptions);
   })();
 
   return occtInstancePromise;

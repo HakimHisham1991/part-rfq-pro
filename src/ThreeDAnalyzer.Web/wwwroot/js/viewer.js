@@ -60,8 +60,41 @@ const btnHoleProgressStop = document.getElementById('btn-hole-progress-stop');
 const holeDetectionSection = document.getElementById('hole-detection-section');
 
 // ── SECTION A — Scene Setup ─────────────────────────────────────────────────
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(window.devicePixelRatio);
+// Mobile (e.g. Galaxy A51): uncapped devicePixelRatio (often 2.5–3) + antialias
+// exhausts Mali GPU memory and yields a blank canvas. Cap DPR; detect low-end.
+let lowEndGpu = (() => {
+  const mem = navigator.deviceMemory;
+  const cores = navigator.hardwareConcurrency || 8;
+  if (typeof mem === 'number' && mem <= 4) return true;
+  if (cores <= 4 && window.matchMedia('(pointer: coarse)').matches) return true;
+  return false;
+})();
+
+const getDPR = () => Math.min(window.devicePixelRatio || 1, lowEndGpu ? 1 : 2);
+
+let webglContextLost = false;
+let renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: !lowEndGpu,
+  powerPreference: lowEndGpu ? 'low-power' : 'default',
+  failIfMajorPerformanceCaveat: false
+});
+renderer.setPixelRatio(getDPR());
+
+// Refine low-end after GL is available (UNMASKED_RENDERER is the reliable signal)
+try {
+  const gl = renderer.getContext();
+  const info = gl?.getExtension?.('WEBGL_debug_renderer_info');
+  if (info) {
+    const gpu = String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL) || '');
+    if (/Mali-G(5|6|7)|Mali-T|Adreno \(TM\) [1-5]|Adreno [345]|Adreno 5[0-3]|PowerVR/i.test(gpu)) {
+      lowEndGpu = true;
+      renderer.setPixelRatio(getDPR());
+    }
+  }
+} catch (_) {
+  /* ignore — keep heuristic */
+}
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xe8e9ed);
@@ -150,8 +183,42 @@ function fitCameraToModel() {
 
 updateCamera();
 
+// ── Pointer / mouse / touch controls ────────────────────────────────────────
+// Desktop (unchanged): middle-drag orbit, Shift+middle pan, wheel zoom, F fit.
+// Mobile: 1-finger orbit, pinch zoom, 2-finger pan, double-tap fit.
+// touch-action:none + preventDefault stop Chrome from scrolling/zooming the page.
+canvas.style.touchAction = 'none';
+
 let isDragging = false;
 let lastMouse = { x: 0, y: 0 };
+
+/** Shared orbit from screen deltas (mouse middle-drag + 1-finger touch). */
+function applyOrbitDelta(dx, dy) {
+  const cameraUp = new THREE.Vector3(0, 1, 0).applyQuaternion(orbitQuat);
+  const cameraRight = new THREE.Vector3(1, 0, 0).applyQuaternion(orbitQuat);
+  const rotH = new THREE.Quaternion().setFromAxisAngle(cameraUp, -dx * 0.005);
+  const rotV = new THREE.Quaternion().setFromAxisAngle(cameraRight, -dy * 0.005);
+  orbitQuat.premultiply(rotH).premultiply(rotV);
+  updateCamera();
+}
+
+/** Shared pan from screen deltas (Shift+middle mouse + 2-finger drag). */
+function applyPanDelta(dx, dy) {
+  const panSpeed = orbitRadius * 0.001;
+  const right = new THREE.Vector3();
+  const up = new THREE.Vector3();
+  right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+  up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+  target.addScaledVector(right, -dx * panSpeed);
+  target.addScaledVector(up, dy * panSpeed);
+  updateCamera();
+}
+
+function applyZoomFactor(factor) {
+  orbitRadius *= factor;
+  orbitRadius = Math.max(1, orbitRadius);
+  updateCamera();
+}
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -190,27 +257,9 @@ canvas.addEventListener('mousemove', (e) => {
     lastMouse = { x: e.clientX, y: e.clientY };
 
     if (e.shiftKey) {
-      const panSpeed = orbitRadius * 0.001;
-      const right = new THREE.Vector3();
-      const up = new THREE.Vector3();
-      right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
-      up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
-      target.addScaledVector(right, -dx * panSpeed);
-      target.addScaledVector(up, dy * panSpeed);
-      updateCamera();
+      applyPanDelta(dx, dy);
     } else {
-      // Screen-space orbit: dx rotates around the camera's current up axis,
-      // dy rotates around the camera's current right axis.
-      //
-      // For equatorial views the camera up ≈ projected world-Z, so horizontal
-      // drag behaves like a Z-up turntable.  At the poles the camera has a
-      // well-defined up/right pair, so the view orbits freely with no locked axis.
-      const cameraUp    = new THREE.Vector3(0, 1, 0).applyQuaternion(orbitQuat);
-      const cameraRight = new THREE.Vector3(1, 0, 0).applyQuaternion(orbitQuat);
-      const rotH = new THREE.Quaternion().setFromAxisAngle(cameraUp,    -dx * 0.005);
-      const rotV = new THREE.Quaternion().setFromAxisAngle(cameraRight, -dy * 0.005);
-      orbitQuat.premultiply(rotH).premultiply(rotV);
-      updateCamera();
+      applyOrbitDelta(dx, dy);
     }
     return;
   }
@@ -222,9 +271,7 @@ canvas.addEventListener('mousemove', (e) => {
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
-  orbitRadius *= e.deltaY > 0 ? 1.1 : 0.9;
-  orbitRadius = Math.max(1, orbitRadius);
-  updateCamera();
+  applyZoomFactor(e.deltaY > 0 ? 1.1 : 0.9);
 }, { passive: false });
 
 window.addEventListener('mouseup', (e) => {
@@ -240,16 +287,226 @@ window.addEventListener('keydown', (e) => {
   fitCameraToModel();
 });
 
+// ── Touch / Pointer gestures (mobile) ───────────────────────────────────────
+const activePointers = new Map();
+const TOUCH_DRAG_THRESHOLD_PX = 8;
+const DOUBLE_TAP_MS = 320;
+const DOUBLE_TAP_MAX_DIST_PX = 28;
+
+let touchGesture = null; // 'orbit' | 'pinchpan' | null
+let touchMoved = false;
+let touchOrbitLast = null;
+let pinchStartDist = 0;
+let pinchStartRadius = 0;
+let pinchPanLastMid = null;
+let lastTapTime = 0;
+let lastTapX = 0;
+let lastTapY = 0;
+let suppressNextClick = false;
+
+function pointerDistance(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.hypot(dx, dy);
+}
+
+function pointerMidpoint(a, b) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+function isTouchLikePointer(e) {
+  return e.pointerType === 'touch' || e.pointerType === 'pen';
+}
+
+function onTouchPointerDown(e) {
+  if (!isTouchLikePointer(e)) return;
+  e.preventDefault();
+  try {
+    canvas.setPointerCapture(e.pointerId);
+  } catch (_) {
+    /* some browsers throw if already captured */
+  }
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  touchMoved = false;
+
+  if (activePointers.size === 1) {
+    const now = performance.now();
+    const dist = Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY);
+    // Double-tap → fit model (before orbit starts)
+    if (now - lastTapTime < DOUBLE_TAP_MS && dist < DOUBLE_TAP_MAX_DIST_PX) {
+      fitCameraToModel();
+      lastTapTime = 0;
+      suppressNextClick = true;
+      touchGesture = 'doubletap';
+      touchOrbitLast = null;
+      return;
+    }
+    lastTapTime = now;
+    lastTapX = e.clientX;
+    lastTapY = e.clientY;
+    touchGesture = 'orbit';
+    touchOrbitLast = { x: e.clientX, y: e.clientY };
+  } else if (activePointers.size >= 2) {
+    // 2-finger: pinch zoom + two-finger pan
+    const pts = [...activePointers.values()];
+    pinchStartDist = Math.max(1, pointerDistance(pts[0], pts[1]));
+    pinchStartRadius = orbitRadius;
+    pinchPanLastMid = pointerMidpoint(pts[0], pts[1]);
+    touchGesture = 'pinchpan';
+    touchOrbitLast = null;
+  }
+}
+
+function onTouchPointerMove(e) {
+  if (!isTouchLikePointer(e)) return;
+  if (!activePointers.has(e.pointerId)) return;
+  e.preventDefault();
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (touchGesture === 'orbit' && activePointers.size === 1 && touchOrbitLast) {
+    const dx = e.clientX - touchOrbitLast.x;
+    const dy = e.clientY - touchOrbitLast.y;
+    if (!touchMoved && Math.hypot(dx, dy) < TOUCH_DRAG_THRESHOLD_PX) return;
+    touchMoved = true;
+    suppressNextClick = true;
+    touchOrbitLast = { x: e.clientX, y: e.clientY };
+    // 1-finger drag → orbit (even if a measure tool is active — tools use tap)
+    applyOrbitDelta(dx, dy);
+    return;
+  }
+
+  if (touchGesture === 'pinchpan' && activePointers.size >= 2) {
+    touchMoved = true;
+    suppressNextClick = true;
+    const pts = [...activePointers.values()];
+    const dist = Math.max(1, pointerDistance(pts[0], pts[1]));
+    const mid = pointerMidpoint(pts[0], pts[1]);
+    // Pinch → zoom
+    const zoomFactor = pinchStartDist / dist;
+    orbitRadius = Math.max(1, pinchStartRadius * zoomFactor);
+    // 2-finger drag → pan
+    if (pinchPanLastMid) {
+      applyPanDelta(mid.x - pinchPanLastMid.x, mid.y - pinchPanLastMid.y);
+    } else {
+      updateCamera();
+    }
+    pinchPanLastMid = mid;
+    // Keep pinch baseline in sync so combined pinch+pan feels stable
+    pinchStartDist = dist;
+    pinchStartRadius = orbitRadius;
+  }
+}
+
+function onTouchPointerUp(e) {
+  if (!isTouchLikePointer(e)) return;
+  if (!activePointers.has(e.pointerId)) return;
+  e.preventDefault();
+  activePointers.delete(e.pointerId);
+  try {
+    canvas.releasePointerCapture(e.pointerId);
+  } catch (_) {
+    /* ignore */
+  }
+
+  if (activePointers.size === 0) {
+    // Short tap (no drag) → synthesize pick for measurement / surface tools
+    if (!touchMoved && touchGesture !== 'doubletap' && !suppressNextClick && partGroup) {
+      const synthetic = {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        button: 0,
+        preventDefault() {},
+        stopPropagation() {}
+      };
+      if (surfaceSelectMode) {
+        // Single-face tap pick via rect of zero size / existing finish path
+        startRectSelection(synthetic);
+        finishRectSelection(synthetic);
+      } else if (activeTool) {
+        const point = getPickPoint(synthetic);
+        if (point) {
+          pickPoints.push(point.clone());
+          if (isSnapPickTool(activeTool)) {
+            pickPointMarkers.push(createPointMarker(point));
+          }
+          if (activeTool === 'distance' && pickPoints.length === 2) {
+            completeDistance(pickPoints[0], pickPoints[1]);
+            pickPoints = [];
+          } else if (activeTool === 'angle' && pickPoints.length === 3) {
+            completeAngle(pickPoints[0], pickPoints[1], pickPoints[2]);
+            pickPoints = [];
+          } else if (activeTool === 'radius' && pickPoints.length === 3) {
+            completeRadius(pickPoints[0], pickPoints[1], pickPoints[2]);
+            pickPoints = [];
+          } else if (activeTool === 'coord' && pickPoints.length === 3) {
+            completeCoord(pickPoints[0], pickPoints[1], pickPoints[2]);
+            pickPoints = [];
+            deactivateAllTools();
+          }
+        }
+      }
+    }
+    touchGesture = null;
+    touchOrbitLast = null;
+    pinchPanLastMid = null;
+    touchMoved = false;
+    // Clear suppress on next tick so a real click from leftover mouse synth is ignored
+    if (suppressNextClick) {
+      setTimeout(() => {
+        suppressNextClick = false;
+      }, 0);
+    }
+  } else if (activePointers.size === 1) {
+    // Lifted one finger from pinch — resume 1-finger orbit with remaining pointer
+    const remaining = [...activePointers.values()][0];
+    touchGesture = 'orbit';
+    touchOrbitLast = { x: remaining.x, y: remaining.y };
+    pinchPanLastMid = null;
+  }
+}
+
+canvas.addEventListener('pointerdown', onTouchPointerDown, { passive: false });
+canvas.addEventListener('pointermove', onTouchPointerMove, { passive: false });
+canvas.addEventListener('pointerup', onTouchPointerUp, { passive: false });
+canvas.addEventListener('pointercancel', onTouchPointerUp, { passive: false });
+
 // ── SECTION C — Resize Handler ──────────────────────────────────────────────
-const resizeObserver = new ResizeObserver(() => {
+function applyCanvasSize() {
   const parent = canvas.parentElement;
-  const w = parent.clientWidth;
-  const h = parent.clientHeight;
+  if (!parent) return;
+  // Prefer measured box — clientWidth can be 0 briefly during mobile chrome show/hide
+  const rect = parent.getBoundingClientRect();
+  const w = Math.max(1, Math.round(rect.width || parent.clientWidth || 1));
+  const h = Math.max(1, Math.round(rect.height || parent.clientHeight || 1));
+  renderer.setPixelRatio(getDPR());
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+}
+
+const resizeObserver = new ResizeObserver(() => {
+  applyCanvasSize();
 });
 resizeObserver.observe(canvas.parentElement);
+
+window.addEventListener('resize', () => applyCanvasSize());
+window.addEventListener('orientationchange', () => {
+  // Orientation change often reports stale sizes until the next frame
+  setTimeout(applyCanvasSize, 100);
+  setTimeout(applyCanvasSize, 400);
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    applyCanvasSize();
+    if (webglContextLost) {
+      recoverWebGL('Tab visible — attempting WebGL recovery');
+    }
+  }
+});
+
+// Initial size (parent may still be laying out)
+applyCanvasSize();
+requestAnimationFrame(applyCanvasSize);
 
 // ── SECTION D — View Gnomon (NX-style) ──────────────────────────────────────
 const gnomonCanvas = document.getElementById('gnomon-canvas');
@@ -269,12 +526,12 @@ const GNOMON_LOCAL_FACE_NORMALS = [
   new THREE.Vector3(0, 0, -1)
 ];
 
-const gnomonRenderer = new THREE.WebGLRenderer({
+let gnomonRenderer = new THREE.WebGLRenderer({
   canvas: gnomonCanvas,
   alpha: true,
-  antialias: true
+  antialias: !lowEndGpu
 });
-gnomonRenderer.setPixelRatio(window.devicePixelRatio);
+gnomonRenderer.setPixelRatio(getDPR());
 gnomonRenderer.setSize(GNOMON_WIDGET_PX, GNOMON_WIDGET_PX, false);
 gnomonRenderer.setClearColor(0x000000, 0);
 
@@ -469,16 +726,133 @@ gnomonCanvas.addEventListener('click', (event) => {
 // ── SECTION E — Render Loop ─────────────────────────────────────────────────
 function animate() {
   requestAnimationFrame(animate);
-  updateCoordAxisScreenScale();
-  renderer.render(scene, camera);
-  updateGnomonOrientation();
-  gnomonRenderer.render(gnomonScene, gnomonCamera);
+  if (webglContextLost) return;
+  try {
+    updateCoordAxisScreenScale();
+    renderer.render(scene, camera);
+    updateGnomonOrientation();
+    gnomonRenderer.render(gnomonScene, gnomonCamera);
+  } catch (err) {
+    // Context loss mid-frame can throw; recover instead of killing the rAF loop
+    console.warn('Render error (possible WebGL context loss):', err);
+    webglContextLost = true;
+    showViewerError('WebGL render failed. Tap Retry to recover.', true);
+  }
 }
 animate();
+
+// ── Viewer loading / error UI ───────────────────────────────────────────────
+const viewerLoadingEl = document.getElementById('viewer-loading');
+const viewerLoadingTextEl = document.getElementById('viewer-loading-text');
+const viewerErrorEl = document.getElementById('viewer-error');
+const viewerErrorTextEl = document.getElementById('viewer-error-text');
+const viewerErrorRetryBtn = document.getElementById('viewer-error-retry');
+const viewerErrorDismissBtn = document.getElementById('viewer-error-dismiss');
+
+function showViewerLoading(message) {
+  if (viewerLoadingTextEl) viewerLoadingTextEl.textContent = message || 'Loading…';
+  if (viewerLoadingEl) viewerLoadingEl.hidden = false;
+}
+
+function hideViewerLoading() {
+  if (viewerLoadingEl) viewerLoadingEl.hidden = true;
+}
+
+function showViewerError(message, canRetry = false) {
+  if (viewerErrorTextEl) viewerErrorTextEl.textContent = message;
+  if (viewerErrorRetryBtn) viewerErrorRetryBtn.hidden = !canRetry;
+  if (viewerErrorEl) viewerErrorEl.hidden = false;
+}
+
+function hideViewerError() {
+  if (viewerErrorEl) viewerErrorEl.hidden = true;
+}
+
+viewerErrorDismissBtn?.addEventListener('click', () => hideViewerError());
+viewerErrorRetryBtn?.addEventListener('click', () => {
+  recoverWebGL('Manual retry');
+});
+
+/**
+ * Re-create WebGL renderers after context loss and reload the current STEP if we still have it.
+ * Mid-tier Android GPUs (Mali on A51) lose context under memory pressure — blank canvas without this.
+ */
+async function recoverWebGL(reason = 'WebGL context recovery') {
+  console.warn(reason);
+  showViewerLoading('Recovering WebGL…');
+  hideViewerError();
+  try {
+    try {
+      renderer.dispose();
+    } catch (_) {
+      /* already dead */
+    }
+    try {
+      gnomonRenderer.dispose();
+    } catch (_) {
+      /* already dead */
+    }
+
+    renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: !lowEndGpu,
+      powerPreference: lowEndGpu ? 'low-power' : 'default',
+      failIfMajorPerformanceCaveat: false
+    });
+    renderer.setPixelRatio(getDPR());
+
+    gnomonRenderer = new THREE.WebGLRenderer({
+      canvas: gnomonCanvas,
+      alpha: true,
+      antialias: !lowEndGpu
+    });
+    gnomonRenderer.setPixelRatio(getDPR());
+    gnomonRenderer.setSize(GNOMON_WIDGET_PX, GNOMON_WIDGET_PX, false);
+    gnomonRenderer.setClearColor(0x000000, 0);
+
+    attachWebGlContextHandlers(canvas);
+    attachWebGlContextHandlers(gnomonCanvas);
+
+    webglContextLost = false;
+    applyCanvasSize();
+
+    if (lastLoadedArrayBuffer?.byteLength) {
+      await loadStepFile(lastLoadedArrayBuffer, loadedFileName || 'recovered.step');
+    } else {
+      hideViewerLoading();
+      setStatus('WebGL recovered — reload a STEP file if the model is missing');
+    }
+  } catch (err) {
+    console.error(err);
+    hideViewerLoading();
+    webglContextLost = true;
+    showViewerError(`WebGL recovery failed: ${err.message}`, true);
+    setStatus(`WebGL recovery failed: ${err.message}`);
+  }
+}
+
+function attachWebGlContextHandlers(targetCanvas) {
+  if (!targetCanvas || targetCanvas.dataset.webglHandlers === '1') return;
+  targetCanvas.dataset.webglHandlers = '1';
+  targetCanvas.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault(); // required to allow contextrestored
+    webglContextLost = true;
+    showViewerError('WebGL context lost (GPU memory). Recovering…', true);
+    setStatus('WebGL context lost — recovering…');
+  });
+  targetCanvas.addEventListener('webglcontextrestored', () => {
+    recoverWebGL('webglcontextrestored');
+  });
+}
+
+attachWebGlContextHandlers(canvas);
+attachWebGlContextHandlers(gnomonCanvas);
 
 // ── State ───────────────────────────────────────────────────────────────────
 let partGroup = null;
 let loadedFileName = '';
+/** Kept for WebGL context-loss recovery (reload without re-picking the file). */
+let lastLoadedArrayBuffer = null;
 const activePartContext = { projectId: null, partId: null };
 let partBboxMesh = null;
 let stockMesh = null;
@@ -858,6 +1232,7 @@ function resetAnalyzerSession() {
   partVolumeMm3 = 0;
   partBBox = null;
   loadedFileName = '';
+  lastLoadedArrayBuffer = null;
   activePartContext.projectId = null;
   activePartContext.partId = null;
 
@@ -1166,29 +1541,36 @@ async function loadOcctLibrary() {
     locateFile: (path) => `/lib/${path}`
   };
 
+  // Lazy OCCT/WASM load — only when a STEP is opened (saves mobile memory at idle)
   occtInstancePromise = (async () => {
-    const occtModule = await import('/lib/occt-import-js.js');
-    const initFn = typeof occtModule.default === 'function'
-      ? occtModule.default
-      : (typeof globalThis.occtimportjs === 'function' ? globalThis.occtimportjs : null);
+    try {
+      const occtModule = await import('/lib/occt-import-js.js');
+      const initFn = typeof occtModule.default === 'function'
+        ? occtModule.default
+        : (typeof globalThis.occtimportjs === 'function' ? globalThis.occtimportjs : null);
 
-    if (typeof initFn === 'function') {
-      return initFn(moduleOptions);
+      if (typeof initFn === 'function') {
+        return initFn(moduleOptions);
+      }
+
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = '/lib/occt-import-js.js';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load occt-import-js.js'));
+        document.head.appendChild(script);
+      });
+
+      if (typeof globalThis.occtimportjs !== 'function') {
+        throw new Error('occt-import-js initializer not available');
+      }
+
+      return globalThis.occtimportjs(moduleOptions);
+    } catch (err) {
+      // Allow retry after failure (OOM / network on mobile)
+      occtInstancePromise = null;
+      throw err;
     }
-
-    await new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = '/lib/occt-import-js.js';
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Failed to load occt-import-js.js'));
-      document.head.appendChild(script);
-    });
-
-    if (typeof globalThis.occtimportjs !== 'function') {
-      throw new Error('occt-import-js initializer not available');
-    }
-
-    return globalThis.occtimportjs(moduleOptions);
   })();
 
   return occtInstancePromise;
@@ -1215,17 +1597,24 @@ async function loadStepFile(arrayBuffer, fileName) {
   const displayName = fileName || 'file';
   const fileSizeMb = (arrayBuffer.byteLength / (1024 * 1024)).toFixed(2);
 
+  // Retain buffer for WebGL context-loss recovery on mobile
+  lastLoadedArrayBuffer = arrayBuffer;
+
   setHoleProgressStopVisible(false);
   beginProgressLog('Loading STEP', `Opening ${displayName} (${fileSizeMb} MB)…`);
   reportLoadProgress('Preparing to load STEP file…', 2);
+  showViewerLoading(`Loading ${displayName}…`);
+  hideViewerError();
   await yieldToUI();
 
   try {
-    reportLoadProgress('Loading OCCT importer…', 8);
+    reportLoadProgress('Loading OCCT importer (WASM)…', 8);
+    showViewerLoading('Loading OCCT WASM…');
     await yieldToUI();
     const occt = await loadOcctLibrary();
 
     reportLoadProgress('Reading STEP geometry (this may take a moment)…', 18);
+    showViewerLoading('Parsing STEP geometry…');
     await yieldToUI();
     const result = occt.ReadStepFile(new Uint8Array(arrayBuffer), null);
 
@@ -1233,11 +1622,14 @@ async function loadStepFile(arrayBuffer, fileName) {
       reportLoadProgress('Error: no meshes found in STEP file', 100);
       appendHoleProgressLog('No meshes found in STEP file', 'is-error');
       setStatus('Error: no meshes found in STEP file');
+      showViewerError('No meshes found in STEP file');
+      hideViewerLoading();
       return;
     }
 
     const meshCount = result.meshes.length;
     reportLoadProgress(`Parsed ${meshCount} mesh(es) — rebuilding scene…`, 40);
+    showViewerLoading(`Building ${meshCount} mesh(es)…`);
     await yieldToUI();
 
     if (partGroup) {
@@ -1285,6 +1677,7 @@ async function loadStepFile(arrayBuffer, fileName) {
     scene.add(partGroup);
     reportLoadProgress('Fitting camera…', 80);
     await yieldToUI();
+    applyCanvasSize();
     fitCameraToModel();
 
     customCoordSystem = null;
@@ -1306,11 +1699,14 @@ async function loadStepFile(arrayBuffer, fileName) {
     setHoleProgressPercent(100);
     appendHoleProgressLog(doneMsg, 'is-done');
     setStatus(doneMsg);
+    hideViewerLoading();
     persistPartModelAnalysis().catch(console.error);
   } catch (err) {
     appendHoleProgressLog(`Error loading file: ${err.message}`, 'is-error');
     setHoleProgressPercent(100);
     setStatus(`Error loading file: ${err.message}`);
+    showViewerError(`Failed to load STEP: ${err.message}`, true);
+    hideViewerLoading();
     console.error(err);
   }
 }
@@ -1380,6 +1776,11 @@ stockOffsetsEl.querySelectorAll('input[data-face]').forEach((input) => {
 });
 
 canvas.addEventListener('click', (e) => {
+  // Touch handlers synthesize picks; ignore ghost click after drag/double-tap
+  if (suppressNextClick) {
+    suppressNextClick = false;
+    return;
+  }
   if (!partGroup) return;
   if (isDragging) return;
 

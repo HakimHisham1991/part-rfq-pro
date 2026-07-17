@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    @* viewport-fit=cover: safe-area insets on notched phones; keep scalable for a11y (canvas uses touch-action:none) *@
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>@ViewData["Title"] — Part RFQ Pro</title>
     <link rel="stylesheet" href="~/css/theme.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
@@ -15,7 +16,7 @@
                 <button type="button" id="sidebar-toggle" title="Expand sidebar" aria-expanded="false">☰</button>
                 <div class="sidebar-brand">
                     <div class="sidebar-title">Part RFQ Pro</div>
-                    <div class="sidebar-version">v1.17.4</div>
+                    <div class="sidebar-version">v1.18.0</div>
                 </div>
             </div>
             <div class="sidebar-user">

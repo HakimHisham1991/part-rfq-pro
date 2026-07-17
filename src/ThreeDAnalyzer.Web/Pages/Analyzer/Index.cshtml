@@ -75,7 +75,19 @@
             </div>
         </aside>
         <div id="canvas-container">
+            @* Mobile: explicit height chain + overlays — zero-height parents blank the WebGL canvas on Chrome/Android *@
             <canvas id="three-canvas"></canvas>
+            <div id="viewer-loading" class="viewer-loading" hidden aria-live="polite">
+                <div class="viewer-spinner" aria-hidden="true"></div>
+                <div id="viewer-loading-text" class="viewer-loading-text">Loading…</div>
+            </div>
+            <div id="viewer-error" class="viewer-error" hidden role="alert">
+                <span id="viewer-error-text"></span>
+                <div class="viewer-error-actions">
+                    <button type="button" id="viewer-error-retry" class="viewer-error-btn">Retry</button>
+                    <button type="button" id="viewer-error-dismiss" class="viewer-error-btn viewer-error-btn-secondary">Dismiss</button>
+                </div>
+            </div>
             <div id="surface-select-rect" class="surface-select-rect" hidden></div>
             <div id="hole-progress-panel" class="hole-progress-panel" hidden>
                 <div class="hole-progress-header">

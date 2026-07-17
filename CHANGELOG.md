@@ -4,6 +4,27 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.18.0] - 2026-07-17
+
+### Added
+
+- **3D Analyzer — Mobile touch controls:** 1-finger drag orbit, pinch zoom, 2-finger pan, double-tap fit-to-screen (desktop mouse/keyboard unchanged).
+- **3D Analyzer — WebGL context-loss recovery:** listeners + re-init renderer and reload current STEP when the GPU context is lost (common on mid-tier Android).
+- **3D Analyzer — Loading spinner + error banner** on the canvas for init/load/WASM failures with Retry.
+
+### Fixed
+
+- **3D Analyzer — Blank canvas on mobile:** container uses `100dvh` / `min-height: 60vh` flex chain so the WebGL canvas no longer collapses to zero height on Chrome Android.
+- **3D Analyzer — GPU memory:** cap `devicePixelRatio` at 2 (1 on low-end / Mali mid-tier GPUs like Galaxy A51).
+- **3D Analyzer — Resize:** `orientationchange`, `resize`, and visibility handlers plus measured `getBoundingClientRect` sizing.
+
+### Changed
+
+- **Viewport meta:** `viewport-fit=cover` for notched phones.
+- **Mobile layout:** stack panels under a full-width canvas; touch-friendly (≥44px) toolbar/side buttons.
+
+---
+
 ## [1.17.4] - 2026-07-17
 
 ### Added

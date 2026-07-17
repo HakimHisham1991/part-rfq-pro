@@ -300,7 +300,6 @@ C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\D
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\1ckztelr5b-{0}-dtn4jrwijz-dtn4jrwijz.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\xpxsyjergk-{0}-p3zxrvshtp-p3zxrvshtp.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\ws6zziatii-{0}-6ao7kccrh7-6ao7kccrh7.gz
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\6uqb2bvl7x-{0}-9k4oa5t44n-9k4oa5t44n.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\Debug\net10.0\Data\machines-master.json
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\lyeqbg1qdx-{0}-qktvl61evq-qktvl61evq.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\Debug\net10.0\ClosedXML.dll
@@ -312,7 +311,6 @@ C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\D
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\Debug\net10.0\SixLabors.Fonts.dll
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\Debug\net10.0\System.IO.Packaging.dll
 c:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\i7bzz5b6tb-{0}-vohriulk78-vohriulk78.gz
-c:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\va8ul2wrqx-{0}-vpcavgxpu8-vpcavgxpu8.gz
 c:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\22vyg94l7h-{0}-r4x1rpov73-r4x1rpov73.gz
 c:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\twwkg08ynd-{0}-huyx70ygfy-huyx70ygfy.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\pigedohz5k-{0}-c63qx5355a-c63qx5355a.gz
@@ -332,5 +330,7 @@ C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\D
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\Debug\net10.0\runtimes\iossimulator-x64\native\e_sqlite3.a
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\bin\Debug\net10.0\runtimes\iossimulator-x86\native\e_sqlite3.a
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\7fy7b1upq8-{0}-am3313cgqo-am3313cgqo.gz
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\pgzpla8mo5-{0}-scruc3964b-scruc3964b.gz
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\vytffkvvps-{0}-7kez25yk2p-7kez25yk2p.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\vytffkvvps-{0}-yzepi97agz-yzepi97agz.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\va8ul2wrqx-{0}-rlt7ti603h-rlt7ti603h.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\6uqb2bvl7x-{0}-deg0yhey8x-deg0yhey8x.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\pgzpla8mo5-{0}-9w4rejsj59-9w4rejsj59.gz

@@ -8,6 +8,7 @@ body.module-analyzer #app {
   display: flex;
   flex-direction: row;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background: var(--color-bg);
 }
@@ -1154,6 +1155,18 @@ body.module-analyzer .analyzer-part-label {
 body.module-analyzer #main-area {
   flex: 1;
   min-height: 0;
+}
+
+@media (max-width: 900px) {
+  body.module-analyzer .analyzer-shell {
+    /* Mobile Chrome: keep a real height so nested flex + WebGL canvas do not collapse */
+    min-height: 60vh;
+    min-height: 60dvh;
+  }
+
+  body.module-analyzer #canvas-container {
+    flex: 1 0 auto;
+  }
 }
 
 /* ── Settings edit modal (Tool-Master-Control pattern) ───────────────────── */
