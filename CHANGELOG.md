@@ -4,6 +4,107 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.17.4] - 2026-07-17
+
+### Added
+
+- **3D Analyzer — Hole tables:** CSV export buttons under Detected Holes and Hole Groups headings.
+
+---
+
+## [1.17.3] - 2026-07-17
+
+### Fixed
+
+- **3D Analyzer — Hole Groups:** clicking a group row now fit-zooms to all related holes. Multi-hole framing used `Box3.expandBySphere`, which this Three.js build does not provide, so the camera never updated.
+
+---
+
+## [1.17.2] - 2026-07-17
+
+### Changed
+
+- **App shell:** module sidebar (Part RFQ Pro / nav) is always force-collapsed on load; can still be expanded for the current session.
+- **3D Analyzer layout:** Measurements panel width ×0.75 (146px); Hole Detection panel width ×1.5 (440px).
+
+---
+
+## [1.17.1] - 2026-07-17
+
+### Changed
+
+- **3D Analyzer layout:** removed the redundant toolbar **Detect Holes** button; moved Hole Detection out of Properties into its own left panel (right of Measurements). Measurements is 195px; Hole Detection is 293px with Detected Holes / Hole Groups scrollable below the controls.
+
+---
+
+## [1.17.0] - 2026-07-17
+
+### Added
+
+- **3D Analyzer — Hole Groups:** second summary table that groups detected holes by Unique Diameter and/or Unique Depth (toggle either or both). Click a group row to fit-zoom all related holes and highlight them in light red.
+
+---
+
+## [1.16.9] - 2026-07-17
+
+### Changed
+
+- **3D Analyzer — Detected Holes:** replaced the stacked card list with a compact engineering table (`Name | Diameter | Depth | Quality`); click a row to focus the hole.
+- **3D Analyzer:** widened the Measurements / Detected Holes panel from 260px to 390px for easier reading.
+
+---
+
+## [1.16.8] - 2026-07-17
+
+### Fixed
+
+- **Build:** cleared NU1903 high-severity warnings for transitive `SQLitePCLRaw.lib.e_sqlite3` 2.1.11 (GHSA-2m69-gcr7-jv3q / CVE-2025-6965) by upgrading EF Core SQLite packages to 10.0.10 and pinning `SQLitePCLRaw.bundle_e_sqlite3` 3.0.3.
+
+---
+
+## [1.16.7] - 2026-07-17
+
+### Fixed
+
+- **3D Analyzer — Hole Detection:** **Detect Holes** stayed greyed out after selecting surfaces. Button enable state is now tied to whether a part is loaded (not to selection count); with no selection it auto-selects all bodies then runs. Also cache-busted `viewer.js` so the UI change is picked up without a hard refresh.
+
+---
+
+## [1.16.6] - 2026-07-17
+
+### Changed
+
+- **3D Analyzer — Hole Detection:** streamlined the action flow. Removed the redundant **Detect Holes on Whole Part** / **Detect Holes on Selected Surfaces** pair; a single **Detect Holes** button now runs on whatever is currently selected. Workflow: **Select All Bodies** or **Select Surfaces**, then **Detect Holes**.
+
+---
+
+## [1.16.5] - 2026-07-17
+
+### Fixed
+
+- **3D Analyzer — Hole Detection:** wrong diameters and orientations on real sheet-metal parts (e.g. `V5745238620200.stp`). Root causes and fixes:
+  - Neighbor search radius was derived from average pairwise distance between face centers (measures part size, not mesh density), producing search radii spanning half the part; replaced with true face adjacency from shared mesh vertices (scale-independent, works for 1 mm rivet holes and 100 mm bores alike).
+  - Local axis PCA mixed normals across sharp edges (hole wall ↔ sheet surface), rotating the estimated axis into the sheet plane; neighbors more than ~75° from the seed normal are now excluded.
+  - Rejected patches permanently consumed their faces, so a bad early patch could eat a real hole's wall; faces are now only consumed by accepted holes.
+  - New validation gates: face normals must point radially inward toward the fitted axis (rejects bosses and curved-sheet false fits), fit RMS must stay under 5% of radius, hole interior must be free of mesh geometry, and the wall must wrap ≥150° around the axis (rejects sheet bends and corner blends).
+  - Axis is refined by PCA over centered inlier normals (exact for conical/partial walls) and the circle refit on radially-consistent faces only.
+  - Coaxial wall fragments (hole wall broken by an intersecting feature) are grouped and re-evaluated as one hole instead of reporting stray arcs.
+  - `smallestEigenvector3x3` now uses a closed-form analytic solution; power iteration converged too slowly when eigenvalues are nearly degenerate (narrow arcs), returning in-plane axes.
+  - Duplicate merging now compares centers perpendicular to the hole axis (two fits of the same deep bore sit at different heights) and keeps the best-supported candidate instead of averaging with weaker fits.
+- Verified against STEP ground truth: `V5745238620200.stp` reports exactly its 14 drilled holes (radii 1.2 / 2.4 / 3.55 mm, all axes matching the CAD normal), and `PART_STRAIGHT.stp` / `PART_TILTED.stp` report their single bore with axis matching CAD to 3 decimals.
+
+---
+
+## [1.16.4] - 2026-07-17
+
+### Fixed
+
+- **3D Analyzer — Hole Detection:** wrong hole orientation from boundary loops — plane-normal PCA used plain power iteration, which converges to the *largest* eigenvector (an in-plane direction ~90° off the hole axis) instead of the smallest (the true normal). Now iterates on the shifted matrix `(trace·I − M)` via a shared `smallestEigenvector3x3` helper.
+- **3D Analyzer — Hole Detection:** `ReferenceError: p is not defined` crash in boundary-hole centroid computation (missing loop braces) that silently discarded *all* detection results on meshes with non-welded face seams.
+- **3D Analyzer — Hole Detection:** multiple stray circles at wrong orientations on obstructed holes — local and per-patch cylinder axis estimation replaced neighbor-pair cross products with robust normal-vector PCA, and region-growing thresholds tightened (axis parallelism 0.85 → 0.95, normal perpendicularity 0.4 → 0.25) so intersecting features no longer merge into the cylindrical patch.
+
+---
+
 ## [1.16.3] - 2026-07-14
 
 ### Added

@@ -4,18 +4,18 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] — Part RFQ Pro</title>
-    <link rel="stylesheet" href="~/css/theme.css" />
-    <link rel="stylesheet" href="~/css/app.css" />
-    <link rel="stylesheet" href="~/css/modules.css" />
+    <link rel="stylesheet" href="~/css/theme.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/modules.css" asp-append-version="true" />
 </head>
 <body class="module-@ViewData["Module"]">
     <div id="app">
-        <aside id="module-sidebar" aria-label="Module navigation">
+        <aside id="module-sidebar" class="collapsed" aria-label="Module navigation">
             <div class="sidebar-header">
-                <button type="button" id="sidebar-toggle" title="Collapse sidebar" aria-expanded="true">☰</button>
+                <button type="button" id="sidebar-toggle" title="Expand sidebar" aria-expanded="false">☰</button>
                 <div class="sidebar-brand">
                     <div class="sidebar-title">Part RFQ Pro</div>
-                    <div class="sidebar-version">v1.16.3</div>
+                    <div class="sidebar-version">v1.17.4</div>
                 </div>
             </div>
             <div class="sidebar-user">

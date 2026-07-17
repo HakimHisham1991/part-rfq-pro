@@ -280,6 +280,88 @@ function v3norm(a) {
   return l > 1e-12 ? v3scale(a, 1 / l) : [0, 0, 1];
 }
 
+/**
+ * Shared eigen helper: smallest-eigenvalue eigenvector of a 3x3 symmetric
+ * matrix given by its upper triangle (xx, xy, xz, yy, yz, zz).
+ *
+ * Analytic approach: closed-form eigenvalues (Smith's algorithm), then the
+ * eigenvector as the cross product of two rows of (M − λ_min·I) — rows of a
+ * rank-2 symmetric matrix span the plane orthogonal to its null vector.
+ * This stays accurate even when the two smallest eigenvalues are close
+ * (e.g. narrow cylindrical arcs), where power iteration converges too
+ * slowly to be usable. Falls back to shifted power iteration only in the
+ * near-degenerate case where the cross products vanish.
+ */
+function smallestEigenvector3x3(xx, xy, xz, yy, yz, zz, iterations = 40) {
+  const trace = xx + yy + zz;
+  if (!(trace > 1e-12)) return [0, 0, 1];
+
+  const [, , eMin] = symmetricEigenvalues3x3(xx, xy, xz, yy, yz, zz);
+
+  const r0 = [xx - eMin, xy, xz];
+  const r1 = [xy, yy - eMin, yz];
+  const r2 = [xz, yz, zz - eMin];
+
+  const c01 = v3cross(r0, r1);
+  const c02 = v3cross(r0, r2);
+  const c12 = v3cross(r1, r2);
+  let best = c01;
+  let bestLen = v3len(c01);
+  const l02 = v3len(c02);
+  if (l02 > bestLen) { best = c02; bestLen = l02; }
+  const l12 = v3len(c12);
+  if (l12 > bestLen) { best = c12; bestLen = l12; }
+
+  // Relative threshold: cross products scale with the squared matrix scale.
+  if (bestLen > trace * trace * 1e-12) return v3scale(best, 1 / bestLen);
+
+  // Degenerate (repeated eigenvalue) — shifted power iteration fallback.
+  const sxx = trace - xx, syy = trace - yy, szz = trace - zz;
+  const sxy = -xy, sxz = -xz, syz = -yz;
+
+  // Non-axis-aligned start vector: axis-aligned geometry produces a diagonal
+  // matrix, and a start vector exactly orthogonal to the target eigenvector
+  // (e.g. [1,0,0] vs a Z axis) would never converge toward it.
+  let v = v3norm([0.7247, 0.5613, 0.3996]);
+  for (let iter = 0; iter < iterations; iter++) {
+    const nv = [
+      sxx * v[0] + sxy * v[1] + sxz * v[2],
+      sxy * v[0] + syy * v[1] + syz * v[2],
+      sxz * v[0] + syz * v[1] + szz * v[2]
+    ];
+    const len = v3len(nv);
+    if (len < 1e-12) return [0, 0, 1];
+    v = v3scale(nv, 1 / len);
+  }
+  return v3norm(v);
+}
+
+/**
+ * Eigenvalues of a 3x3 symmetric matrix (upper triangle), sorted descending.
+ * Closed-form (Smith's algorithm) — used to gate degenerate PCA results.
+ */
+function symmetricEigenvalues3x3(xx, xy, xz, yy, yz, zz) {
+  const p1 = xy * xy + xz * xz + yz * yz;
+  const q = (xx + yy + zz) / 3;
+  const p2 = (xx - q) * (xx - q) + (yy - q) * (yy - q) + (zz - q) * (zz - q) + 2 * p1;
+  const p = Math.sqrt(Math.max(p2 / 6, 0));
+  if (p < 1e-15) return [q, q, q];
+
+  const bxx = (xx - q) / p, byy = (yy - q) / p, bzz = (zz - q) / p;
+  const bxy = xy / p, bxz = xz / p, byz = yz / p;
+  const detB =
+    bxx * (byy * bzz - byz * byz) -
+    bxy * (bxy * bzz - byz * bxz) +
+    bxz * (bxy * byz - byy * bxz);
+
+  const r = Math.max(-1, Math.min(1, detB / 2));
+  const phi = Math.acos(r) / 3;
+  const e1 = q + 2 * p * Math.cos(phi);
+  const e3 = q + 2 * p * Math.cos(phi + (2 * Math.PI) / 3);
+  const e2 = 3 * q - e1 - e3;
+  return [e1, e2, e3];
+}
+
 /** Build orthonormal basis (u, v) on plane perpendicular to axis. */
 function planeBasis(axis) {
   const a = v3norm(axis);
@@ -357,35 +439,45 @@ export function extractMeshTriangles(meshes, selectedFaces = null) {
 // ── Curvature-based cylindrical patch detection ───────────────────────────────
 
 /**
- * Estimate local cylinder axis from a face and its neighborhood.
- * Cylindrical surfaces: normals are radial from axis → cross(normal, radial) ∥ axis.
+ * Estimate local cylinder axis from a face + its neighborhood using
+ * normal-vector PCA: true cylindrical-wall normals lie in the plane
+ * perpendicular to the axis, so the axis is the smallest-eigenvalue
+ * eigenvector of the normal covariance matrix.
  */
 function estimateLocalCylinderAxis(center, normal, neighbors) {
-  const axes = [];
+  if (neighbors.length < 2) return null;
+
+  // Sign alignment isn't needed for PCA (n and -n contribute the same
+  // outer product), so just accumulate n_i * n_i^T directly.
+  let xx = 0, xy = 0, xz = 0, yy = 0, yz = 0, zz = 0;
+
+  const accumulate = (n) => {
+    xx += n[0] * n[0]; xy += n[0] * n[1]; xz += n[0] * n[2];
+    yy += n[1] * n[1]; yz += n[1] * n[2]; zz += n[2] * n[2];
+  };
+
+  accumulate(normal);
+  let included = 0;
   for (const nb of neighbors) {
-    const radial = v3sub(nb.center, center);
-    const rLen = v3len(radial);
-    if (rLen < 1e-6) continue;
-    const rNorm = v3scale(radial, 1 / rLen);
-    const axis = v3cross(normal, rNorm);
-    const aLen = v3len(axis);
-    if (aLen > 1e-6) axes.push(v3scale(axis, 1 / aLen));
-    // Also try neighbor normal
-    const axis2 = v3cross(nb.normal, rNorm);
-    const aLen2 = v3len(axis2);
-    if (aLen2 > 1e-6) axes.push(v3scale(axis2, 1 / aLen2));
+    // Skip neighbors across sharp edges (e.g. from a hole wall onto the
+    // surrounding flat sheet): their normals are ~90°+ away from the seed's
+    // and would rotate the PCA axis into the surface plane. Same-signed dot
+    // also drops the opposite wall of a tiny hole (normal flipped ~180°).
+    if (v3dot(nb.normal, normal) <= 0.25) continue;
+    accumulate(nb.normal);
+    included++;
   }
+  if (included < 2) return null;
 
-  if (axes.length === 0) return null;
+  // Planar neighborhoods are rank-1: the smallest eigenvector is an arbitrary
+  // in-plane direction, and neighboring flat faces would all agree on it,
+  // letting whole planes region-grow into fake "cylinder" patches. Require
+  // the normals to actually fan out (middle eigenvalue clearly nonzero).
+  const [, e2] = symmetricEigenvalues3x3(xx, xy, xz, yy, yz, zz);
+  const trace = xx + yy + zz;
+  if (e2 < trace * 1e-4) return null;
 
-  // Average axis direction (handle sign ambiguity)
-  let sum = [0, 0, 0];
-  const ref = axes[0];
-  for (const a of axes) {
-    const aligned = v3dot(a, ref) < 0 ? v3scale(a, -1) : a;
-    sum = v3add(sum, aligned);
-  }
-  return v3norm(sum);
+  return smallestEigenvector3x3(xx, xy, xz, yy, yz, zz);
 }
 
 /**
@@ -401,62 +493,88 @@ function reportProgress(onProgress, message, percent) {
   }
 }
 
-function detectCylindricalPatches(faceCenters, faceNormals, faceKeys, options) {
-  const { minRadius = 0.3, maxRadius = 500, neighborDist = null, onProgress = null } = options;
+/**
+ * Face adjacency from shared (position-welded) vertices. Topological
+ * adjacency is scale-independent: it works equally for a 1 mm rivet hole
+ * and a 100 mm bore, unlike a distance-based neighbor search whose radius
+ * is tuned to the average tessellation density and therefore lumps tiny
+ * features in with the surrounding surface.
+ */
+function buildFaceAdjacency(triangles) {
+  const vertexFaces = new Map();
+  for (let f = 0; f < triangles.length; f++) {
+    for (const p of triangles[f]) {
+      const key = `${p[0].toFixed(3)},${p[1].toFixed(3)},${p[2].toFixed(3)}`;
+      let faces = vertexFaces.get(key);
+      if (!faces) vertexFaces.set(key, faces = []);
+      faces.push(f);
+    }
+  }
+
+  const adjacency = new Array(triangles.length);
+  for (let f = 0; f < triangles.length; f++) adjacency[f] = new Set();
+  for (const faces of vertexFaces.values()) {
+    for (let i = 0; i < faces.length; i++) {
+      for (let j = i + 1; j < faces.length; j++) {
+        adjacency[faces[i]].add(faces[j]);
+        adjacency[faces[j]].add(faces[i]);
+      }
+    }
+  }
+  return adjacency.map((s) => [...s]);
+}
+
+function detectCylindricalPatches(triangles, faceCenters, faceNormals, faceKeys, options) {
+  const { minRadius = 0.3, maxRadius = 500, onProgress = null } = options;
   const n = faceCenters.length;
   if (n < 6) return [];
 
   reportProgress(onProgress, `Analyzing curvature on ${n.toLocaleString()} faces…`, 15);
 
-  // Compute characteristic length for neighbor search
-  let avgEdge = 0;
-  let edgeCount = 0;
-  for (let i = 0; i < Math.min(n, 200); i++) {
-    for (let j = i + 1; j < Math.min(n, 200); j++) {
-      const d = v3len(v3sub(faceCenters[i], faceCenters[j]));
-      if (d > 1e-6) { avgEdge += d; edgeCount++; }
-    }
-  }
-  avgEdge = edgeCount > 0 ? avgEdge / edgeCount : 1;
-  const searchDist = neighborDist ?? avgEdge * 4;
+  const adjacency = buildFaceAdjacency(triangles);
 
-  // Build spatial hash for neighbor queries
-  const cellSize = searchDist;
-  const hash = new Map();
-  for (let i = 0; i < n; i++) {
-    const c = faceCenters[i];
-    const key = `${Math.floor(c[0] / cellSize)},${Math.floor(c[1] / cellSize)},${Math.floor(c[2] / cellSize)}`;
-    if (!hash.has(key)) hash.set(key, []);
-    hash.get(key).push(i);
-  }
-
+  // Neighborhood for local axis estimation: the 2-ring (neighbors of
+  // neighbors). The 1-ring on coarse cylinder tessellations can be a
+  // near-degenerate normal fan; the 2-ring adds the next segment around
+  // the circumference, stabilizing the PCA.
   function getNeighbors(idx) {
-    const c = faceCenters[idx];
-    const cx = Math.floor(c[0] / cellSize);
-    const cy = Math.floor(c[1] / cellSize);
-    const cz = Math.floor(c[2] / cellSize);
+    const seen = new Set(adjacency[idx]);
+    for (const j of adjacency[idx]) {
+      for (const k of adjacency[j]) seen.add(k);
+    }
+    seen.delete(idx);
     const result = [];
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dz = -1; dz <= 1; dz++) {
-          const key = `${cx + dx},${cy + dy},${cz + dz}`;
-          const bucket = hash.get(key);
-          if (!bucket) continue;
-          for (const j of bucket) {
-            if (j === idx) continue;
-            const d = v3len(v3sub(faceCenters[j], c));
-            if (d <= searchDist) {
-              result.push({ index: j, center: faceCenters[j], normal: faceNormals[j], dist: d });
-            }
-          }
-        }
-      }
+    for (const j of seen) {
+      result.push({ index: j, center: faceCenters[j], normal: faceNormals[j] });
     }
     return result;
   }
 
+  // Neighbor lists and local axis estimates depend only on the face, not the
+  // patch — cache them so region growing doesn't recompute per candidate.
+  const neighborCache = new Array(n);
+  const cachedNeighbors = (idx) => neighborCache[idx] ?? (neighborCache[idx] = getNeighbors(idx));
+  const NO_AXIS = Symbol('no-axis');
+  const axisCache = new Array(n);
+  const cachedLocalAxis = (idx) => {
+    let a = axisCache[idx];
+    if (a === undefined) {
+      a = estimateLocalCylinderAxis(faceCenters[idx], faceNormals[idx], cachedNeighbors(idx)) ?? NO_AXIS;
+      axisCache[idx] = a;
+    }
+    return a === NO_AXIS ? null : a;
+  };
+
   const candidates = [];
+  // `used`: faces in an ACCEPTED patch — excluded from any further patch.
+  // `seeded`: faces already grown into some patch (accepted or rejected) —
+  // skipped as seeds to avoid regrowing rejected patches from every face,
+  // but still allowed to join a later patch: a bad early seed (e.g. one that
+  // drifted onto surrounding geometry and was rejected) must not permanently
+  // consume a real hole's wall faces.
   const used = new Uint8Array(n);
+  const seeded = new Uint8Array(n);
+  const fragments = [];
   const progressStep = Math.max(1, Math.floor(n / 20));
 
   for (let i = 0; i < n; i++) {
@@ -468,90 +586,272 @@ function detectCylindricalPatches(faceCenters, faceNormals, faceKeys, options) {
         pct
       );
     }
-    if (used[i]) continue;
-    const neighbors = getNeighbors(i);
+    if (used[i] || seeded[i]) continue;
+    const neighbors = cachedNeighbors(i);
     if (neighbors.length < 3) continue;
 
-    const axis = estimateLocalCylinderAxis(faceCenters[i], faceNormals[i], neighbors);
+    const axis = cachedLocalAxis(i);
     if (!axis) continue;
 
-    // Region grow: faces with consistent cylindrical geometry
+    // Region grow: faces with consistent cylindrical geometry. Only unused
+    // faces may join — without this, every seed on the same surface regrows
+    // a near-identical overlapping patch, yielding hundreds of duplicate
+    // candidates for a single feature.
     const patch = [i];
     const patchSet = new Set([i]);
     const queue = [i];
 
+    // Growth walks direct (1-ring) adjacency only. The 2-ring is fine for
+    // axis PCA, but for growth it lets one large sheet triangle bridge two
+    // unrelated features (e.g. two holes whose rims touch the same triangle),
+    // chaining every coaxial hole on the part into one giant patch.
     while (queue.length > 0) {
       const cur = queue.shift();
-      const curNeighbors = getNeighbors(cur);
-      for (const nb of curNeighbors) {
-        if (patchSet.has(nb.index)) continue;
-        const nbAxis = estimateLocalCylinderAxis(faceCenters[nb.index], faceNormals[nb.index], getNeighbors(nb.index));
+      for (const nbIdx of adjacency[cur]) {
+        if (patchSet.has(nbIdx) || used[nbIdx]) continue;
+        const nbAxis = cachedLocalAxis(nbIdx);
         if (!nbAxis) continue;
-        // Axes should be parallel
-        if (Math.abs(v3dot(axis, nbAxis)) < 0.85) continue;
-        // Normals should be roughly perpendicular to axis (cylindrical wall)
-        if (Math.abs(v3dot(faceNormals[nb.index], axis)) > 0.4) continue;
-        patch.push(nb.index);
-        patchSet.add(nb.index);
-        queue.push(nb.index);
+        // Axes should be parallel — tightened from 0.85 (~31.7°) to 0.95 (~18.2°)
+        if (Math.abs(v3dot(axis, nbAxis)) < 0.95) continue;
+        // Normals should be roughly perpendicular to axis — tightened from 0.4 (~66°) to 0.25 (~75.5°)
+        if (Math.abs(v3dot(faceNormals[nbIdx], axis)) > 0.25) continue;
+        patch.push(nbIdx);
+        patchSet.add(nbIdx);
+        queue.push(nbIdx);
       }
     }
 
+    for (const idx of patch) seeded[idx] = 1;
+
     if (patch.length < 6) continue;
 
-    // Mark used
-    for (const idx of patch) used[idx] = 1;
+    const result = evaluatePatch(patch);
+    if (result.status === 'accept') {
+      for (const idx of patch) used[idx] = 1;
+      candidates.push(result.candidate);
+    } else if (result.status === 'fragment') {
+      fragments.push(result.fragment);
+    }
+  }
 
-    // Collect patch points and fit cylinder
+  /**
+   * Fit + validate a grown patch as a cylindrical hole.
+   * Returns { status: 'accept', candidate } for a confirmed hole,
+   * { status: 'fragment', fragment } for a clean partial wall arc that only
+   * failed the angular-coverage gate (candidate for obstructed-hole merging),
+   * or { status: 'reject' }.
+   */
+  function evaluatePatch(patch) {
+    const reject = { status: 'reject' };
     const patchCenters = patch.map((idx) => faceCenters[idx]);
     const patchNormals = patch.map((idx) => faceNormals[idx]);
 
-    // Find axis line: average of cross products
-    let axisAcc = [0, 0, 0];
+    // Find axis via normal PCA over the whole patch (robust final estimate)
     let axisPoint = [0, 0, 0];
     for (const c of patchCenters) axisPoint = v3add(axisPoint, c);
     axisPoint = v3scale(axisPoint, 1 / patchCenters.length);
 
-    for (let pi = 0; pi < patchCenters.length; pi++) {
-      const radial = v3sub(patchCenters[pi], axisPoint);
-      const proj = v3dot(radial, axis);
-      const radialPlane = v3sub(radial, v3scale(axis, proj));
-      const rLen = v3len(radialPlane);
-      if (rLen < 1e-6) continue;
-      const rNorm = v3scale(radialPlane, 1 / rLen);
-      const localAxis = v3cross(patchNormals[pi], rNorm);
-      const aLen = v3len(localAxis);
-      if (aLen > 1e-6) {
-        const a = v3scale(localAxis, 1 / aLen);
-        axisAcc = v3add(axisAcc, v3dot(a, axisAcc) < 0 && v3len(axisAcc) > 1e-6 ? v3scale(a, -1) : a);
-      }
+    let pxx = 0, pxy = 0, pxz = 0, pyy = 0, pyz = 0, pzz = 0;
+    for (const nrm of patchNormals) {
+      pxx += nrm[0] * nrm[0]; pxy += nrm[0] * nrm[1]; pxz += nrm[0] * nrm[2];
+      pyy += nrm[1] * nrm[1]; pyz += nrm[1] * nrm[2]; pzz += nrm[2] * nrm[2];
     }
-
-    const holeAxis = v3len(axisAcc) > 1e-6 ? v3norm(axisAcc) : axis;
+    let holeAxis = smallestEigenvector3x3(pxx, pxy, pxz, pyy, pyz, pzz);
 
     // Project patch centers to plane perpendicular to axis for circle fit
-    const basis = planeBasis(holeAxis);
-    const points2d = patchCenters.map((c) => projectToPlane2D(c, axisPoint, basis));
+    let basis = planeBasis(holeAxis);
+    let points2d = patchCenters.map((c) => projectToPlane2D(c, axisPoint, basis));
 
-    const fit = fitCircleToPoints(points2d, options.method, options.ransacIterations);
-    if (!fit || fit.radius < minRadius || fit.radius > maxRadius) continue;
+    let fit = fitCircleToPoints(points2d, options.method, options.ransacIterations);
+    if (!fit || fit.radius < minRadius || fit.radius > maxRadius) return reject;
 
-    const quality = computeFitQuality(fit, points2d);
-    if (quality < 0.3) continue;
+    let center3d = plane2DTo3D(fit.cx, fit.cy, axisPoint, basis);
 
-    const center3d = plane2DTo3D(fit.cx, fit.cy, axisPoint, basis);
+    // Validate the cylinder hypothesis in 3D: face normals must point
+    // radially INWARD toward the fitted axis line. Tessellated solids have
+    // outward-facing normals, so a hole wall (concave) points at the axis
+    // while a boss / outer wall (convex) points away — the signed test
+    // rejects convex cylinders that are not holes at all. It also rejects
+    // accidental patches on curved sheet surfaces whose normals aren't
+    // radial in the first place.
+    const computeRadialInliers = () => {
+      const inliers = [];
+      for (let pi = 0; pi < patchCenters.length; pi++) {
+        const w = v3sub(patchCenters[pi], center3d);
+        const radial = v3sub(w, v3scale(holeAxis, v3dot(w, holeAxis)));
+        const rLen = v3len(radial);
+        if (rLen < 1e-6) continue;
+        const radialDir = v3scale(radial, 1 / rLen);
+        if (v3dot(patchNormals[pi], radialDir) < -0.85) inliers.push(pi);
+      }
+      return inliers;
+    };
 
-    candidates.push({
-      center: center3d,
-      axis: holeAxis,
-      radius: fit.radius,
-      diameter: fit.radius * 2,
-      quality,
-      rms: fit.rms,
-      patchIndices: patch,
-      faceKeys: patch.map((idx) => faceKeys[idx]),
-      fitMethod: options.method
-    });
+    let radialInliers = computeRadialInliers();
+    // Permissive pre-refinement gate: small through-holes drag exit-lip and
+    // rim faces into the patch, diluting agreement to ~55%; the refinement
+    // loop below discards those. Stricter gates re-apply afterwards.
+    if (radialInliers.length < patchCenters.length * 0.5 || radialInliers.length < 6) return reject;
+
+    // Refine using only radially-consistent faces: rim/chamfer transition
+    // faces and faces of an intersecting feature bias both the axis and the
+    // radius. Two rounds of (axis from inlier normals → refit circle →
+    // recompute inliers) is enough to settle in practice.
+    for (let round = 0; round < 2; round++) {
+      // Axis from CENTERED inlier normals. Radial inliers all point inward,
+      // so their signs are consistent and centering is well-defined. Why
+      // center: for conical walls (and partial-coverage arcs) every normal
+      // carries the same constant axial component, which biases raw-normal
+      // PCA; subtracting the mean removes that component exactly, leaving
+      // variance only in the radial plane — smallest eigenvector = axis.
+      // Also skip strongly axial faces (fillet/chamfer rim transitions).
+      const kept = [];
+      let mx = 0, my = 0, mz = 0;
+      for (const pi of radialInliers) {
+        const nrm = patchNormals[pi];
+        if (Math.abs(v3dot(nrm, holeAxis)) > 0.3) continue;
+        kept.push(nrm);
+        mx += nrm[0]; my += nrm[1]; mz += nrm[2];
+      }
+      if (kept.length < 6) break;
+      mx /= kept.length; my /= kept.length; mz /= kept.length;
+
+      let ixx = 0, ixy = 0, ixz = 0, iyy = 0, iyz = 0, izz = 0;
+      for (const nrm of kept) {
+        const dx = nrm[0] - mx, dy = nrm[1] - my, dz = nrm[2] - mz;
+        ixx += dx * dx; ixy += dx * dy; ixz += dx * dz;
+        iyy += dy * dy; iyz += dy * dz; izz += dz * dz;
+      }
+      const refinedAxis = smallestEigenvector3x3(ixx, ixy, ixz, iyy, iyz, izz);
+      const refinedBasis = planeBasis(refinedAxis);
+      const refinedPoints2d = patchCenters.map((c) => projectToPlane2D(c, axisPoint, refinedBasis));
+      const inlierPts = radialInliers.map((pi) => refinedPoints2d[pi]);
+      const refit = fitCircleToPoints(inlierPts, options.method, options.ransacIterations);
+      if (!refit || refit.radius < minRadius || refit.radius > maxRadius) break;
+
+      holeAxis = refinedAxis;
+      basis = refinedBasis;
+      points2d = refinedPoints2d;
+      fit = refit;
+      center3d = plane2DTo3D(fit.cx, fit.cy, axisPoint, basis);
+      radialInliers = computeRadialInliers();
+      if (radialInliers.length < 6) break;
+    }
+    if (radialInliers.length < 6) return reject;
+
+    // Hard gate on relative fit error — the quality score's inlier bonus can
+    // mask fits whose rms is a sizeable fraction of the radius.
+    if ((fit.rms ?? 0) > fit.radius * 0.05) return reject;
+
+    const inlierPoints2d = radialInliers.map((pi) => points2d[pi]);
+    const quality = computeFitQuality(fit, inlierPoints2d);
+    if (quality < 0.3) return reject;
+
+    // The wall must wrap far enough around the axis to be a hole. Sheet
+    // bends span ~90° and corner blends ~130°, while even a heavily
+    // obstructed hole keeps most of its wall (fragments are merged before
+    // this gate re-runs), so 150° separates the two populations cleanly.
+    const angles = [];
+    for (const pi of radialInliers) {
+      const w = v3sub(patchCenters[pi], center3d);
+      const radial = v3sub(w, v3scale(holeAxis, v3dot(w, holeAxis)));
+      if (v3len(radial) < 1e-6) continue;
+      angles.push(Math.atan2(v3dot(radial, basis.v), v3dot(radial, basis.u)));
+    }
+    angles.sort((a, b) => a - b);
+    let maxGap = 2 * Math.PI - (angles[angles.length - 1] - angles[0]);
+    for (let ai = 1; ai < angles.length; ai++) {
+      maxGap = Math.max(maxGap, angles[ai] - angles[ai - 1]);
+    }
+    const coverage = 2 * Math.PI - maxGap;
+
+    // Empty-interior test: a real hole is void inside — no mesh faces may
+    // sit well inside the fitted cylinder within the wall's axial span.
+    // Corner blends and other concave junk regions fit circles whose
+    // interior slices through nearby solid geometry (pocket floors, walls).
+    {
+      let axMin = Infinity, axMax = -Infinity;
+      for (const pi of radialInliers) {
+        const t = v3dot(v3sub(patchCenters[pi], center3d), holeAxis);
+        axMin = Math.min(axMin, t);
+        axMax = Math.max(axMax, t);
+      }
+      const axPad = (axMax - axMin) * 0.2;
+      const rIn = fit.radius * 0.6;
+      let intruders = 0;
+      for (let fi = 0; fi < n; fi++) {
+        const w = v3sub(faceCenters[fi], center3d);
+        const t = v3dot(w, holeAxis);
+        if (t < axMin + axPad || t > axMax - axPad) continue;
+        const radial = v3sub(w, v3scale(holeAxis, t));
+        if (v3len(radial) < rIn) intruders++;
+      }
+      if (intruders > Math.max(2, radialInliers.length * 0.05)) return reject;
+    }
+
+    if (coverage < (Math.PI * 5) / 6) {
+      // A clean cylindrical arc, just not wrapped enough on its own — an
+      // intersecting feature may have split the hole wall into pieces.
+      return {
+        status: 'fragment',
+        fragment: { patch, axis: holeAxis, center: center3d, radius: fit.radius }
+      };
+    }
+
+    return {
+      status: 'accept',
+      candidate: {
+        center: center3d,
+        axis: holeAxis,
+        radius: fit.radius,
+        diameter: fit.radius * 2,
+        quality,
+        rms: fit.rms,
+        patchIndices: patch,
+        faceKeys: patch.map((idx) => faceKeys[idx]),
+        fitMethod: options.method
+      }
+    };
+  }
+
+  // ── Obstructed-hole recovery: merge coaxial wall fragments ────────────────
+  // A hole whose wall is broken up by an intersecting feature grows as
+  // several disconnected arcs, each individually failing the coverage gate.
+  // Group fragments lying on the same cylinder (parallel axes, coincident
+  // axis lines, matching radii) and re-evaluate the union as one hole.
+  const fragmentGroups = [];
+  for (const frag of fragments) {
+    let target = null;
+    for (const group of fragmentGroups) {
+      const ref = group[0];
+      if (Math.abs(v3dot(frag.axis, ref.axis)) < 0.95) continue;
+      const radiusRatio = frag.radius / ref.radius;
+      if (radiusRatio < 0.8 || radiusRatio > 1.25) continue;
+      // Distance between the two axis lines, measured perpendicular to ref axis
+      const offset = v3sub(frag.center, ref.center);
+      const perp = v3sub(offset, v3scale(ref.axis, v3dot(offset, ref.axis)));
+      if (v3len(perp) > Math.max(frag.radius, ref.radius) * 0.35) continue;
+      target = group;
+      break;
+    }
+    if (target) target.push(frag);
+    else fragmentGroups.push([frag]);
+  }
+
+  for (const group of fragmentGroups) {
+    if (group.length < 2) continue;
+    const combined = [];
+    for (const frag of group) {
+      for (const idx of frag.patch) {
+        if (!used[idx]) combined.push(idx);
+      }
+    }
+    if (combined.length < 6) continue;
+    const result = evaluatePatch(combined);
+    if (result.status === 'accept') {
+      for (const idx of combined) used[idx] = 1;
+      candidates.push(result.candidate);
+    }
   }
 
   reportProgress(
@@ -673,8 +973,14 @@ function detectBoundaryHoles(triangles, options) {
 
     // Fit plane to loop points via PCA
     const origin = [0, 0, 0];
-    for (const p of pts) origin[0] += p[0]; origin[1] += p[1]; origin[2] += p[2];
-    origin[0] /= pts.length; origin[1] /= pts.length; origin[2] /= pts.length;
+    for (const p of pts) {
+      origin[0] += p[0];
+      origin[1] += p[1];
+      origin[2] += p[2];
+    }
+    origin[0] /= pts.length;
+    origin[1] /= pts.length;
+    origin[2] /= pts.length;
 
     const axis = fitPlaneNormal(pts, origin);
     if (!axis) continue;
@@ -722,19 +1028,8 @@ function fitPlaneNormal(points, origin) {
     cxx += dx * dx; cxy += dx * dy; cxz += dx * dz;
     cyy += dy * dy; cyz += dy * dz; czz += dz * dz;
   }
-  // Power iteration for smallest eigenvector
-  let v = [1, 0, 0];
-  for (let iter = 0; iter < 20; iter++) {
-    const nv = [
-      cxx * v[0] + cxy * v[1] + cxz * v[2],
-      cxy * v[0] + cyy * v[1] + cyz * v[2],
-      cxz * v[0] + cyz * v[1] + czz * v[2]
-    ];
-    const len = v3len(nv);
-    if (len < 1e-12) return [0, 0, 1];
-    v = v3scale(nv, 1 / len);
-  }
-  return v3norm(v);
+
+  return smallestEigenvector3x3(cxx, cxy, cxz, cyy, cyz, czz);
 }
 
 function computeFitQuality(fit, points2d) {
@@ -864,20 +1159,14 @@ function mergeHoles(holes, tolerance = 1.0) {
       }
     }
 
-    // Average group properties
-    const best = group.reduce((a, b) => (a.quality > b.quality ? a : b));
-    if (group.length > 1) {
-      let cx = 0, cy = 0, cz = 0, rSum = 0, qSum = 0;
-      for (const h of group) {
-        cx += h.center[0]; cy += h.center[1]; cz += h.center[2];
-        rSum += h.radius;
-        qSum += h.quality;
-      }
-      best.center = [cx / group.length, cy / group.length, cz / group.length];
-      best.radius = rSum / group.length;
-      best.diameter = best.radius * 2;
-      best.quality = qSum / group.length;
-    }
+    // Prefer the candidate supported by the most mesh faces (strongest
+    // evidence, most reliable axis), then quality.
+    const support = (h) => h.patchIndices?.length ?? h.boundaryPoints?.length ?? 0;
+    const best = group.reduce((a, b) =>
+      support(b) > support(a) || (support(b) === support(a) && b.quality > a.quality) ? b : a
+    );
+    // Keep the best candidate's own geometry: averaging with weaker duplicate
+    // fits (fewer faces, worse axis) degrades the result rather than helping.
     merged.push(best);
   }
 
@@ -885,10 +1174,25 @@ function mergeHoles(holes, tolerance = 1.0) {
 }
 
 function holesAreSame(a, b, tolerance) {
-  const centerDist = v3len(v3sub(a.center, b.center));
   const radiusDiff = Math.abs(a.radius - b.radius);
-  const axisDot = Math.abs(v3dot(v3norm(a.axis), v3norm(b.axis)));
-  return centerDist < tolerance && radiusDiff < tolerance * 0.5 && axisDot > 0.9;
+  // Scale thresholds with hole size: a 60 mm bore detected twice can differ
+  // by several mm in center/radius while still being the same feature.
+  const avgRadius = (a.radius + b.radius) / 2;
+  const centerTol = Math.max(tolerance, avgRadius * 0.15);
+  const radiusTol = Math.max(tolerance * 0.5, avgRadius * 0.1);
+  if (radiusDiff >= radiusTol) return false;
+
+  // Split center offset into components perpendicular and parallel to the
+  // axis: two fits of the same deep bore land at different heights along the
+  // axis (each sits at its patch's centroid), so the axial component only
+  // needs to be within the holes' combined depth, while the perpendicular
+  // component must be tight for the holes to be coaxial.
+  const refAxis = v3norm(a.axis);
+  const offset = v3sub(b.center, a.center);
+  const axial = Math.abs(v3dot(offset, refAxis));
+  const perp = v3len(v3sub(offset, v3scale(refAxis, v3dot(offset, refAxis))));
+  const axialTol = Math.max((a.depth ?? 0) + (b.depth ?? 0), centerTol);
+  return perp < centerTol && axial < axialTol;
 }
 
 // ── Main detection entry point ────────────────────────────────────────────────
@@ -927,7 +1231,7 @@ export function detectHoles(meshes, options = {}) {
   );
 
   // Run both detection strategies
-  const patchHoles = detectCylindricalPatches(faceCenters, faceNormals, faceKeys, opts);
+  const patchHoles = detectCylindricalPatches(triangles, faceCenters, faceNormals, faceKeys, opts);
 
   // Attach faceCenters reference for depth estimation
   for (const h of patchHoles) {

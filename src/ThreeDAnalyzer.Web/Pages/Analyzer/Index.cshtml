@@ -19,7 +19,6 @@
             <button class="tool-btn" type="button" data-tool="angle">Angle</button>
             <button class="tool-btn" type="button" data-tool="radius">Radius</button>
             <button id="btn-reset-measurements" type="button">Reset Measurement</button>
-            <button id="btn-detect-holes" type="button">Detect Holes</button>
             <span class="sep"></span>
             <button id="btn-toggle-floor" type="button" title="Show or hide the floor grid">Show Floor</button>
             <span class="sep"></span>
@@ -30,11 +29,50 @@
         <aside id="measure-panel">
             <h2>Measurements</h2>
             <div id="measurements-list"></div>
-            <hr />
-            <h2>Detected Holes <span id="hole-count-badge" class="hole-count-badge">0</span></h2>
-            <div id="holes-list"></div>
-            <button id="btn-add-holes-to-cycle" type="button" class="hole-action-btn" disabled>Add as Drilling Operations</button>
-            <button id="btn-clear-holes" type="button" class="hole-action-btn hole-action-btn-secondary">Clear Holes</button>
+        </aside>
+        <aside id="hole-panel">
+            <div id="hole-detection-section" class="hole-detection-section">
+                <h2>Hole Detection</h2>
+                <div class="prop-group">
+                    <div class="prop-label">Circle Fit Method</div>
+                    <select id="hole-fit-method" class="hole-select">
+                        <option value="ransac-taubin">RANSAC + Taubin (recommended)</option>
+                        <option value="taubin">Taubin</option>
+                        <option value="kasa">Kåsa Least Squares</option>
+                        <option value="geometric-iterative">Geometric Iterative</option>
+                    </select>
+                </div>
+                <div class="prop-group">
+                    <div class="prop-label">RANSAC Iterations</div>
+                    <input id="hole-ransac-iterations" type="number" class="hole-input" value="500" min="50" max="5000" step="50" />
+                </div>
+                <button id="btn-select-all-bodies" type="button" class="info-panel-btn">Select All Bodies</button>
+                <button id="btn-select-surfaces" type="button" class="info-panel-btn">Select Surfaces</button>
+                <button id="btn-clear-selection" type="button" class="info-panel-btn" disabled>Clear Selection</button>
+                <div id="surface-selection-status" class="surface-selection-status">No surfaces selected</div>
+                <button id="btn-run-hole-detection" type="button" class="info-panel-btn" disabled title="Load a STEP file first">Detect Holes</button>
+            </div>
+            <div class="hole-panel-results">
+                <h2>Detected Holes <span id="hole-count-badge" class="hole-count-badge">0</span></h2>
+                <button id="btn-csv-detected-holes" type="button" class="hole-csv-btn" disabled title="Export Detected Holes to CSV">CSV</button>
+                <div id="holes-list"></div>
+                <hr />
+                <h2>Hole Groups <span id="hole-group-count-badge" class="hole-count-badge">0</span></h2>
+                <button id="btn-csv-hole-groups" type="button" class="hole-csv-btn" disabled title="Export Hole Groups to CSV">CSV</button>
+                <div class="hole-group-toggles">
+                    <label class="hole-group-toggle">
+                        <input id="chk-group-diameter" type="checkbox" checked />
+                        <span>Unique Diameter</span>
+                    </label>
+                    <label class="hole-group-toggle">
+                        <input id="chk-group-depth" type="checkbox" />
+                        <span>Unique Depth</span>
+                    </label>
+                </div>
+                <div id="holes-summary-list"></div>
+                <button id="btn-add-holes-to-cycle" type="button" class="hole-action-btn" disabled>Add as Drilling Operations</button>
+                <button id="btn-clear-holes" type="button" class="hole-action-btn hole-action-btn-secondary">Clear Holes</button>
+            </div>
         </aside>
         <div id="canvas-container">
             <canvas id="three-canvas"></canvas>
@@ -88,29 +126,6 @@
                 <button id="btn-apply-stock" type="button">Apply Stock</button>
             </div>
             <hr />
-            <div id="hole-detection-section" class="hole-detection-section">
-                <h2>Hole Detection</h2>
-                <div class="prop-group">
-                    <div class="prop-label">Circle Fit Method</div>
-                    <select id="hole-fit-method" class="hole-select">
-                        <option value="ransac-taubin">RANSAC + Taubin (recommended)</option>
-                        <option value="taubin">Taubin</option>
-                        <option value="kasa">Kåsa Least Squares</option>
-                        <option value="geometric-iterative">Geometric Iterative</option>
-                    </select>
-                </div>
-                <div class="prop-group">
-                    <div class="prop-label">RANSAC Iterations</div>
-                    <input id="hole-ransac-iterations" type="number" class="hole-input" value="500" min="50" max="5000" step="50" />
-                </div>
-                <button id="btn-select-all-bodies" type="button" class="info-panel-btn">Select All Bodies</button>
-                <button id="btn-select-surfaces" type="button" class="info-panel-btn">Select Surfaces</button>
-                <button id="btn-clear-selection" type="button" class="info-panel-btn" disabled>Clear Selection</button>
-                <div id="surface-selection-status" class="surface-selection-status">No surfaces selected</div>
-                <button id="btn-detect-holes-whole" type="button" class="info-panel-btn">Detect Holes on Whole Part</button>
-                <button id="btn-detect-holes-selected" type="button" class="info-panel-btn" disabled>Detect Holes on Selected Surfaces</button>
-            </div>
-            <hr />
             <h2>Custom Coordinate System</h2>
             <div id="coord-status">Click 3 points on model to define</div>
             <button id="btn-pick-coord" type="button" class="info-panel-btn">Pick 3 points: Origin, X+, Y+</button>
@@ -120,5 +135,5 @@
 </div>
 
 @section Scripts {
-    <script type="module" src="~/js/viewer.js"></script>
+    <script type="module" src="~/js/viewer.js" asp-append-version="true"></script>
 }

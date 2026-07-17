@@ -28,7 +28,6 @@ const btnApplyStock = document.getElementById('btn-apply-stock');
 const btnApplyCoord = document.getElementById('btn-apply-coord');
 const btnPickCoord = document.getElementById('btn-pick-coord');
 const btnResetMeasurements = document.getElementById('btn-reset-measurements');
-const btnDetectHoles = document.getElementById('btn-detect-holes');
 const btnToggleFloor = document.getElementById('btn-toggle-floor');
 const toolBtns = document.querySelectorAll('.tool-btn');
 
@@ -38,13 +37,18 @@ const holeRansacIterationsInput = document.getElementById('hole-ransac-iteration
 const btnSelectSurfaces = document.getElementById('btn-select-surfaces');
 const btnSelectAllBodies = document.getElementById('btn-select-all-bodies');
 const btnClearSelection = document.getElementById('btn-clear-selection');
-const btnDetectHolesWhole = document.getElementById('btn-detect-holes-whole');
-const btnDetectHolesSelected = document.getElementById('btn-detect-holes-selected');
+const btnRunHoleDetection = document.getElementById('btn-run-hole-detection');
 const surfaceSelectionStatus = document.getElementById('surface-selection-status');
 const holesList = document.getElementById('holes-list');
+const holesSummaryList = document.getElementById('holes-summary-list');
 const holeCountBadge = document.getElementById('hole-count-badge');
+const holeGroupCountBadge = document.getElementById('hole-group-count-badge');
+const chkGroupDiameter = document.getElementById('chk-group-diameter');
+const chkGroupDepth = document.getElementById('chk-group-depth');
 const btnAddHolesToCycle = document.getElementById('btn-add-holes-to-cycle');
 const btnClearHoles = document.getElementById('btn-clear-holes');
+const btnCsvDetectedHoles = document.getElementById('btn-csv-detected-holes');
+const btnCsvHoleGroups = document.getElementById('btn-csv-hole-groups');
 const holeProgressPanel = document.getElementById('hole-progress-panel');
 const holeProgressTitle = document.getElementById('hole-progress-title');
 const holeProgressBar = document.getElementById('hole-progress-bar');
@@ -500,7 +504,8 @@ let surfaceHighlightGroup = null;
 let holeWorker = null;
 let holeWorkerRequestId = 0;
 let activeHoleId = null;
-let lastHoleDetectionSelectedOnly = false;
+let activeHoleGroupKey = null;
+const highlightedHoleIds = new Set();
 let holeDetectionRunning = false;
 let holeProgressPanelHidden = false;
 
@@ -811,16 +816,9 @@ function setHoleDetectionBusy(busy) {
   if (holeRansacIterationsInput) holeRansacIterationsInput.disabled = busy;
   if (btnSelectAllBodies) btnSelectAllBodies.disabled = busy;
   if (btnSelectSurfaces) btnSelectSurfaces.disabled = busy;
-  if (btnDetectHolesWhole) btnDetectHolesWhole.disabled = busy;
-  if (btnDetectHoles) btnDetectHoles.disabled = busy;
 
-  if (busy) {
-    if (btnClearSelection) btnClearSelection.disabled = true;
-    if (btnDetectHolesSelected) btnDetectHolesSelected.disabled = true;
-  } else {
-    updateSurfaceSelectionUI();
-  }
-
+  // Detect / clear buttons follow selection + busy state together
+  updateSurfaceSelectionUI();
   setHoleProgressStopVisible(busy);
 }
 
@@ -1665,11 +1663,11 @@ function initHoleDetectionPreferences() {
   if (holeRansacIterationsInput) holeRansacIterationsInput.value = String(iterations);
 }
 
-function getHoleDetectionOptions(selectedOnly = false) {
+function getHoleDetectionOptions() {
   return {
     method: holeFitMethodSelect?.value ?? loadHoleMethodPreference(),
     ransacIterations: parseInt(holeRansacIterationsInput?.value, 10) || loadRansacIterationsPreference(),
-    selectedFaces: selectedOnly && selectedFaces.size > 0 ? selectedFaces : null
+    selectedFaces: selectedFaces.size > 0 ? selectedFaces : null
   };
 }
 
@@ -1697,7 +1695,7 @@ function serializePartMeshes() {
   return serializeMeshesFromGroup(meshes);
 }
 
-function runHoleDetection(selectedOnly = false) {
+function runHoleDetection() {
   if (holeDetectionRunning) {
     setStatus('Hole detection already in progress');
     return;
@@ -1708,9 +1706,13 @@ function runHoleDetection(selectedOnly = false) {
     return;
   }
 
-  if (selectedOnly && selectedFaces.size === 0) {
-    setStatus('Select surfaces first');
-    return;
+  // No selection yet → treat as whole-part detection
+  if (selectedFaces.size === 0) {
+    selectAllBodies();
+    if (selectedFaces.size === 0) {
+      setStatus('No surfaces available to detect holes on');
+      return;
+    }
   }
 
   const meshes = serializePartMeshes();
@@ -1719,14 +1721,13 @@ function runHoleDetection(selectedOnly = false) {
     return;
   }
 
-  const options = getHoleDetectionOptions(selectedOnly);
+  const options = getHoleDetectionOptions();
   const requestId = ++holeWorkerRequestId;
-  lastHoleDetectionSelectedOnly = selectedOnly;
 
   setStatus('Detecting holes…');
   setHoleDetectionBusy(true);
 
-  const scopeLabel = selectedOnly ? 'selected surfaces' : 'whole part';
+  const scopeLabel = `${selectedFaces.size} selected surface(s)`;
   beginHoleProgressLog(scopeLabel);
   appendHoleProgressLog(`Method: ${options.method}, RANSAC iterations: ${options.ransacIterations}`);
   appendHoleProgressLog(`Serializing ${meshes.length} mesh(es)…`);
@@ -1797,8 +1798,7 @@ function handleHoleWorkerMessage(event) {
   }
 
   applyDetectedHoles(holes ?? []);
-  const scope = lastHoleDetectionSelectedOnly ? 'selected surfaces' : 'whole part';
-  const doneMsg = `Found ${holes.length} hole(s) on ${scope} (${Math.round(elapsedMs)} ms)`;
+  const doneMsg = `Found ${holes.length} hole(s) on ${selectedFaces.size} selected surface(s) (${Math.round(elapsedMs)} ms)`;
   setHoleProgressPercent(100);
   appendHoleProgressLog(doneMsg, 'is-done');
   setStatus(doneMsg);
@@ -1806,19 +1806,31 @@ function handleHoleWorkerMessage(event) {
 
 function applyDetectedHoles(holes) {
   detectedHoles = holes;
+  clearHoleHighlightState();
   renderHoleVisuals();
   renderHolesList();
+  renderHolesSummary();
   updateHoleCountBadge();
+  updateHoleCsvButtons();
   btnAddHolesToCycle.disabled = holes.length === 0;
 }
 
 function clearHoleDetection() {
   detectedHoles = [];
-  activeHoleId = null;
+  clearHoleHighlightState();
   disposeHoleVisuals();
   if (holesList) holesList.innerHTML = '';
+  if (holesSummaryList) holesSummaryList.innerHTML = '';
   updateHoleCountBadge();
+  updateHoleGroupCountBadge(0);
+  updateHoleCsvButtons();
   if (btnAddHolesToCycle) btnAddHolesToCycle.disabled = true;
+}
+
+function clearHoleHighlightState() {
+  activeHoleId = null;
+  activeHoleGroupKey = null;
+  highlightedHoleIds.clear();
 }
 
 function disposeHoleVisuals() {
@@ -1827,6 +1839,11 @@ function disposeHoleVisuals() {
   disposeObject(holeVisualGroup);
   holeVisualGroup = null;
 }
+
+const HOLE_COLOR_NORMAL = 0xff6600;
+const HOLE_COLOR_NORMAL_RING = 0xff9900;
+const HOLE_COLOR_HIGHLIGHT = 0xff6b6b;
+const HOLE_COLOR_HIGHLIGHT_RING = 0xff3b3b;
 
 function createHoleVisual(hole) {
   const group = new THREE.Group();
@@ -1838,7 +1855,7 @@ function createHoleVisual(hole) {
   // Semi-transparent cylinder along hole axis
   const cylinderGeo = new THREE.CylinderGeometry(radius, radius, depth, 32, 1, true);
   const cylinderMat = new THREE.MeshBasicMaterial({
-    color: 0xff6600,
+    color: HOLE_COLOR_NORMAL,
     transparent: true,
     opacity: 0.35,
     side: THREE.DoubleSide,
@@ -1856,7 +1873,7 @@ function createHoleVisual(hole) {
   // Torus ring at opening
   const torusGeo = new THREE.TorusGeometry(radius, Math.max(radius * 0.04, 0.05), 8, 48);
   const torusMat = new THREE.MeshBasicMaterial({
-    color: 0xff9900,
+    color: HOLE_COLOR_NORMAL_RING,
     transparent: true,
     opacity: 0.7,
     depthWrite: false
@@ -1881,42 +1898,250 @@ function renderHoleVisuals() {
     holeVisualGroup.add(createHoleVisual(hole));
   }
   scene.add(holeVisualGroup);
+  updateHoleVisualHighlights();
+}
+
+function updateHoleVisualHighlights() {
+  if (!holeVisualGroup) return;
+  const hasHighlight = highlightedHoleIds.size > 0;
+
+  holeVisualGroup.children.forEach((group) => {
+    const highlighted = hasHighlight && highlightedHoleIds.has(group.userData.holeId);
+    const cylinder = group.children[0];
+    const torus = group.children[1];
+    if (cylinder?.material) {
+      cylinder.material.color.setHex(highlighted ? HOLE_COLOR_HIGHLIGHT : HOLE_COLOR_NORMAL);
+      cylinder.material.opacity = highlighted ? 0.55 : 0.35;
+    }
+    if (torus?.material) {
+      torus.material.color.setHex(highlighted ? HOLE_COLOR_HIGHLIGHT_RING : HOLE_COLOR_NORMAL_RING);
+      torus.material.opacity = highlighted ? 0.9 : 0.7;
+    }
+  });
+}
+
+function holeSizeKey(value) {
+  return formatNum(value, 2);
+}
+
+function getHoleGroupOptions() {
+  return {
+    byDiameter: chkGroupDiameter?.checked ?? true,
+    byDepth: chkGroupDepth?.checked ?? false
+  };
+}
+
+function buildHoleGroups() {
+  const { byDiameter, byDepth } = getHoleGroupOptions();
+  if ((!byDiameter && !byDepth) || detectedHoles.length === 0) return [];
+
+  const map = new Map();
+  detectedHoles.forEach((hole, index) => {
+    const diaKey = byDiameter ? holeSizeKey(hole.diameter) : '*';
+    const depthKey = byDepth ? holeSizeKey(hole.depth ?? 0) : '*';
+    const key = `${diaKey}|${depthKey}`;
+    let group = map.get(key);
+    if (!group) {
+      group = {
+        key,
+        holes: [],
+        indices: [],
+        diameter: byDiameter ? Number(diaKey) : null,
+        depth: byDepth ? Number(depthKey) : null
+      };
+      map.set(key, group);
+    }
+    group.holes.push(hole);
+    group.indices.push(index + 1);
+  });
+
+  const groups = [...map.values()];
+  groups.sort((a, b) => {
+    if (a.diameter != null && b.diameter != null && a.diameter !== b.diameter) {
+      return a.diameter - b.diameter;
+    }
+    if (a.depth != null && b.depth != null && a.depth !== b.depth) {
+      return a.depth - b.depth;
+    }
+    return b.holes.length - a.holes.length;
+  });
+  return groups;
 }
 
 function renderHolesList() {
   if (!holesList) return;
   holesList.innerHTML = '';
 
+  if (detectedHoles.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'holes-table-empty';
+    empty.textContent = 'No holes detected';
+    holesList.appendChild(empty);
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'holes-table';
+
+  const thead = document.createElement('thead');
+  thead.innerHTML =
+    '<tr>' +
+    '<th class="col-name">Name</th>' +
+    '<th class="col-diameter">Diameter</th>' +
+    '<th class="col-depth">Depth</th>' +
+    '<th class="col-quality">Quality</th>' +
+    '</tr>';
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
   detectedHoles.forEach((hole, index) => {
-    const entry = document.createElement('div');
-    entry.className = 'hole-entry';
-    entry.dataset.holeId = hole.id;
-    if (hole.id === activeHoleId) entry.classList.add('hole-entry-active');
+    const row = document.createElement('tr');
+    row.dataset.holeId = hole.id;
+    if (hole.id === activeHoleId) row.classList.add('hole-row-active');
 
-    const title = document.createElement('div');
-    title.className = 'hole-entry-title';
-    title.textContent = `Hole ${index + 1}`;
+    const nameCell = document.createElement('td');
+    nameCell.className = 'col-name';
+    nameCell.textContent = `Hole ${index + 1}`;
 
-    const detail = document.createElement('div');
-    detail.className = 'hole-entry-detail';
-    detail.innerHTML =
-      `Ø ${formatNum(hole.diameter, 2)} mm<br>` +
-      `R ${formatNum(hole.radius, 2)} mm<br>` +
-      `Depth ${formatNum(hole.depth, 2)} mm<br>` +
-      `Quality ${(hole.quality * 100).toFixed(0)}%`;
+    const diaCell = document.createElement('td');
+    diaCell.className = 'col-diameter';
+    diaCell.textContent = `Ø ${formatNum(hole.diameter, 2)} mm`;
 
-    entry.appendChild(title);
-    entry.appendChild(detail);
+    const depthCell = document.createElement('td');
+    depthCell.className = 'col-depth';
+    depthCell.textContent = `${formatNum(hole.depth, 2)} mm`;
 
-    entry.addEventListener('click', () => {
-      activeHoleId = hole.id;
-      holesList.querySelectorAll('.hole-entry').forEach((el) => el.classList.remove('hole-entry-active'));
-      entry.classList.add('hole-entry-active');
-      focusOnHole(hole);
+    const qualityCell = document.createElement('td');
+    qualityCell.className = 'col-quality';
+    qualityCell.textContent = `${(hole.quality * 100).toFixed(0)}%`;
+
+    row.appendChild(nameCell);
+    row.appendChild(diaCell);
+    row.appendChild(depthCell);
+    row.appendChild(qualityCell);
+
+    row.addEventListener('click', () => {
+      selectSingleHole(hole, row, tbody);
     });
 
-    holesList.appendChild(entry);
+    tbody.appendChild(row);
   });
+
+  table.appendChild(tbody);
+  holesList.appendChild(table);
+}
+
+function renderHolesSummary() {
+  if (!holesSummaryList) return;
+  holesSummaryList.innerHTML = '';
+
+  const { byDiameter, byDepth } = getHoleGroupOptions();
+  if (!byDiameter && !byDepth) {
+    updateHoleGroupCountBadge(0);
+    updateHoleCsvButtons();
+    const empty = document.createElement('div');
+    empty.className = 'holes-table-empty';
+    empty.textContent = 'Tick Unique Diameter and/or Unique Depth to group holes';
+    holesSummaryList.appendChild(empty);
+    return;
+  }
+
+  if (detectedHoles.length === 0) {
+    updateHoleGroupCountBadge(0);
+    updateHoleCsvButtons();
+    const empty = document.createElement('div');
+    empty.className = 'holes-table-empty';
+    empty.textContent = 'No holes to summarize';
+    holesSummaryList.appendChild(empty);
+    return;
+  }
+
+  const groups = buildHoleGroups();
+  updateHoleGroupCountBadge(groups.length);
+  updateHoleCsvButtons();
+
+  const table = document.createElement('table');
+  table.className = 'holes-table';
+
+  const thead = document.createElement('thead');
+  thead.innerHTML =
+    '<tr>' +
+    '<th class="col-name">Name</th>' +
+    '<th class="col-diameter">Diameter</th>' +
+    '<th class="col-depth">Depth</th>' +
+    '<th class="col-qty">Qty</th>' +
+    '</tr>';
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  groups.forEach((group, index) => {
+    const row = document.createElement('tr');
+    row.dataset.groupKey = group.key;
+    if (group.key === activeHoleGroupKey) row.classList.add('hole-group-row-active');
+
+    const nameCell = document.createElement('td');
+    nameCell.className = 'col-name';
+    nameCell.textContent = `Group ${index + 1}`;
+
+    const diaCell = document.createElement('td');
+    diaCell.className = 'col-diameter';
+    diaCell.textContent = group.diameter != null ? `Ø ${formatNum(group.diameter, 2)} mm` : '—';
+
+    const depthCell = document.createElement('td');
+    depthCell.className = 'col-depth';
+    depthCell.textContent = group.depth != null ? `${formatNum(group.depth, 2)} mm` : '—';
+
+    const qtyCell = document.createElement('td');
+    qtyCell.className = 'col-qty';
+    qtyCell.textContent = String(group.holes.length);
+
+    row.appendChild(nameCell);
+    row.appendChild(diaCell);
+    row.appendChild(depthCell);
+    row.appendChild(qtyCell);
+
+    row.addEventListener('click', () => {
+      selectHoleGroup(group, row, tbody);
+    });
+
+    tbody.appendChild(row);
+  });
+
+  table.appendChild(tbody);
+  holesSummaryList.appendChild(table);
+}
+
+function selectSingleHole(hole, row, tbody) {
+  activeHoleId = hole.id;
+  activeHoleGroupKey = null;
+  highlightedHoleIds.clear();
+
+  tbody.querySelectorAll('tr').forEach((el) => el.classList.remove('hole-row-active'));
+  row.classList.add('hole-row-active');
+  holesSummaryList?.querySelectorAll('tr').forEach((el) => el.classList.remove('hole-group-row-active'));
+
+  updateHoleVisualHighlights();
+  focusOnHole(hole);
+  setStatus(`Focused Hole — Ø ${formatNum(hole.diameter, 2)} mm`);
+}
+
+function selectHoleGroup(group, row, tbody) {
+  activeHoleId = null;
+  activeHoleGroupKey = group.key;
+  highlightedHoleIds.clear();
+  for (const hole of group.holes) highlightedHoleIds.add(hole.id);
+
+  tbody.querySelectorAll('tr').forEach((el) => el.classList.remove('hole-group-row-active'));
+  row.classList.add('hole-group-row-active');
+  holesList?.querySelectorAll('tr').forEach((el) => el.classList.remove('hole-row-active'));
+
+  updateHoleVisualHighlights();
+  focusOnHoles(group.holes);
+
+  const parts = [];
+  if (group.diameter != null) parts.push(`Ø ${formatNum(group.diameter, 2)} mm`);
+  if (group.depth != null) parts.push(`depth ${formatNum(group.depth, 2)} mm`);
+  setStatus(`Highlighted ${group.holes.length} hole(s)${parts.length ? ` — ${parts.join(', ')}` : ''}`);
 }
 
 function focusOnHole(hole) {
@@ -1927,10 +2152,131 @@ function focusOnHole(hole) {
   updateCamera();
 }
 
+function focusOnHoles(holes) {
+  if (!holes || holes.length === 0) return;
+  if (holes.length === 1) {
+    focusOnHole(holes[0]);
+    return;
+  }
+
+  // This Three.js build has no Box3.expandBySphere — expand with points only.
+  const box = new THREE.Box3();
+  let maxRadius = 0;
+  for (const hole of holes) {
+    const center = new THREE.Vector3(hole.center[0], hole.center[1], hole.center[2]);
+    const axis = new THREE.Vector3(hole.axis[0], hole.axis[1], hole.axis[2]).normalize();
+    const radius = hole.radius || 0;
+    const depth = hole.depth || radius * 2;
+    maxRadius = Math.max(maxRadius, radius);
+    box.expandByPoint(center);
+    box.expandByPoint(center.clone().addScaledVector(axis, depth));
+  }
+
+  if (box.isEmpty()) return;
+  box.expandByScalar(Math.max(maxRadius * 1.5, 1));
+
+  const fitCenter = box.getCenter(new THREE.Vector3());
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  if (!(sphere.radius > 0)) return;
+
+  target.copy(fitCenter);
+  const vFov = camera.fov * (Math.PI / 180);
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+  const fov = Math.min(vFov, hFov);
+  orbitRadius = Math.max((sphere.radius / Math.sin(fov / 2)) * 1.45, 20);
+  updateCamera();
+}
+
 function updateHoleCountBadge() {
   if (holeCountBadge) {
     holeCountBadge.textContent = String(detectedHoles.length);
   }
+}
+
+function updateHoleGroupCountBadge(count) {
+  if (holeGroupCountBadge) {
+    holeGroupCountBadge.textContent = String(count);
+  }
+}
+
+function updateHoleCsvButtons() {
+  if (btnCsvDetectedHoles) btnCsvDetectedHoles.disabled = detectedHoles.length === 0;
+  if (btnCsvHoleGroups) {
+    const { byDiameter, byDepth } = getHoleGroupOptions();
+    const canGroup = (byDiameter || byDepth) && detectedHoles.length > 0;
+    btnCsvHoleGroups.disabled = !canGroup || buildHoleGroups().length === 0;
+  }
+}
+
+function csvEscape(value) {
+  const text = value == null ? '' : String(value);
+  if (/[",\r\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+}
+
+function downloadCsv(filename, headers, rows) {
+  const lines = [
+    headers.map(csvEscape).join(','),
+    ...rows.map((row) => row.map(csvEscape).join(','))
+  ];
+  const blob = new Blob([`\uFEFF${lines.join('\r\n')}\r\n`], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function holeCsvFilePrefix() {
+  const part = (partNumberEl?.textContent || 'part').trim().replace(/[^\w.-]+/g, '_') || 'part';
+  const stamp = new Date().toISOString().slice(0, 10);
+  return `${part}_${stamp}`;
+}
+
+function exportDetectedHolesCsv() {
+  if (detectedHoles.length === 0) {
+    setStatus('No detected holes to export');
+    return;
+  }
+
+  const rows = detectedHoles.map((hole, index) => [
+    `Hole ${index + 1}`,
+    formatNum(hole.diameter, 2),
+    formatNum(hole.depth, 2),
+    (hole.quality * 100).toFixed(0)
+  ]);
+
+  downloadCsv(
+    `${holeCsvFilePrefix()}_detected-holes.csv`,
+    ['Name', 'Diameter_mm', 'Depth_mm', 'Quality_pct'],
+    rows
+  );
+  setStatus(`Exported ${rows.length} detected hole(s) to CSV`);
+}
+
+function exportHoleGroupsCsv() {
+  const groups = buildHoleGroups();
+  if (groups.length === 0) {
+    setStatus('No hole groups to export');
+    return;
+  }
+
+  const rows = groups.map((group, index) => [
+    `Group ${index + 1}`,
+    group.diameter != null ? formatNum(group.diameter, 2) : '',
+    group.depth != null ? formatNum(group.depth, 2) : '',
+    group.holes.length
+  ]);
+
+  downloadCsv(
+    `${holeCsvFilePrefix()}_hole-groups.csv`,
+    ['Name', 'Diameter_mm', 'Depth_mm', 'Qty'],
+    rows
+  );
+  setStatus(`Exported ${rows.length} hole group(s) to CSV`);
 }
 
 // ── Surface Selection ───────────────────────────────────────────────────────
@@ -2164,13 +2510,19 @@ function raycastMeshFace(e) {
 
 function updateSurfaceSelectionUI() {
   const count = selectedFaces.size;
+  const noSelection = count === 0;
+
   if (surfaceSelectionStatus) {
-    surfaceSelectionStatus.textContent = count === 0
-      ? 'No surfaces selected'
+    surfaceSelectionStatus.textContent = noSelection
+      ? 'No surfaces selected — Detect Holes will use the whole part'
       : `${count} surface(s) selected`;
   }
-  if (btnClearSelection) btnClearSelection.disabled = count === 0;
-  if (btnDetectHolesSelected) btnDetectHolesSelected.disabled = count === 0;
+  if (btnClearSelection) btnClearSelection.disabled = noSelection || holeDetectionRunning;
+
+  // Detect Holes stays available whenever a part is loaded (and not busy).
+  // Empty selection → runHoleDetection auto-selects all bodies.
+  const detectDisabled = holeDetectionRunning || !partGroup;
+  if (btnRunHoleDetection) btnRunHoleDetection.disabled = detectDisabled;
 }
 
 function clearSurfaceSelection() {
@@ -2312,6 +2664,7 @@ async function addHolesAsDrillingOperations() {
 function bindHoleDetectionEvents() {
   initHoleDetectionPreferences();
   updateFloorToggleLabel();
+  updateSurfaceSelectionUI();
 
   btnToggleFloor?.addEventListener('click', () => toggleFloorTile());
 
@@ -2327,11 +2680,7 @@ function bindHoleDetectionEvents() {
     stopHoleDetection();
   });
 
-  btnDetectHoles?.addEventListener('click', () => runHoleDetection(false));
-
-  btnDetectHolesWhole?.addEventListener('click', () => runHoleDetection(false));
-
-  btnDetectHolesSelected?.addEventListener('click', () => runHoleDetection(true));
+  btnRunHoleDetection?.addEventListener('click', () => runHoleDetection());
 
   btnSelectSurfaces?.addEventListener('click', () => {
     setSurfaceSelectMode(!surfaceSelectMode);
@@ -2351,6 +2700,19 @@ function bindHoleDetectionEvents() {
     setStatus('Detected holes cleared');
   });
 
+  const onHoleGroupOptionChange = () => {
+    activeHoleGroupKey = null;
+    highlightedHoleIds.clear();
+    holesList?.querySelectorAll('tr').forEach((el) => el.classList.remove('hole-row-active'));
+    updateHoleVisualHighlights();
+    renderHolesSummary();
+  };
+  chkGroupDiameter?.addEventListener('change', onHoleGroupOptionChange);
+  chkGroupDepth?.addEventListener('change', onHoleGroupOptionChange);
+
+  btnCsvDetectedHoles?.addEventListener('click', () => exportDetectedHolesCsv());
+  btnCsvHoleGroups?.addEventListener('click', () => exportHoleGroupsCsv());
+
   btnAddHolesToCycle?.addEventListener('click', () => {
     addHolesAsDrillingOperations().catch(console.error);
   });
@@ -2359,8 +2721,8 @@ function bindHoleDetectionEvents() {
     if (holeDetectionRunning) return;
     const method = holeFitMethodSelect.value;
     saveHoleMethodPreference(method);
-    if (detectedHoles.length > 0 && partGroup) {
-      runHoleDetection(lastHoleDetectionSelectedOnly);
+    if (detectedHoles.length > 0 && partGroup && selectedFaces.size > 0) {
+      runHoleDetection();
     }
   });
 
@@ -2369,8 +2731,8 @@ function bindHoleDetectionEvents() {
     const val = parseInt(holeRansacIterationsInput.value, 10);
     if (Number.isFinite(val) && val >= 50 && val <= 5000) {
       saveRansacIterationsPreference(val);
-      if (detectedHoles.length > 0 && partGroup) {
-        runHoleDetection(lastHoleDetectionSelectedOnly);
+      if (detectedHoles.length > 0 && partGroup && selectedFaces.size > 0) {
+        runHoleDetection();
       }
     }
   });

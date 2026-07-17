@@ -17,13 +17,8 @@
     }
   }
 
-  let collapsed = false;
-  try {
-    collapsed = localStorage.getItem(STORAGE_KEY) === '1';
-  } catch {
-    /* ignore */
-  }
-  applyCollapsed(collapsed);
+  // Always force-collapsed on load (user can still expand for the session).
+  applyCollapsed(true);
 
   toggle.addEventListener('click', () => {
     applyCollapsed(!sidebar.classList.contains('collapsed'));
