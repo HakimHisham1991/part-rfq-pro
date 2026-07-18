@@ -384,6 +384,18 @@ body.module-analyzer #app {
   outline: none;
 }
 
+#rfq-table input.rfq-cell-input.rfq-cell-readonly {
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  cursor: default;
+  border-style: dashed;
+}
+
+#rfq-table input.rfq-cell-input.rfq-cell-readonly:focus {
+  border-color: var(--color-border);
+  outline: none;
+}
+
 #rfq-table .rfq-picture-cell {
   min-width: 56px;
   text-align: center;

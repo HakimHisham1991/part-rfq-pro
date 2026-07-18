@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using ThreeDAnalyzer.Web.Data;
 using ThreeDAnalyzer.Web.Middleware;
@@ -63,7 +64,21 @@ else
     app.UseHttpsRedirection();
 }
 
-app.UseStaticFiles();
+var staticContentTypes = new FileExtensionContentTypeProvider();
+staticContentTypes.Mappings[".wasm"] = "application/wasm";
+app.UseStaticFiles(new StaticFileOptions
+{
+    ContentTypeProvider = staticContentTypes,
+    OnPrepareResponse = ctx =>
+    {
+        // Long-cache hashed/vendor WASM+JS under /lib (occt-import-js, occt-wasm, three)
+        var path = ctx.Context.Request.Path.Value ?? string.Empty;
+        if (path.StartsWith("/lib/", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        }
+    }
+});
 app.UseRouting();
 app.UseSession();
 app.UseAppAuthentication();

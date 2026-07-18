@@ -41,13 +41,15 @@ self.onmessage = (event) => {
       type: 'result',
       requestId,
       holes,
+      source: 'mesh',
       elapsedMs: performance.now() - startTime
     });
   } catch (err) {
     self.postMessage({
       type: 'error',
       requestId,
-      message: err?.message ?? String(err)
+      message: err?.message ?? String(err),
+      source: 'mesh'
     });
   }
 };

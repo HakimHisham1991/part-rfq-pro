@@ -1,22 +1,36 @@
 /**
- * Hole Detection Engine — cylindrical hole detection via curvature / boundary analysis.
- * Circle fitting: RANSAC+Taubin (default), Taubin, Kåsa, Geometric Iterative.
+ * Hole Detection Engine.
+ * Primary: B-Rep AAG feature recognition (exact STEP surfaces).
+ * Fallback: mesh curvature + circle fitting (RANSAC/Taubin/Kåsa/…).
  */
 
-// ── Circle fitting methods ──────────────────────────────────────────────────
+// ── Detection methods ───────────────────────────────────────────────────────
 
 export const HOLE_FIT_METHODS = {
-  'ransac-taubin': { label: 'RANSAC + Taubin (recommended)', default: true },
-  taubin: { label: 'Taubin' },
-  kasa: { label: 'Kåsa Least Squares' },
-  'geometric-iterative': { label: 'Geometric Iterative' }
+  'brep-aag': {
+    label: 'B-Rep Feature Recognition (recommended)',
+    kind: 'brep',
+    default: true
+  },
+  'ransac-taubin': {
+    label: 'Mesh — RANSAC + Taubin',
+    kind: 'mesh'
+  },
+  taubin: { label: 'Mesh — Taubin', kind: 'mesh' },
+  kasa: { label: 'Mesh — Kåsa Least Squares', kind: 'mesh' },
+  'geometric-iterative': { label: 'Mesh — Geometric Iterative', kind: 'mesh' }
 };
 
 export const HOLE_FIT_METHOD_KEYS = Object.keys(HOLE_FIT_METHODS);
-export const DEFAULT_HOLE_FIT_METHOD = 'ransac-taubin';
+export const DEFAULT_HOLE_FIT_METHOD = 'brep-aag';
+export const BREP_HOLE_METHOD = 'brep-aag';
 export const DEFAULT_RANSAC_ITERATIONS = 500;
 export const HOLE_METHOD_STORAGE_KEY = 'part-rfq-pro-hole-fit-method';
 export const HOLE_RANSAC_ITERATIONS_KEY = 'part-rfq-pro-hole-ransac-iterations';
+
+export function isBrepHoleMethod(method) {
+  return method === BREP_HOLE_METHOD || HOLE_FIT_METHODS[method]?.kind === 'brep';
+}
 
 // ── 2D point helpers (x, y arrays) ───────────────────────────────────────────
 

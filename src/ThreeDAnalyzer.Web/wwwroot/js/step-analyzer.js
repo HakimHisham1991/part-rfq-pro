@@ -2,6 +2,9 @@ import * as THREE from '/lib/three.module.min.js';
 
 let occtInstancePromise = null;
 
+/** Prefer B-Rep AAG recognition; fall back to mesh curvature on failure. */
+export const USE_BREP_FEATURE_RECOGNITION = true;
+
 async function loadOcctLibrary() {
   if (occtInstancePromise) return occtInstancePromise;
 
@@ -182,6 +185,61 @@ export async function analyzeStepFile(arrayBuffer, stockOffsets = {}) {
   } finally {
     disposeGroup(group);
   }
+}
+
+/**
+ * Recognize drilled-hole features from exact B-Rep (AAG).
+ * Falls back to mesh curvature detection when B-Rep recognition fails
+ * and mesh data is provided via options.meshes.
+ *
+ * @param {ArrayBuffer} arrayBuffer
+ * @param {object} [options]
+ * @param {Array} [options.meshes] - serialized meshes for mesh-path fallback
+ * @param {function} [options.onProgress]
+ * @returns {Promise<{ holes: object[], source: 'brep'|'mesh' }>}
+ */
+export async function analyzeStepFileFeatures(arrayBuffer, options = {}) {
+  const onProgress = options.onProgress ?? null;
+
+  if (USE_BREP_FEATURE_RECOGNITION) {
+    try {
+      const { analyzeStepFileFeatures: analyzeBrep } = await import(
+        './brep-feature-recognition.js'
+      );
+      const { holes, pockets } = await analyzeBrep(arrayBuffer, {
+        onProgress,
+        features: options.features
+      });
+      return { holes: holes ?? [], pockets: pockets ?? [], source: 'brep' };
+    } catch (err) {
+      console.warn(
+        'B-Rep feature recognition failed, falling back to mesh curvature analysis',
+        err
+      );
+      if (typeof onProgress === 'function') {
+        onProgress({
+          message: 'B-Rep recognition failed — falling back to mesh analysis…',
+          percent: 5
+        });
+      }
+    }
+  }
+
+  if (!options.meshes?.length) {
+    throw new Error('B-Rep recognition failed and no mesh data provided for fallback');
+  }
+
+  const { detectHoles } = await import('./hole-detection.js');
+  const holes = detectHoles(options.meshes, {
+    method: options.method,
+    ransacIterations: options.ransacIterations,
+    minRadius: options.minRadius,
+    maxRadius: options.maxRadius,
+    mergeTolerance: options.mergeTolerance,
+    selectedFaces: options.selectedFaces,
+    onProgress
+  });
+  return { holes, pockets: [], source: 'mesh' };
 }
 
 export { normalizeOffsets };

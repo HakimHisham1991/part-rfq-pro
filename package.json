@@ -2,8 +2,12 @@
   "name": "threedanalyzer",
   "version": "1.0.0",
   "private": true,
+  "scripts": {
+    "postinstall": "powershell -NoProfile -File scripts/copy-libs.ps1"
+  },
   "dependencies": {
     "occt-import-js": "^0.0.23",
+    "occt-wasm": "^3.7.0",
     "three": "^0.165.0"
   }
 }

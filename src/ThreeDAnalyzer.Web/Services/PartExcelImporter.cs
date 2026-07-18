@@ -66,9 +66,10 @@ public static class PartExcelImporter
                 CycleTurnMill = ReadDouble(row, columnKeys, "CycleTurnMill") ?? 0,
                 Cycle3x = ReadDouble(row, columnKeys, "Cycle3x") ?? 0,
                 Cycle4x = ReadDouble(row, columnKeys, "Cycle4x") ?? 0,
-                Cycle5x = ReadDouble(row, columnKeys, "Cycle5x") ?? 0,
-                CycleTotalHrs = ReadDouble(row, columnKeys, "CycleTotalHrs") ?? 0
+                Cycle5x = ReadDouble(row, columnKeys, "Cycle5x") ?? 0
             };
+            part.CycleTotalHrs =
+                part.SetupTimeHour + part.CycleTurnMill + part.Cycle3x + part.Cycle4x + part.Cycle5x;
 
             result.Parts.Add(part);
         }

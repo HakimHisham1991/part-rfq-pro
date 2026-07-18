@@ -40,8 +40,24 @@ const RFQ_EDIT_FIELDS = [
   { key: 'cycle3x', type: 'number' },
   { key: 'cycle4x', type: 'number' },
   { key: 'cycle5x', type: 'number' },
-  { key: 'cycleTotalHrs', type: 'number' }
+  { key: 'cycleTotalHrs', type: 'number', readonly: true }
 ];
+
+const CYCLE_TOTAL_SOURCE_KEYS = [
+  'setupTimeHour',
+  'cycleTurnMill',
+  'cycle3x',
+  'cycle4x',
+  'cycle5x'
+];
+
+/** TOTAL HRS REQUIRE = Setup + TurnMill + 3X + 4X + 5X */
+function computeCycleTotalHrs(values) {
+  return CYCLE_TOTAL_SOURCE_KEYS.reduce((sum, key) => {
+    const n = Number(values?.[key]);
+    return sum + (Number.isFinite(n) ? n : 0);
+  }, 0);
+}
 
 let currentProjectId = null;
 let currentProject = null;
@@ -114,11 +130,30 @@ function parseFieldValue(raw, type) {
 }
 
 function rfqInput(part, field) {
-  const { key, type } = field;
+  const { key, type, readonly } = field;
   const inputType = type === 'text' ? 'text' : 'number';
   const step = type === 'int' ? '1' : 'any';
   const min = type === 'int' ? ' min="0"' : '';
-  return `<input type="${inputType}" class="cell-input rfq-cell-input" data-field="${key}" data-type="${type}" value="${escapeAttr(inputValue(part, key, type))}" step="${step}"${min} />`;
+  const value =
+    key === 'cycleTotalHrs'
+      ? computeCycleTotalHrs(part)
+      : inputValue(part, key, type);
+  const readonlyAttr = readonly
+    ? ' readonly tabindex="-1" title="Auto-calculated: Setup + TurnMill + 3X + 4X + 5X"'
+    : '';
+  const readonlyClass = readonly ? ' rfq-cell-readonly' : '';
+  return `<input type="${inputType}" class="cell-input rfq-cell-input${readonlyClass}" data-field="${key}" data-type="${type}" value="${escapeAttr(value)}" step="${step}"${min}${readonlyAttr} />`;
+}
+
+function refreshCycleTotalHrsCell(tr) {
+  const totalInput = tr?.querySelector('[data-field="cycleTotalHrs"]');
+  if (!totalInput) return;
+  const values = {};
+  for (const key of CYCLE_TOTAL_SOURCE_KEYS) {
+    const el = tr.querySelector(`[data-field="${key}"]`);
+    values[key] = parseFieldValue(el?.value, 'number');
+  }
+  totalInput.value = String(computeCycleTotalHrs(values));
 }
 
 function renderPictureCell(part) {
@@ -151,6 +186,7 @@ function buildPartPayload(tr) {
   tr.querySelectorAll('[data-field]').forEach((el) => {
     payload[el.dataset.field] = parseFieldValue(el.value, el.dataset.type);
   });
+  payload.cycleTotalHrs = computeCycleTotalHrs(payload);
   return payload;
 }
 
@@ -512,11 +548,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  document.querySelector('#rfq-table')?.addEventListener('input', (e) => {
+    const input = e.target.closest('[data-field]');
+    if (!input || input.dataset.field === 'cycleTotalHrs') return;
+    if (!CYCLE_TOTAL_SOURCE_KEYS.includes(input.dataset.field)) return;
+    const tr = input.closest('tr');
+    if (tr) refreshCycleTotalHrsCell(tr);
+  });
+
   document.querySelector('#rfq-table')?.addEventListener('change', async (e) => {
     const input = e.target.closest('[data-field]');
     if (input) {
+      if (input.dataset.field === 'cycleTotalHrs') return;
       const tr = input.closest('tr');
-      if (tr) await savePartFromRow(tr, input);
+      if (tr) {
+        if (CYCLE_TOTAL_SOURCE_KEYS.includes(input.dataset.field)) {
+          refreshCycleTotalHrsCell(tr);
+        }
+        await savePartFromRow(tr, input);
+      }
       return;
     }
   });

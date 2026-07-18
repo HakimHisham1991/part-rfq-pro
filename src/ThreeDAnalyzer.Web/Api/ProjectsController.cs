@@ -154,23 +154,8 @@ public class ProjectsController(AppDbContext db, PartPictureService pictureServi
 
         part.CycleTimeDataJson = JsonSerializer.Serialize(envelope);
 
-        double? totalMin = null;
-        if (payload.Version == 2 &&
-            payload.Computed is { ValueKind: JsonValueKind.Object } computed &&
-            computed.TryGetProperty("overallMin", out var v2Min) &&
-            v2Min.TryGetDouble(out var v2Val))
-        {
-            totalMin = v2Val;
-        }
-        else if (payload.Values is { ValueKind: JsonValueKind.Object } el &&
-                 el.TryGetProperty("total.overallMin", out var minEl) &&
-                 minEl.TryGetDouble(out var v1Val))
-        {
-            totalMin = v1Val;
-        }
-
-        if (totalMin.HasValue)
-            part.CycleTotalHrs = Math.Round(totalMin.Value / 60.0, 2);
+        // CycleTotalHrs on the RFQ table is Setup + TurnMill + 3X + 4X + 5X
+        // (computed on part update). Do not overwrite it from Cycle Time minutes.
 
         await db.SaveChangesAsync();
         return NoContent();
@@ -251,7 +236,9 @@ public class ProjectsController(AppDbContext db, PartPictureService pictureServi
         part.Cycle3x = request.Cycle3x;
         part.Cycle4x = request.Cycle4x;
         part.Cycle5x = request.Cycle5x;
-        part.CycleTotalHrs = request.CycleTotalHrs;
+        // TOTAL HRS REQUIRE is always derived — not user-editable
+        part.CycleTotalHrs =
+            part.SetupTimeHour + part.CycleTurnMill + part.Cycle3x + part.Cycle4x + part.Cycle5x;
 
         await db.SaveChangesAsync();
         return part.ToDto();

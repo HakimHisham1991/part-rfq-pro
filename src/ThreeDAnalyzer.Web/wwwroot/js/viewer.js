@@ -6,7 +6,9 @@ import {
   loadHoleMethodPreference,
   saveHoleMethodPreference,
   loadRansacIterationsPreference,
-  saveRansacIterationsPreference
+  saveRansacIterationsPreference,
+  isBrepHoleMethod,
+  BREP_HOLE_METHOD
 } from './hole-detection.js';
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
@@ -29,6 +31,12 @@ const btnApplyCoord = document.getElementById('btn-apply-coord');
 const btnPickCoord = document.getElementById('btn-pick-coord');
 const btnResetMeasurements = document.getElementById('btn-reset-measurements');
 const btnToggleFloor = document.getElementById('btn-toggle-floor');
+const btnTogglePerspective = document.getElementById('btn-toggle-perspective');
+const featureSidePanels = document.getElementById('feature-side-panels');
+const holePanel = document.getElementById('hole-panel');
+const pocketPanel = document.getElementById('pocket-panel');
+const btnCollapseHolePanel = document.getElementById('btn-collapse-hole-panel');
+const btnCollapsePocketPanel = document.getElementById('btn-collapse-pocket-panel');
 const toolBtns = document.querySelectorAll('.tool-btn');
 
 // Hole detection DOM refs
@@ -58,6 +66,14 @@ const btnHoleProgressHide = document.getElementById('btn-hole-progress-hide');
 const btnHoleProgressShow = document.getElementById('btn-hole-progress-show');
 const btnHoleProgressStop = document.getElementById('btn-hole-progress-stop');
 const holeDetectionSection = document.getElementById('hole-detection-section');
+
+// Pocket detection DOM refs
+const btnRunPocketDetection = document.getElementById('btn-run-pocket-detection');
+const pocketsList = document.getElementById('pockets-list');
+const pocketCountBadge = document.getElementById('pocket-count-badge');
+const btnClearPockets = document.getElementById('btn-clear-pockets');
+const btnCsvDetectedPockets = document.getElementById('btn-csv-detected-pockets');
+const pocketDetectionSection = document.getElementById('pocket-detection-section');
 
 // ── SECTION A — Scene Setup ─────────────────────────────────────────────────
 // Mobile (e.g. Galaxy A51): uncapped devicePixelRatio (often 2.5–3) + antialias
@@ -99,8 +115,15 @@ try {
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xe8e9ed);
 
-const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100000);
-camera.up.set(0, 0, 1);
+const PERSPECTIVE_FOV = 45;
+const perspectiveCamera = new THREE.PerspectiveCamera(PERSPECTIVE_FOV, 1, 0.01, 100000);
+perspectiveCamera.up.set(0, 0, 1);
+const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 100000);
+orthoCamera.up.set(0, 0, 1);
+/** Perspective OFF by default → orthographic (CAD-style). */
+let perspectiveEnabled = false;
+let viewAspect = 1;
+let camera = orthoCamera;
 
 // GridHelper defaults to XZ (Y-up); rotate to XY for Z-up (NX CAM style).
 const grid = new THREE.GridHelper(1000, 40, 0x9ba9b8, 0xbcbcc4);
@@ -140,6 +163,20 @@ function setOrbitFromAngles(theta, phi) {
 }
 setOrbitFromAngles(ISOMETRIC_THETA, ISOMETRIC_PHI);
 
+function perspectiveFovRad() {
+  return (PERSPECTIVE_FOV * Math.PI) / 180;
+}
+
+function updateOrthoFrustum() {
+  const halfH = Math.max(orbitRadius * Math.tan(perspectiveFovRad() / 2), 0.01);
+  const halfW = halfH * Math.max(viewAspect, 0.01);
+  orthoCamera.left = -halfW;
+  orthoCamera.right = halfW;
+  orthoCamera.top = halfH;
+  orthoCamera.bottom = -halfH;
+  orthoCamera.updateProjectionMatrix();
+}
+
 function updateCamera() {
   const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(orbitQuat);
   camera.position.copy(target).addScaledVector(dir, orbitRadius);
@@ -147,6 +184,7 @@ function updateCamera() {
   // no pole singularity, no conditional branch).
   camera.up.copy(new THREE.Vector3(0, 1, 0).applyQuaternion(orbitQuat));
   camera.lookAt(target);
+  if (!perspectiveEnabled) updateOrthoFrustum();
 }
 
 function snapViewToDirection(direction) {
@@ -173,8 +211,8 @@ function fitCameraToModel() {
   setOrbitFromAngles(ISOMETRIC_THETA, ISOMETRIC_PHI);
   target.copy(center);
 
-  const vFov = camera.fov * (Math.PI / 180);
-  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+  const vFov = perspectiveFovRad();
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Math.max(viewAspect, 0.01));
   const fov = Math.min(vFov, hFov);
   orbitRadius = (sphere.radius / Math.sin(fov / 2)) * 1.15;
 
@@ -480,8 +518,10 @@ function applyCanvasSize() {
   const h = Math.max(1, Math.round(rect.height || parent.clientHeight || 1));
   renderer.setPixelRatio(getDPR());
   renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
+  viewAspect = w / h;
+  perspectiveCamera.aspect = viewAspect;
+  perspectiveCamera.updateProjectionMatrix();
+  if (!perspectiveEnabled) updateOrthoFrustum();
 }
 
 const resizeObserver = new ResizeObserver(() => {
@@ -876,12 +916,25 @@ let surfaceSelectMode = false;
 const selectedFaces = new Set();
 let surfaceHighlightGroup = null;
 let holeWorker = null;
+let brepHoleWorker = null;
 let holeWorkerRequestId = 0;
+/** 'brep' | 'mesh' — which worker is handling the active request */
+let activeHoleDetectionSource = null;
+/** 'holes' | 'pockets' — which feature job the user started */
+let activeFeatureJob = null;
 let activeHoleId = null;
 let activeHoleGroupKey = null;
 const highlightedHoleIds = new Set();
 let holeDetectionRunning = false;
 let holeProgressPanelHidden = false;
+const holeMethodHint = document.getElementById('hole-method-hint');
+const holeRansacGroup = document.getElementById('hole-ransac-group');
+
+// Pocket detection state
+let detectedPockets = [];
+let pocketVisualGroup = null;
+let activePocketId = null;
+const highlightedPocketIds = new Set();
 
 // Rectangle surface selection state
 const RECT_SELECT_MIN_DRAG = 4;
@@ -1107,6 +1160,70 @@ function toggleFloorTile() {
   setStatus(grid.visible ? 'Floor grid shown' : 'Floor grid hidden');
 }
 
+function updatePerspectiveToggleLabel() {
+  if (!btnTogglePerspective) return;
+  btnTogglePerspective.textContent = 'Perspective';
+  btnTogglePerspective.classList.toggle('active', perspectiveEnabled);
+  btnTogglePerspective.setAttribute(
+    'title',
+    perspectiveEnabled
+      ? 'Perspective ON — click for orthographic'
+      : 'Perspective OFF (orthographic) — click to enable'
+  );
+}
+
+function setPerspectiveEnabled(enabled) {
+  perspectiveEnabled = !!enabled;
+  camera = perspectiveEnabled ? perspectiveCamera : orthoCamera;
+  updateCamera();
+  applyCanvasSize();
+  updatePerspectiveToggleLabel();
+}
+
+function togglePerspective() {
+  setPerspectiveEnabled(!perspectiveEnabled);
+  setStatus(perspectiveEnabled ? 'Perspective view ON' : 'Perspective view OFF (orthographic)');
+}
+
+function syncFeaturePanelsCollapsedClass() {
+  if (!featureSidePanels) return;
+  const holeCollapsed = !holePanel || holePanel.classList.contains('collapsed');
+  const pocketCollapsed = !pocketPanel || pocketPanel.classList.contains('collapsed');
+  featureSidePanels.classList.toggle('all-collapsed', holeCollapsed && pocketCollapsed);
+}
+
+function updateFeaturePanelCollapseLabel(panel, button, label) {
+  if (!button || !panel) return;
+  const collapsed = panel.classList.contains('collapsed');
+  button.textContent = collapsed ? 'Expand' : 'Collapse';
+  button.title = collapsed ? `Expand ${label} panel` : `Collapse ${label} panel`;
+  button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+}
+
+function updateHolePanelCollapseLabel() {
+  updateFeaturePanelCollapseLabel(holePanel, btnCollapseHolePanel, 'hole');
+}
+
+function updatePocketPanelCollapseLabel() {
+  updateFeaturePanelCollapseLabel(pocketPanel, btnCollapsePocketPanel, 'pocket');
+}
+
+function toggleHolePanelCollapse() {
+  if (!holePanel) return;
+  holePanel.classList.toggle('collapsed');
+  updateHolePanelCollapseLabel();
+  syncFeaturePanelsCollapsedClass();
+  requestAnimationFrame(() => applyCanvasSize());
+}
+
+function togglePocketPanelCollapse() {
+  if (!pocketPanel) return;
+  pocketPanel.classList.toggle('collapsed');
+  updatePocketPanelCollapseLabel();
+  syncFeaturePanelsCollapsedClass();
+  requestAnimationFrame(() => applyCanvasSize());
+}
+
 function appendHoleProgressLog(message, className = '') {
   if (!holeProgressLog) return;
   const entry = document.createElement('div');
@@ -1162,7 +1279,8 @@ function handleHoleProgressMessage(message, percent) {
   setHoleProgressPercent(percent);
   appendHoleProgressLog(message);
   if (percent != null && percent < 100) {
-    setStatus(`Detecting holes… ${Math.round(percent)}%`);
+    const label = activeFeatureJob === 'pockets' ? 'pockets' : 'holes';
+    setStatus(`Detecting ${label}… ${Math.round(percent)}%`);
   }
 }
 
@@ -1180,11 +1298,12 @@ function reportLoadProgress(message, percent) {
 }
 
 /**
- * Lock / unlock Hole Detection panel controls while a detection job runs.
+ * Lock / unlock Hole / Pocket Detection panel controls while a detection job runs.
  */
 function setHoleDetectionBusy(busy) {
   holeDetectionRunning = busy;
   holeDetectionSection?.classList.toggle('is-busy', busy);
+  pocketDetectionSection?.classList.toggle('is-busy', busy);
 
   if (holeFitMethodSelect) holeFitMethodSelect.disabled = busy;
   if (holeRansacIterationsInput) holeRansacIterationsInput.disabled = busy;
@@ -1226,6 +1345,7 @@ function resetAnalyzerSession() {
 
   resetAllMeasurements();
   clearHoleDetection();
+  clearPocketDetection();
   clearSurfaceSelection();
 
   customCoordSystem = null;
@@ -1692,6 +1812,7 @@ async function loadStepFile(arrayBuffer, fileName) {
     pickPoints = [];
     resetAllMeasurements();
     clearHoleDetection();
+    clearPocketDetection();
     clearSurfaceSelection();
     coordStatus.textContent = 'Click 3 points on model to define';
 
@@ -2057,11 +2178,24 @@ function completeCoord(p1, p2, p3) {
 
 // ── SECTION J — Hole Detection ─────────────────────────────────────────────
 
+function updateHoleMethodUi(method) {
+  const brep = isBrepHoleMethod(method);
+  if (holeRansacGroup) holeRansacGroup.style.display = brep ? 'none' : '';
+  if (holeMethodHint) {
+    holeMethodHint.textContent = brep
+      ? 'Exact CAD surfaces — no circle fit needed'
+      : 'Fits circles to mesh triangles (slower, use if B-Rep fails)';
+  }
+}
+
 function initHoleDetectionPreferences() {
-  const method = loadHoleMethodPreference();
+  // Always default to B-Rep Feature Recognition on load
+  const method = BREP_HOLE_METHOD;
   if (holeFitMethodSelect) holeFitMethodSelect.value = method;
+  saveHoleMethodPreference(method);
   const iterations = loadRansacIterationsPreference();
   if (holeRansacIterationsInput) holeRansacIterationsInput.value = String(iterations);
+  updateHoleMethodUi(method);
 }
 
 function getHoleDetectionOptions() {
@@ -2087,6 +2221,24 @@ function getHoleWorker() {
   return holeWorker;
 }
 
+function getBrepHoleWorker() {
+  if (!brepHoleWorker) {
+    brepHoleWorker = new Worker('/js/brep-feature-worker.js', { type: 'module' });
+    brepHoleWorker.onmessage = handleHoleWorkerMessage;
+    brepHoleWorker.onerror = (err) => {
+      console.error('B-Rep hole worker error:', err);
+      if (holeDetectionRunning && activeHoleDetectionSource === 'brep') {
+        appendHoleProgressLog(
+          `B-Rep worker error: ${err.message || err} — falling back to mesh analysis…`,
+          'is-error'
+        );
+        startMeshHoleDetection(holeWorkerRequestId);
+      }
+    };
+  }
+  return brepHoleWorker;
+}
+
 function serializePartMeshes() {
   if (!partGroup) return [];
   const meshes = [];
@@ -2094,6 +2246,41 @@ function serializePartMeshes() {
     if (child.isMesh && child.geometry) meshes.push(child);
   });
   return serializeMeshesFromGroup(meshes);
+}
+
+function startMeshHoleDetection(requestId) {
+  const meshes = serializePartMeshes();
+  if (meshes.length === 0) {
+    setHoleDetectionBusy(false);
+    appendHoleProgressLog('No mesh data available for fallback', 'is-error');
+    setStatus('Hole detection error: no mesh data');
+    return;
+  }
+
+  const options = getHoleDetectionOptions();
+  // Mesh circle-fit cannot use brep-aag — fall back to RANSAC+Taubin
+  const meshMethod = isBrepHoleMethod(options.method) ? 'ransac-taubin' : options.method;
+  activeHoleDetectionSource = 'mesh';
+  appendHoleProgressLog(`Mesh detection — method: ${meshMethod}, RANSAC: ${options.ransacIterations}`);
+  appendHoleProgressLog(`Serializing ${meshes.length} mesh(es)…`);
+  setHoleProgressPercent(2);
+
+  const workerOptions = {
+    ...options,
+    method: meshMethod,
+    selectedFaces: options.selectedFaces ? [...options.selectedFaces] : null
+  };
+
+  const worker = getHoleWorker();
+  worker.postMessage({
+    type: 'detect',
+    requestId,
+    meshes,
+    options: {
+      ...workerOptions,
+      selectedFaces: workerOptions.selectedFaces
+    }
+  });
 }
 
 function runHoleDetection() {
@@ -2116,43 +2303,104 @@ function runHoleDetection() {
     }
   }
 
-  const meshes = serializePartMeshes();
-  if (meshes.length === 0) {
-    setStatus('No mesh data available');
-    return;
-  }
-
-  const options = getHoleDetectionOptions();
   const requestId = ++holeWorkerRequestId;
+  activeFeatureJob = 'holes';
 
   setStatus('Detecting holes…');
   setHoleDetectionBusy(true);
 
   const scopeLabel = `${selectedFaces.size} selected surface(s)`;
   beginHoleProgressLog(scopeLabel);
-  appendHoleProgressLog(`Method: ${options.method}, RANSAC iterations: ${options.ransacIterations}`);
-  appendHoleProgressLog(`Serializing ${meshes.length} mesh(es)…`);
-  setHoleProgressPercent(2);
-
-  // Clear any previous hole visuals while a new run is in progress
   clearHoleDetection();
 
-  // Serialize selectedFaces Set to array for worker transfer
-  const workerOptions = {
-    ...options,
-    selectedFaces: options.selectedFaces ? [...options.selectedFaces] : null
-  };
+  const method = getHoleDetectionOptions().method;
+  const preferBrep =
+    isBrepHoleMethod(method) &&
+    lastLoadedArrayBuffer &&
+    lastLoadedArrayBuffer.byteLength > 0;
 
-  const worker = getHoleWorker();
-  worker.postMessage({
-    type: 'detect',
-    requestId,
-    meshes,
-    options: {
-      ...workerOptions,
-      selectedFaces: workerOptions.selectedFaces
+  if (preferBrep) {
+    activeHoleDetectionSource = 'brep';
+    appendHoleProgressLog(`Method: ${BREP_HOLE_METHOD} — B-Rep feature recognition (AAG)…`);
+    setHoleProgressPercent(2);
+    try {
+      const worker = getBrepHoleWorker();
+      // Transfer a copy so the main thread keeps lastLoadedArrayBuffer for recovery
+      const bufferCopy = lastLoadedArrayBuffer.slice(0);
+      worker.postMessage(
+        {
+          type: 'detect',
+          requestId,
+          arrayBuffer: bufferCopy,
+          options: { features: 'holes' }
+        },
+        [bufferCopy]
+      );
+    } catch (err) {
+      console.warn('Failed to start B-Rep worker, falling back to mesh', err);
+      appendHoleProgressLog('B-Rep worker unavailable — falling back to mesh analysis…', 'is-error');
+      startMeshHoleDetection(requestId);
     }
-  });
+    return;
+  }
+
+  if (isBrepHoleMethod(method) && !lastLoadedArrayBuffer) {
+    appendHoleProgressLog('No STEP buffer for B-Rep — using mesh detection…', 'is-error');
+  }
+  startMeshHoleDetection(requestId);
+}
+
+/**
+ * Pocket detection — B-Rep AAG only (same worker as hole recognition).
+ */
+function runPocketDetection() {
+  if (holeDetectionRunning) {
+    setStatus('Feature detection already in progress');
+    return;
+  }
+
+  if (!partGroup) {
+    setStatus('Load a STEP file first');
+    return;
+  }
+
+  if (!lastLoadedArrayBuffer || lastLoadedArrayBuffer.byteLength === 0) {
+    setStatus('Pocket detection requires a STEP file (B-Rep)');
+    return;
+  }
+
+  const requestId = ++holeWorkerRequestId;
+  activeFeatureJob = 'pockets';
+  activeHoleDetectionSource = 'brep';
+
+  setStatus('Detecting pockets…');
+  setHoleDetectionBusy(true);
+  beginProgressLog('Pocket Detection', 'Starting pocket detection (B-Rep AAG)…');
+  setHoleProgressStopVisible(true);
+  clearPocketDetection();
+  appendHoleProgressLog('Method: B-Rep AAG — floor-anchored cavities…');
+  setHoleProgressPercent(2);
+
+  try {
+    const worker = getBrepHoleWorker();
+    const bufferCopy = lastLoadedArrayBuffer.slice(0);
+    worker.postMessage(
+      {
+        type: 'detect',
+        requestId,
+        arrayBuffer: bufferCopy,
+        options: { features: 'pockets' }
+      },
+      [bufferCopy]
+    );
+  } catch (err) {
+    console.error('Failed to start B-Rep pocket worker', err);
+    setHoleDetectionBusy(false);
+    activeFeatureJob = null;
+    activeHoleDetectionSource = null;
+    appendHoleProgressLog(`B-Rep worker unavailable: ${err.message || err}`, 'is-error');
+    setStatus('Pocket detection error: B-Rep worker unavailable');
+  }
 }
 
 /**
@@ -2162,6 +2410,9 @@ function stopHoleDetection() {
   if (!holeDetectionRunning) return;
 
   holeWorkerRequestId += 1;
+  activeHoleDetectionSource = null;
+  const stoppedJob = activeFeatureJob;
+  activeFeatureJob = null;
 
   if (holeWorker) {
     try {
@@ -2171,16 +2422,28 @@ function stopHoleDetection() {
     }
     holeWorker = null;
   }
+  if (brepHoleWorker) {
+    try {
+      brepHoleWorker.terminate();
+    } catch (err) {
+      console.error(err);
+    }
+    brepHoleWorker = null;
+  }
 
-  clearHoleDetection();
+  if (stoppedJob === 'pockets') {
+    clearPocketDetection();
+  } else {
+    clearHoleDetection();
+  }
   setHoleDetectionBusy(false);
   setHoleProgressPercent(100);
   appendHoleProgressLog('Detection stopped by user — results cleared', 'is-error');
-  setStatus('Hole detection stopped');
+  setStatus(stoppedJob === 'pockets' ? 'Pocket detection stopped' : 'Hole detection stopped');
 }
 
 function handleHoleWorkerMessage(event) {
-  const { type, requestId, holes, elapsedMs, message, percent } = event.data;
+  const { type, requestId, holes, pockets, elapsedMs, message, percent, source } = event.data;
   if (requestId !== holeWorkerRequestId) return;
 
   if (type === 'progress') {
@@ -2188,9 +2451,32 @@ function handleHoleWorkerMessage(event) {
     return;
   }
 
-  setHoleDetectionBusy(false);
-
   if (type === 'error') {
+    // Pocket job has no mesh fallback
+    if (activeFeatureJob === 'pockets') {
+      setHoleDetectionBusy(false);
+      activeHoleDetectionSource = null;
+      activeFeatureJob = null;
+      clearPocketDetection();
+      setHoleProgressPercent(100);
+      appendHoleProgressLog(`Error: ${message}`, 'is-error');
+      setStatus(`Pocket detection error: ${message}`);
+      return;
+    }
+
+    // B-Rep failure → automatic mesh fallback (keep busy flag on)
+    if (source === 'brep' || activeHoleDetectionSource === 'brep') {
+      console.warn('B-Rep feature recognition failed, falling back to mesh curvature analysis', message);
+      appendHoleProgressLog(
+        `B-Rep recognition failed (${message}) — falling back to mesh analysis…`,
+        'is-error'
+      );
+      startMeshHoleDetection(requestId);
+      return;
+    }
+
+    setHoleDetectionBusy(false);
+    activeFeatureJob = null;
     clearHoleDetection();
     setHoleProgressPercent(100);
     appendHoleProgressLog(`Error: ${message}`, 'is-error');
@@ -2198,8 +2484,26 @@ function handleHoleWorkerMessage(event) {
     return;
   }
 
+  setHoleDetectionBusy(false);
+  activeHoleDetectionSource = null;
+  const job = activeFeatureJob;
+  activeFeatureJob = null;
+
+  const holeCount = (holes ?? []).length;
+  const pocketCount = (pockets ?? []).length;
+  const srcLabel = source === 'brep' ? 'B-Rep AAG' : 'mesh';
+
+  if (job === 'pockets') {
+    applyDetectedPockets(pockets ?? []);
+    const doneMsg = `Found ${pocketCount} pocket(s) via ${srcLabel} (${Math.round(elapsedMs)} ms)`;
+    setHoleProgressPercent(100);
+    appendHoleProgressLog(doneMsg, 'is-done');
+    setStatus(doneMsg);
+    return;
+  }
+
   applyDetectedHoles(holes ?? []);
-  const doneMsg = `Found ${holes.length} hole(s) on ${selectedFaces.size} selected surface(s) (${Math.round(elapsedMs)} ms)`;
+  const doneMsg = `Found ${holeCount} hole(s) via ${srcLabel} on ${selectedFaces.size} selected surface(s) (${Math.round(elapsedMs)} ms)`;
   setHoleProgressPercent(100);
   appendHoleProgressLog(doneMsg, 'is-done');
   setStatus(doneMsg);
@@ -2228,6 +2532,29 @@ function clearHoleDetection() {
   if (btnAddHolesToCycle) btnAddHolesToCycle.disabled = true;
 }
 
+function applyDetectedPockets(pockets) {
+  detectedPockets = pockets ?? [];
+  clearPocketHighlightState();
+  renderPocketVisuals();
+  renderPocketsList();
+  updatePocketCountBadge();
+  updatePocketCsvButtons();
+}
+
+function clearPocketDetection() {
+  detectedPockets = [];
+  clearPocketHighlightState();
+  disposePocketVisuals();
+  if (pocketsList) pocketsList.innerHTML = '';
+  updatePocketCountBadge();
+  updatePocketCsvButtons();
+}
+
+function clearPocketHighlightState() {
+  activePocketId = null;
+  highlightedPocketIds.clear();
+}
+
 function clearHoleHighlightState() {
   activeHoleId = null;
   activeHoleGroupKey = null;
@@ -2239,6 +2566,13 @@ function disposeHoleVisuals() {
   scene.remove(holeVisualGroup);
   disposeObject(holeVisualGroup);
   holeVisualGroup = null;
+}
+
+function disposePocketVisuals() {
+  if (!pocketVisualGroup) return;
+  scene.remove(pocketVisualGroup);
+  disposeObject(pocketVisualGroup);
+  pocketVisualGroup = null;
 }
 
 const HOLE_COLOR_NORMAL = 0xff6600;
@@ -2581,8 +2915,8 @@ function focusOnHoles(holes) {
   if (!(sphere.radius > 0)) return;
 
   target.copy(fitCenter);
-  const vFov = camera.fov * (Math.PI / 180);
-  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+  const vFov = perspectiveFovRad();
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Math.max(viewAspect, 0.01));
   const fov = Math.min(vFov, hFov);
   orbitRadius = Math.max((sphere.radius / Math.sin(fov / 2)) * 1.45, 20);
   updateCamera();
@@ -2607,6 +2941,365 @@ function updateHoleCsvButtons() {
     const canGroup = (byDiameter || byDepth) && detectedHoles.length > 0;
     btnCsvHoleGroups.disabled = !canGroup || buildHoleGroups().length === 0;
   }
+}
+
+const POCKET_COLOR_NORMAL = 0x2a9d8f;
+const POCKET_COLOR_NORMAL_EDGE = 0x1d7a6e;
+const POCKET_COLOR_FLOOR = 0x3dbfaf;
+const POCKET_COLOR_CEILING = 0x1a7a6e;
+const POCKET_COLOR_HIGHLIGHT = 0xe9c46a;
+const POCKET_COLOR_HIGHLIGHT_EDGE = 0xf4a261;
+
+/** Rounded-rectangle Shape in XY (Z = depth) for max-bounded pocket volume. */
+function createRoundedRectShape(width, length, cornerRadius) {
+  const shape = new THREE.Shape();
+  const hw = width / 2;
+  const hl = length / 2;
+  const r = Math.max(0, Math.min(cornerRadius || 0, hw - 1e-3, hl - 1e-3));
+
+  if (r < 0.05) {
+    shape.moveTo(-hw, -hl);
+    shape.lineTo(hw, -hl);
+    shape.lineTo(hw, hl);
+    shape.lineTo(-hw, hl);
+    shape.closePath();
+    return shape;
+  }
+
+  shape.moveTo(-hw + r, -hl);
+  shape.lineTo(hw - r, -hl);
+  shape.absarc(hw - r, -hl + r, r, -Math.PI / 2, 0, false);
+  shape.lineTo(hw, hl - r);
+  shape.absarc(hw - r, hl - r, r, 0, Math.PI / 2, false);
+  shape.lineTo(-hw + r, hl);
+  shape.absarc(-hw + r, hl - r, r, Math.PI / 2, Math.PI, false);
+  shape.lineTo(-hw, -hl + r);
+  shape.absarc(-hw + r, -hl + r, r, Math.PI, (Math.PI * 3) / 2, false);
+  return shape;
+}
+
+function createCircularPocketShape(diameter) {
+  const shape = new THREE.Shape();
+  const r = Math.max(diameter / 2, 0.5);
+  shape.absarc(0, 0, r, 0, Math.PI * 2, false);
+  return shape;
+}
+
+function orientPocketVolumeGroup(group, center, normal, xAxisArr) {
+  // Local +Z = depth (floor → ceiling). Align Z to pocket axis.
+  const zAxis = normal.clone().normalize();
+  let xAxis = xAxisArr
+    ? new THREE.Vector3(xAxisArr[0], xAxisArr[1], xAxisArr[2]).normalize()
+    : new THREE.Vector3(1, 0, 0);
+  if (Math.abs(xAxis.dot(zAxis)) > 0.95) {
+    xAxis = new THREE.Vector3(0, 1, 0);
+  }
+  xAxis = xAxis.sub(zAxis.clone().multiplyScalar(xAxis.dot(zAxis))).normalize();
+  const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis).normalize();
+  const m = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
+  group.quaternion.setFromRotationMatrix(m);
+  group.position.copy(center);
+}
+
+/**
+ * Max-bounded volume: floor + corner radii + walls + ceiling (not an AABB).
+ */
+function createPocketVisual(pocket) {
+  const group = new THREE.Group();
+  const outline = pocket.outline || {};
+  const centerArr = outline.center || pocket.center || pocket.floorLocation;
+  if (!centerArr) return group;
+
+  const axisArr = outline.axis || pocket.axis || pocket.floorNormal || [0, 0, 1];
+  const normal = new THREE.Vector3(axisArr[0], axisArr[1], axisArr[2]).normalize();
+  if (!Number.isFinite(normal.x) || normal.lengthSq() < 1e-12) normal.set(0, 0, 1);
+
+  const center = new THREE.Vector3(centerArr[0], centerArr[1], centerArr[2]);
+  const MAX_VIS = 250;
+  let width = outline.width || pocket.width || 8;
+  let length = outline.length || pocket.length || width;
+  if (pocket.shape === 'circular' || pocket.maxBoundedSize?.diameter) {
+    const dia = pocket.maxBoundedSize?.diameter || Math.max(width, length);
+    width = dia;
+    length = dia;
+  }
+  width = Math.min(Math.max(width, 2), MAX_VIS);
+  length = Math.min(Math.max(length, 2), MAX_VIS);
+  const depth = Math.min(Math.max(outline.depth || pocket.maxDepth || pocket.depth || 1, 0.5), MAX_VIS);
+  const cornerRadius = Math.min(
+    outline.cornerRadius || pocket.cornerRadius || 0,
+    width / 2,
+    length / 2
+  );
+
+  const shape =
+    pocket.shape === 'circular'
+      ? createCircularPocketShape(width)
+      : createRoundedRectShape(width, length, cornerRadius);
+
+  const volGroup = new THREE.Group();
+
+  // Solid volume (floor → ceiling) with rounded corners
+  const extrudeGeo = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled: false,
+    curveSegments: 12
+  });
+  const volMat = new THREE.MeshBasicMaterial({
+    color: POCKET_COLOR_NORMAL,
+    transparent: true,
+    opacity: 0.22,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+  const volumeMesh = new THREE.Mesh(extrudeGeo, volMat);
+  volumeMesh.raycast = () => {};
+  volGroup.add(volumeMesh);
+
+  // Floor (z = 0)
+  const floorGeo = new THREE.ShapeGeometry(shape, 12);
+  const floorMat = new THREE.MeshBasicMaterial({
+    color: POCKET_COLOR_FLOOR,
+    transparent: true,
+    opacity: 0.45,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+  const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+  floorMesh.raycast = () => {};
+  volGroup.add(floorMesh);
+
+  // Ceiling (z = depth)
+  const ceilingMat = new THREE.MeshBasicMaterial({
+    color: POCKET_COLOR_CEILING,
+    transparent: true,
+    opacity: 0.28,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+  const ceilingMesh = new THREE.Mesh(floorGeo.clone(), ceilingMat);
+  ceilingMesh.position.z = depth;
+  ceilingMesh.raycast = () => {};
+  volGroup.add(ceilingMesh);
+
+  // Wall outline
+  const edges = new THREE.EdgesGeometry(extrudeGeo);
+  const edgeMat = new THREE.LineBasicMaterial({
+    color: POCKET_COLOR_NORMAL_EDGE,
+    transparent: true,
+    opacity: 0.9
+  });
+  const wire = new THREE.LineSegments(edges, edgeMat);
+  wire.raycast = () => {};
+  volGroup.add(wire);
+
+  orientPocketVolumeGroup(volGroup, center, normal, outline.xAxis);
+  group.add(volGroup);
+
+  group.userData.pocketId = pocket.id;
+  group.userData.pocketMats = { volMat, floorMat, ceilingMat, edgeMat };
+  return group;
+}
+
+function renderPocketVisuals() {
+  disposePocketVisuals();
+  if (detectedPockets.length === 0) return;
+
+  pocketVisualGroup = new THREE.Group();
+  for (const pocket of detectedPockets) {
+    pocketVisualGroup.add(createPocketVisual(pocket));
+  }
+  scene.add(pocketVisualGroup);
+  updatePocketVisualHighlights();
+}
+
+function updatePocketVisualHighlights() {
+  if (!pocketVisualGroup) return;
+  const hasHighlight = highlightedPocketIds.size > 0;
+
+  pocketVisualGroup.children.forEach((group) => {
+    const highlighted = hasHighlight && highlightedPocketIds.has(group.userData.pocketId);
+    const mats = group.userData.pocketMats;
+    if (!mats) return;
+    mats.volMat.color.setHex(highlighted ? POCKET_COLOR_HIGHLIGHT : POCKET_COLOR_NORMAL);
+    mats.volMat.opacity = highlighted ? 0.38 : 0.22;
+    mats.floorMat.color.setHex(highlighted ? POCKET_COLOR_HIGHLIGHT : POCKET_COLOR_FLOOR);
+    mats.floorMat.opacity = highlighted ? 0.65 : 0.45;
+    mats.ceilingMat.color.setHex(highlighted ? POCKET_COLOR_HIGHLIGHT_EDGE : POCKET_COLOR_CEILING);
+    mats.edgeMat.color.setHex(highlighted ? POCKET_COLOR_HIGHLIGHT_EDGE : POCKET_COLOR_NORMAL_EDGE);
+    mats.edgeMat.opacity = highlighted ? 1 : 0.9;
+  });
+}
+
+function pocketShapeLabel(shape) {
+  if (!shape) return '—';
+  return shape.charAt(0).toUpperCase() + shape.slice(1);
+}
+
+function formatPocketBoundedSize(pocket) {
+  if (pocket.maxBoundedSize?.diameter > 0) {
+    return `Ø ${formatNum(pocket.maxBoundedSize.diameter, 2)} mm`;
+  }
+  if (pocket.shape === 'circular') {
+    const dia = Math.max(pocket.width || 0, pocket.length || 0);
+    return dia > 0 ? `Ø ${formatNum(dia, 2)} mm` : '—';
+  }
+  const w = pocket.maxBoundedSize?.width ?? pocket.width;
+  const l = pocket.maxBoundedSize?.length ?? pocket.length;
+  if (!(w > 0) || !(l > 0)) return '—';
+  return `${formatNum(w, 2)} × ${formatNum(l, 2)} mm`;
+}
+
+function renderPocketsList() {
+  if (!pocketsList) return;
+  pocketsList.innerHTML = '';
+
+  if (detectedPockets.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'holes-table-empty';
+    empty.textContent = 'No pockets detected';
+    pocketsList.appendChild(empty);
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'holes-table';
+
+  const thead = document.createElement('thead');
+  thead.innerHTML =
+    '<tr>' +
+    '<th class="col-name">Name</th>' +
+    '<th class="col-shape">Shape</th>' +
+    '<th class="col-size">Max Bounded Size</th>' +
+    '<th class="col-depth">Max Depth</th>' +
+    '<th class="col-volume">Max Bounded Volume</th>' +
+    '</tr>';
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  detectedPockets.forEach((pocket, index) => {
+    const row = document.createElement('tr');
+    row.dataset.pocketId = pocket.id;
+    if (pocket.id === activePocketId) row.classList.add('hole-row-active');
+
+    const nameCell = document.createElement('td');
+    nameCell.className = 'col-name';
+    let name = `Pocket ${index + 1}`;
+    if (pocket.isPatched) name += ' (patched)';
+    else if (pocket.isThrough) name += ' (thru)';
+    nameCell.textContent = name;
+
+    const shapeCell = document.createElement('td');
+    shapeCell.className = 'col-shape';
+    shapeCell.textContent = pocketShapeLabel(pocket.shape);
+
+    const sizeCell = document.createElement('td');
+    sizeCell.className = 'col-size';
+    sizeCell.textContent = formatPocketBoundedSize(pocket);
+
+    const depthCell = document.createElement('td');
+    depthCell.className = 'col-depth';
+    const depthVal = pocket.maxDepth ?? pocket.depth;
+    depthCell.textContent =
+      pocket.isThrough || !(depthVal > 0) ? '—' : `${formatNum(depthVal, 2)} mm`;
+
+    const volumeCell = document.createElement('td');
+    volumeCell.className = 'col-volume';
+    const vol = pocket.maxBoundedVolume ?? 0;
+    volumeCell.textContent = vol > 0 ? `${formatNum(vol, 1)} mm³` : '—';
+
+    row.appendChild(nameCell);
+    row.appendChild(shapeCell);
+    row.appendChild(sizeCell);
+    row.appendChild(depthCell);
+    row.appendChild(volumeCell);
+
+    row.addEventListener('click', () => {
+      selectSinglePocket(pocket, row, tbody);
+    });
+
+    tbody.appendChild(row);
+  });
+
+  table.appendChild(tbody);
+  pocketsList.appendChild(table);
+}
+
+function selectSinglePocket(pocket, row, tbody) {
+  activePocketId = pocket.id;
+  highlightedPocketIds.clear();
+  highlightedPocketIds.add(pocket.id);
+
+  tbody.querySelectorAll('tr').forEach((el) => el.classList.remove('hole-row-active'));
+  row.classList.add('hole-row-active');
+
+  updatePocketVisualHighlights();
+  focusOnPocket(pocket);
+  const depthVal = pocket.maxDepth ?? pocket.depth;
+  const vol = pocket.maxBoundedVolume ?? 0;
+  setStatus(
+    `Focused Pocket — ${pocketShapeLabel(pocket.shape)}` +
+      (pocket.isPatched ? ' (patched)' : '') +
+      (depthVal > 0 ? ` · depth ${formatNum(depthVal, 2)} mm` : '') +
+      (vol > 0 ? ` · ${formatNum(vol, 0)} mm³` : '')
+  );
+}
+
+function focusOnPocket(pocket) {
+  const centerArr = pocket.outline?.center || pocket.center || pocket.floorLocation;
+  if (!centerArr) return;
+  const center = new THREE.Vector3(centerArr[0], centerArr[1], centerArr[2]);
+  const span = Math.max(
+    pocket.width || 0,
+    pocket.length || 0,
+    pocket.maxDepth || pocket.depth || 0,
+    10
+  );
+  target.copy(center);
+  orbitRadius = Math.max(span * 3, 20);
+  updateCamera();
+}
+
+function updatePocketCountBadge() {
+  if (pocketCountBadge) {
+    pocketCountBadge.textContent = String(detectedPockets.length);
+  }
+}
+
+function updatePocketCsvButtons() {
+  if (btnCsvDetectedPockets) btnCsvDetectedPockets.disabled = detectedPockets.length === 0;
+}
+
+function exportDetectedPocketsCsv() {
+  if (detectedPockets.length === 0) {
+    setStatus('No detected pockets to export');
+    return;
+  }
+
+  const rows = detectedPockets.map((pocket, index) => [
+    `Pocket ${index + 1}${pocket.isPatched ? ' (patched)' : ''}`,
+    pocket.shape || '',
+    formatPocketBoundedSize(pocket),
+    formatNum(pocket.maxDepth ?? pocket.depth, 2),
+    formatNum(pocket.maxBoundedVolume ?? 0, 1),
+    pocket.isPatched ? 'yes' : 'no',
+    formatNum(pocket.cornerRadius ?? 0, 2)
+  ]);
+
+  downloadCsv(
+    `${holeCsvFilePrefix()}_detected-pockets.csv`,
+    [
+      'Name',
+      'Shape',
+      'MaxBoundedSize',
+      'MaxDepth_mm',
+      'MaxBoundedVolume_mm3',
+      'Patched',
+      'CornerRadius_mm'
+    ],
+    rows
+  );
+  setStatus(`Exported ${rows.length} detected pocket(s) to CSV`);
 }
 
 function csvEscape(value) {
@@ -2920,10 +3613,13 @@ function updateSurfaceSelectionUI() {
   }
   if (btnClearSelection) btnClearSelection.disabled = noSelection || holeDetectionRunning;
 
-  // Detect Holes stays available whenever a part is loaded (and not busy).
+  // Detect Holes / Pockets stay available whenever a part is loaded (and not busy).
   // Empty selection → runHoleDetection auto-selects all bodies.
   const detectDisabled = holeDetectionRunning || !partGroup;
   if (btnRunHoleDetection) btnRunHoleDetection.disabled = detectDisabled;
+  const pocketDisabled =
+    holeDetectionRunning || !partGroup || !lastLoadedArrayBuffer;
+  if (btnRunPocketDetection) btnRunPocketDetection.disabled = pocketDisabled;
 }
 
 function clearSurfaceSelection() {
@@ -3068,6 +3764,14 @@ function bindHoleDetectionEvents() {
   updateSurfaceSelectionUI();
 
   btnToggleFloor?.addEventListener('click', () => toggleFloorTile());
+  btnTogglePerspective?.addEventListener('click', () => togglePerspective());
+  btnCollapseHolePanel?.addEventListener('click', () => toggleHolePanelCollapse());
+  btnCollapsePocketPanel?.addEventListener('click', () => togglePocketPanelCollapse());
+  updatePerspectiveToggleLabel();
+  updateHolePanelCollapseLabel();
+  updatePocketPanelCollapseLabel();
+  syncFeaturePanelsCollapsedClass();
+  updateFloorToggleLabel();
 
   btnHoleProgressHide?.addEventListener('click', () => {
     hideHoleProgressPanel();
@@ -3082,6 +3786,7 @@ function bindHoleDetectionEvents() {
   });
 
   btnRunHoleDetection?.addEventListener('click', () => runHoleDetection());
+  btnRunPocketDetection?.addEventListener('click', () => runPocketDetection());
 
   btnSelectSurfaces?.addEventListener('click', () => {
     setSurfaceSelectMode(!surfaceSelectMode);
@@ -3100,6 +3805,13 @@ function bindHoleDetectionEvents() {
     clearHoleDetection();
     setStatus('Detected holes cleared');
   });
+
+  btnClearPockets?.addEventListener('click', () => {
+    clearPocketDetection();
+    setStatus('Detected pockets cleared');
+  });
+
+  btnCsvDetectedPockets?.addEventListener('click', () => exportDetectedPocketsCsv());
 
   const onHoleGroupOptionChange = () => {
     activeHoleGroupKey = null;
@@ -3122,6 +3834,7 @@ function bindHoleDetectionEvents() {
     if (holeDetectionRunning) return;
     const method = holeFitMethodSelect.value;
     saveHoleMethodPreference(method);
+    updateHoleMethodUi(method);
     if (detectedHoles.length > 0 && partGroup && selectedFaces.size > 0) {
       runHoleDetection();
     }

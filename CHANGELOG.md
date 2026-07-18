@@ -4,6 +4,98 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.20.3] - 2026-07-18
+
+### Added
+
+- **Pocket table:** Name | Shape | Max Bounded Size | Max Depth | Max Bounded Volume.
+- **Max-bounded volume visuals:** rounded floor + corner radii + walls + ceiling (extruded outline), not an AABB wire box.
+
+### Fixed
+
+- **Broken / imperfect pockets:** floors with through-cuts are accepted and patched for size/volume; pocket walls with a single convex rim edge are no longer misclassified as stock (fixes notched walls on `CNC-milling-7.stp`).
+
+---
+
+## [1.20.2] - 2026-07-18
+
+### Fixed
+
+- **Filleted pocket floors:** CNC pockets with floor→fillet G1 blends have only *smooth* edges on the floor (no concave). Floor detection now accepts planar faces enclosed by smooth transitions into non-planar blends; wall walk follows those blends into walls. Verified on `CNC-milling-7.stp` (3 floor-anchored pockets).
+
+---
+
+## [1.20.1] - 2026-07-18
+
+### Fixed
+
+- **Detect Holes / Detect Pockets isolation:** each button runs only its own recognizer and updates only its own results (no cross-fill).
+- **Pocket false positives:** through-pocket flood-fill disabled by default; floor candidates allow fillet (smooth) edges; reject part-scale / zero-depth footprints that produced huge green planes and all-`(thru)` lists.
+
+---
+
+## [1.20.0] - 2026-07-18
+
+### Added
+
+- **Pocket Detection (B-Rep AAG):** new collapsible panel below Hole Detection; Detect Pockets runs floor-anchored cavity recognition on the shared AAG. Teal floor + depth outline visuals, list, CSV export, and Clear Pockets.
+
+### Changed
+
+- **Hole Detection & Pocket Detection panels** default to collapsed so the 3D viewer starts wider.
+
+---
+
+## [1.19.3] - 2026-07-18
+
+### Changed
+
+- **Project RFQ — TOTAL HRS REQUIRE:** cell is read-only and auto-calculates as Setup Time + TurnMill + 3X + 4X + 5X (also enforced on save and Excel import).
+
+---
+
+## [1.19.2] - 2026-07-18
+
+### Added
+
+- **3D Analyzer — Perspective toggle:** toolbar button next to Show Floor; default is OFF (orthographic). Active state when perspective is on.
+- **Hole Detection panel — Collapse:** header Collapse/Expand control minimizes the panel to the title so the 3D viewer gains width.
+
+### Changed
+
+- **Detection Method:** B-Rep Feature Recognition is always the default selection on page load.
+
+---
+
+## [1.19.1] - 2026-07-18
+
+### Fixed
+
+- **B-Rep hole recognition:** reject pocket-corner fillets (~90° arcs) and degenerate flat “cones” (semi-angle ≈ 90°) that produced dozens of floating false positives; require near-full cylindrical walls (≥300° U-span).
+- **Counterbore bridging:** merge coaxial stages when axes coincide and axial spans are adjacent — works with filleted steps (cylinder→torus→plane→cylinder), not only a shared planar annulus.
+- **CNC-milling-7.stp:** recognizes 6 real holes (4× Ø10.31/Ø21.8 counterbore + 2× Ø19.11) instead of 61 junk features.
+
+### Changed
+
+- **Detection Method dropdown:** added **B-Rep Feature Recognition (recommended)** as an explicit option; mesh circle-fit methods are labeled “Mesh — …”. RANSAC iterations hide when B-Rep is selected. Hint text clarifies that B-Rep does not use circle fitting.
+
+---
+
+## [1.19.0] - 2026-07-18
+
+### Added
+
+- **3D Analyzer — B-Rep hole feature recognition:** client-side `occt-wasm` pipeline builds an Attributed Adjacency Graph (AAG) from exact STEP B-Rep and recognizes plain / counterbore / countersink / step holes from analytic cylinder/cone faces (Analysis Situs–style), replacing mesh curvature fitting as the primary path.
+- **`brep-feature-recognition.js` / `brep-feature-worker.js`:** Web Worker offloads B-Rep import + AAG construction so the UI stays responsive.
+- **`THIRD_PARTY_NOTICES.md`:** Analysis Situs BSD-3-Clause attribution for the AAG approach; `occt-wasm` notices.
+- **IIS / MonsterASP:** `web.config` + static-file middleware for `.wasm` MIME type and long-cache `/lib` assets.
+
+### Changed
+
+- **Hole detection:** prefers B-Rep AAG recognition when a STEP buffer is available; on failure, automatically falls back to the existing mesh curvature pipeline (`hole-detection.js`).
+
+---
+
 ## [1.18.0] - 2026-07-17
 
 ### Added
