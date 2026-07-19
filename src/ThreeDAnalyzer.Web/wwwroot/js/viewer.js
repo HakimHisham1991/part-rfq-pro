@@ -1,4 +1,4 @@
-import * as THREE from '/lib/three.module.min.js';
+import * as THREE from '/lib/three.module.min.js?v=1.20.8';
 import { getPart, getPartCycleData, savePartCycleData } from './data-store.js';
 import { getPartModelFile } from './part-model-store.js';
 import {
@@ -10,6 +10,10 @@ import {
   isBrepHoleMethod,
   BREP_HOLE_METHOD
 } from './hole-detection.js';
+
+/** Bump when /lib assets change so production browsers skip stale immutable caches. */
+const LIB_ASSET_V = '1.20.8';
+const libUrl = (path) => `/lib/${path}?v=${LIB_ASSET_V}`;
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('three-canvas');
@@ -75,6 +79,22 @@ const btnClearPockets = document.getElementById('btn-clear-pockets');
 const btnCsvDetectedPockets = document.getElementById('btn-csv-detected-pockets');
 const pocketDetectionSection = document.getElementById('pocket-detection-section');
 
+// File picker: Open button uses HTML onclick so it works even if this module
+// fails later. Only the change→load path is wired here.
+let loadStepFileHandler = null;
+fileInput?.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const buffer = await file.arrayBuffer();
+  const fileName = file.name;
+  fileInput.value = '';
+  if (typeof loadStepFileHandler === 'function') {
+    await loadStepFileHandler(buffer, fileName);
+  } else if (statusBar) {
+    statusBar.textContent = 'Viewer still loading — try again in a moment';
+  }
+});
+
 // ── SECTION A — Scene Setup ─────────────────────────────────────────────────
 // Mobile (e.g. Galaxy A51): uncapped devicePixelRatio (often 2.5–3) + antialias
 // exhausts Mali GPU memory and yields a blank canvas. Cap DPR; detect low-end.
@@ -89,13 +109,32 @@ let lowEndGpu = (() => {
 const getDPR = () => Math.min(window.devicePixelRatio || 1, lowEndGpu ? 1 : 2);
 
 let webglContextLost = false;
-let renderer = new THREE.WebGLRenderer({
-  canvas,
-  antialias: !lowEndGpu,
-  powerPreference: lowEndGpu ? 'low-power' : 'default',
-  failIfMajorPerformanceCaveat: false
-});
-renderer.setPixelRatio(getDPR());
+let renderer;
+try {
+  if (!canvas) throw new Error('Missing #three-canvas');
+  renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: !lowEndGpu,
+    powerPreference: lowEndGpu ? 'low-power' : 'default',
+    failIfMajorPerformanceCaveat: false
+  });
+  renderer.setPixelRatio(getDPR());
+} catch (err) {
+  console.error('WebGL init failed', err);
+  if (statusBar) {
+    statusBar.textContent =
+      'WebGL failed to start — Open STEP may still work after fixing GPU/drivers, but 3D view is unavailable.';
+  }
+  // Minimal stub so later code can guard on renderer
+  renderer = {
+    setPixelRatio() {},
+    setSize() {},
+    render() {},
+    dispose() {},
+    getContext() { return null; },
+    domElement: canvas
+  };
+}
 
 // Refine low-end after GL is available (UNMASKED_RENDERER is the reliable signal)
 try {
@@ -1658,13 +1697,13 @@ async function loadOcctLibrary() {
   if (occtInstancePromise) return occtInstancePromise;
 
   const moduleOptions = {
-    locateFile: (path) => `/lib/${path}`
+    locateFile: (path) => libUrl(path)
   };
 
   // Lazy OCCT/WASM load — only when a STEP is opened (saves mobile memory at idle)
   occtInstancePromise = (async () => {
     try {
-      const occtModule = await import('/lib/occt-import-js.js');
+      const occtModule = await import(libUrl('occt-import-js.js'));
       const initFn = typeof occtModule.default === 'function'
         ? occtModule.default
         : (typeof globalThis.occtimportjs === 'function' ? globalThis.occtimportjs : null);
@@ -1675,7 +1714,7 @@ async function loadOcctLibrary() {
 
       await new Promise((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = '/lib/occt-import-js.js';
+        script.src = libUrl('occt-import-js.js');
         script.onload = () => resolve();
         script.onerror = () => reject(new Error('Failed to load occt-import-js.js'));
         document.head.appendChild(script);
@@ -1697,17 +1736,7 @@ async function loadOcctLibrary() {
 }
 
 // ── SECTION E — File Loading ────────────────────────────────────────────────
-btnOpen.addEventListener('click', () => fileInput.click());
 btnClose?.addEventListener('click', closeAnalyzer);
-
-fileInput.addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const buffer = await file.arrayBuffer();
-  const fileName = file.name;
-  fileInput.value = '';
-  await loadStepFile(buffer, fileName);
-});
 
 async function loadStepFile(arrayBuffer, fileName) {
   if (holeDetectionRunning) {
@@ -1831,6 +1860,8 @@ async function loadStepFile(arrayBuffer, fileName) {
     console.error(err);
   }
 }
+
+loadStepFileHandler = loadStepFile;
 
 function disposeObject(obj) {
   obj.traverse?.((child) => {
@@ -2223,7 +2254,7 @@ function getHoleWorker() {
 
 function getBrepHoleWorker() {
   if (!brepHoleWorker) {
-    brepHoleWorker = new Worker('/js/brep-feature-worker.js?v=1.20.6', { type: 'module' });
+    brepHoleWorker = new Worker('/js/brep-feature-worker.js?v=1.20.8', { type: 'module' });
     brepHoleWorker.onmessage = handleHoleWorkerMessage;
     brepHoleWorker.onerror = (err) => {
       console.error('B-Rep hole worker error:', err);

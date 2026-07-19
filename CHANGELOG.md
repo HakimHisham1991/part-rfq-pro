@@ -4,6 +4,14 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.20.8] - 2026-07-20
+
+### Fixed
+
+- **Open STEP / STP dead after MonsterASP FTP deploy:** file picker is wired in HTML + early in `viewer.js` (before WebGL init). `/lib` assets no longer use year-long `immutable` cache (was locking corrupt/partial `three.js` after FTP). Lib imports are cache-busted with `?v=1.20.8`. `publish.bat` now builds `publish_clean.zip` with files at zip root (not nested) and verifies `viewer.js` / `three.module.min.js`.
+
+---
+
 ## [1.20.7] - 2026-07-20
 
 ### Changed

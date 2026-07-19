@@ -75,7 +75,9 @@ app.UseStaticFiles(new StaticFileOptions
         var path = ctx.Context.Request.Path.Value ?? string.Empty;
         if (path.StartsWith("/lib/", StringComparison.OrdinalIgnoreCase))
         {
-            ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+            // Short cache — immutable year-long headers broke Open STEP after FTP
+            // when a partial/corrupt three.js was cached by browsers.
+            ctx.Context.Response.Headers.CacheControl = "public, max-age=3600, must-revalidate";
         }
     }
 });

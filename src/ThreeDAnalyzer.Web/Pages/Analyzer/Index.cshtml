@@ -11,9 +11,9 @@
             <span id="analyzer-part-number">Unknown</span>
         </h1>
         <div id="toolbar-row">
-            <button id="btn-open" type="button">Open STEP / STP</button>
+            <button id="btn-open" type="button" onclick="document.getElementById('file-input')?.click()">Open STEP / STP</button>
             <button id="btn-close" type="button">Close</button>
-            <input id="file-input" type="file" accept=".step,.stp" style="display:none" />
+            <input id="file-input" type="file" accept=".step,.stp,.STEP,.STP" style="display:none" />
             <span class="sep"></span>
             <button class="tool-btn" type="button" data-tool="distance">Distance</button>
             <button class="tool-btn" type="button" data-tool="angle">Angle</button>
@@ -176,4 +176,15 @@
 
 @section Scripts {
     <script type="module" src="~/js/viewer.js" asp-append-version="true"></script>
+    <script>
+      // Surface module load failures (missing/corrupt wwwroot after FTP) in the status bar.
+      window.addEventListener('error', function (ev) {
+        var status = document.getElementById('status-bar');
+        if (!status || !ev) return;
+        var msg = (ev.message || '') + ' ' + (ev.filename || '');
+        if (/viewer\.js|three\.module|occt-import|Failed to fetch|Loading module/i.test(msg)) {
+          status.textContent = 'Viewer script failed to load — check wwwroot/js and wwwroot/lib on the server (hard-refresh Ctrl+F5).';
+        }
+      }, true);
+    </script>
 }
