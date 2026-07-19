@@ -70,10 +70,32 @@ function hasFilletNeighbor(idx, aag) {
 }
 
 /**
+ * Circular / counterbore-style floor: planar face with a torus blend and a
+ * cylindrical wall (often only 1–2 neighbors).
+ */
+function isCircularPocketFloor(idx, aag) {
+  const { nodes, adjacency } = aag;
+  const neighbors = adjacency[idx];
+  if (neighbors.length < 1 || neighbors.length > 4) return false;
+  const c = edgeCounts(idx, aag);
+  if (c.concave > 0) return false;
+  if (c.smooth < 1 || c.smooth > 2) return false;
+  if (c.convex > 2) return false;
+  let hasTorus = false;
+  let hasCyl = false;
+  for (const e of neighbors) {
+    const t = nodes[e.to]?.surfaceType;
+    if (t === 'torus') hasTorus = true;
+    if (t === 'cylinder' || t === 'cone') hasCyl = true;
+  }
+  return hasTorus && hasCyl;
+}
+
+/**
  * Floor candidate:
  * - Closed filleted: no convex, smooth/concave into blends
+ * - Circular: torus + cylinder neighbors
  * - Broken (patched): many transition tori + convex through-cut openings
- *   (must not match a pocket *wall*, which has 1 convex rim + few fillets)
  */
 function isFloorCandidate(idx, aag) {
   const { nodes, adjacency } = aag;
@@ -95,6 +117,9 @@ function isFloorCandidate(idx, aag) {
     if (c.concave > 0) return true;
     return fillet && interior > 0;
   }
+
+  // Circular pocket / counterbore floor
+  if (isCircularPocketFloor(idx, aag)) return true;
 
   // Broken floor — exclude ordinary walls (1 convex rim + 2–3 corner blends)
   if (!fillet) return false;
@@ -119,7 +144,6 @@ function isFloorCandidate(idx, aag) {
       }
     }
   }
-  // Real broken floors have floor-fillet tori and at least one through opening
   if (torusN < 2 || openingN < 1) return false;
   return true;
 }
@@ -199,7 +223,13 @@ export function collectPocketFaces(floorIdx, aag, excludedFaces = null) {
     const cur = queue.shift();
     for (const { to, classification } of adjacency[cur]) {
       if (pocketFaces.has(to)) continue;
-      if (excludedFaces?.has(to)) continue;
+      if (excludedFaces?.has(to)) {
+        // Recognized hole wall crossing the pocket — an opening to patch,
+        // not a silent skip (otherwise rim/patch counts drop to 0 and the
+        // pocket is rejected).
+        patchOpenings.push({ from: cur, to });
+        continue;
+      }
 
       if (classification === 'convex') {
         if (isPatchOpeningNeighbor(cur, to, aag)) {
@@ -277,19 +307,20 @@ function planeBasis(normal) {
 }
 
 /**
- * Depth to ceiling / stock rim. Ignore near-floor through-cut bores (patch openings).
+ * Depth to ceiling / stock rim. Prefer planar faces parallel to the floor
+ * (true ceiling). Ignore near-floor through-cut bores (patch openings).
  */
 function estimatePocketDepth(floorFace, faces, nodes, rimEdges, patchOpenings = []) {
   if (!floorFace?.location || !floorFace?.axis) return 0;
   const n = v3normalize(floorFace.axis);
   const patchSet = new Set(patchOpenings.map((p) => p.to));
+  let ceilingDepth = 0;
   let maxDepth = 0;
 
   for (const { to } of rimEdges) {
     if (patchSet.has(to)) continue;
     const rim = nodes[to];
     if (!rim?.location) continue;
-    // Hole bores at floor level are openings, not the ceiling
     if (
       (rim.surfaceType === 'cylinder' || rim.surfaceType === 'cone') &&
       Math.abs(v3dot(v3sub(rim.location, floorFace.location), n)) < 1.5
@@ -298,7 +329,16 @@ function estimatePocketDepth(floorFace, faces, nodes, rimEdges, patchOpenings = 
     }
     const d = Math.abs(v3dot(v3sub(rim.location, floorFace.location), n));
     if (d > maxDepth) maxDepth = d;
+    if (
+      rim.surfaceType === 'plane' &&
+      rim.axis &&
+      Math.abs(v3dot(v3normalize(rim.axis), n)) > 0.85
+    ) {
+      if (d > ceilingDepth) ceilingDepth = d;
+    }
   }
+
+  if (ceilingDepth > 0.2) return ceilingDepth;
 
   if (maxDepth < 0.2) {
     for (const i of faces) {
@@ -311,6 +351,97 @@ function estimatePocketDepth(floorFace, faces, nodes, rimEdges, patchOpenings = 
   }
 
   return maxDepth;
+}
+
+/**
+ * NX-style plugged body: outer wire of the floor (inner holes patched) extruded
+ * to the ceiling along the floor normal. Returns volume + tessellation for viz.
+ */
+function computePluggedBody(occt, floorNode, depth, axis) {
+  if (!occt || !floorNode?.faceHandle || !(depth > 0)) return null;
+  const n = v3normalize(axis || floorNode.axis || { x: 0, y: 0, z: 1 });
+  const dx = n.x * depth;
+  const dy = n.y * depth;
+  const dz = n.z * depth;
+
+  try {
+    // Prefer outerWire (patches inner holes). Fall back to first face wire or
+    // the floor face itself if outerWire throws.
+    let profile = floorNode.faceHandle;
+    try {
+      const wire = occt.outerWire(floorNode.faceHandle);
+      try {
+        profile = occt.makeFace(wire);
+      } catch {
+        /* keep face */
+      }
+    } catch {
+      try {
+        const wires = occt.getSubShapes(floorNode.faceHandle, 'wire');
+        if (wires.length) {
+          try {
+            profile = occt.makeFace(wires[0]);
+          } catch {
+            /* keep face */
+          }
+        }
+      } catch {
+        /* keep face */
+      }
+    }
+    const prism = occt.extrude(profile, dx, dy, dz);
+    const volume = Math.abs(occt.getVolume(prism));
+    if (!(volume > 0)) return null;
+
+    const mesh = occt.tessellate(prism, { linearDeflection: 0.4 });
+    const bbox = occt.getBoundingBox(prism, true);
+    const { xAxis, yAxis } = planeBasis(n);
+    const corners = [
+      { x: bbox.xmin, y: bbox.ymin, z: bbox.zmin },
+      { x: bbox.xmax, y: bbox.ymin, z: bbox.zmin },
+      { x: bbox.xmin, y: bbox.ymax, z: bbox.zmin },
+      { x: bbox.xmax, y: bbox.ymax, z: bbox.zmin },
+      { x: bbox.xmin, y: bbox.ymin, z: bbox.zmax },
+      { x: bbox.xmax, y: bbox.ymin, z: bbox.zmax },
+      { x: bbox.xmin, y: bbox.ymax, z: bbox.zmax },
+      { x: bbox.xmax, y: bbox.ymax, z: bbox.zmax }
+    ];
+    const origin = floorNode.location || corners[0];
+    let minU = Infinity;
+    let maxU = -Infinity;
+    let minV = Infinity;
+    let maxV = -Infinity;
+    for (const c of corners) {
+      const d = v3sub(c, origin);
+      const u = v3dot(d, xAxis);
+      const v = v3dot(d, yAxis);
+      minU = Math.min(minU, u);
+      maxU = Math.max(maxU, u);
+      minV = Math.min(minV, v);
+      maxV = Math.max(maxV, v);
+    }
+
+    const positions =
+      mesh.positions instanceof Float32Array
+        ? Array.from(mesh.positions)
+        : [...(mesh.positions || [])];
+    const indices =
+      mesh.indices instanceof Uint32Array || mesh.indices instanceof Uint16Array
+        ? Array.from(mesh.indices)
+        : [...(mesh.indices || [])];
+
+    return {
+      volume,
+      width: Math.max(0, maxU - minU),
+      length: Math.max(0, maxV - minV),
+      mesh: { positions, indices },
+      xAxis: v3toArray(xAxis),
+      yAxis: v3toArray(yAxis)
+    };
+  } catch (err) {
+    console.warn('Plugged-body extrude failed', err);
+    return null;
+  }
 }
 
 function footprintFromFloorUv(floorFace) {
@@ -413,7 +544,8 @@ function buildPocketRecord({
   patchOpenings,
   nodes,
   aag,
-  isThrough
+  isThrough,
+  occt
 }) {
   const floorFace = floorIdx != null ? nodes[floorIdx] : null;
   const floorIdSet = new Set(
@@ -429,12 +561,39 @@ function buildPocketRecord({
     (f) => f.surfaceType === 'torus' || f.surfaceType === 'cylinder' || f.surfaceType === 'cone'
   );
 
-  const shape = classifyPocketShape(cylindricalWalls, planarWalls);
+  const circularFloor = floorIdx != null && isCircularPocketFloor(floorIdx, aag);
+  let shape = classifyPocketShape(cylindricalWalls, planarWalls);
+  if (circularFloor && planarWalls.length === 0) {
+    shape = 'circular';
+  } else if (shape === 'circular' && !circularFloor) {
+    // No planar walls but not a genuine round floor (e.g. broken floors whose
+    // walk only reaches blends/bores) — never square-up its dimensions.
+    shape = 'irregular';
+  }
+
   const stages =
     floorFace && aag ? collectFloorStages(faces, nodes, floorIdx, aag) : [];
-  const depth = floorFace
+  let depth = floorFace
     ? estimatePocketDepth(floorFace, faces, nodes, rimEdges, patchOpenings)
     : 0;
+
+  // Circular pockets: wall cylinder V-span is a reliable depth when rim walk is thin
+  if (depth < 0.5 && floorIdx != null && isCircularPocketFloor(floorIdx, aag)) {
+    for (const e of aag.adjacency[floorIdx]) {
+      const w = nodes[e.to];
+      if (w?.surfaceType === 'cylinder' && (w.depth ?? 0) > depth) {
+        depth = w.depth;
+      }
+      if (w?.location && floorFace?.location && floorFace?.axis) {
+        const d = Math.abs(
+          v3dot(v3sub(w.location, floorFace.location), v3normalize(floorFace.axis))
+        );
+        // Cylinder mid-height ≈ depth/2
+        if (w.surfaceType === 'cylinder' && d * 2 > depth) depth = d * 2;
+      }
+    }
+  }
+
   const footprint = estimateFootprintSize(
     wallFaces,
     cylindricalWalls.concat(blendWalls.filter((b) => b.surfaceType === 'cylinder')),
@@ -443,7 +602,6 @@ function buildPocketRecord({
     floorFaces
   );
 
-  // Prefer floor centroid of all patched floor fragments
   let center = floorFace ? { ...floorFace.location } : null;
   if (floorFaces.length > 1) {
     let cx = 0;
@@ -460,20 +618,32 @@ function buildPocketRecord({
     if (n) center = { x: cx / n, y: cy / n, z: cz / n };
   }
 
-  const width = footprint.width;
-  const length = footprint.length;
-  const cornerRadius = footprint.cornerRadius || 0;
-  const maxBoundedVolume = computeMaxBoundedVolume(
-    shape,
-    width,
-    length,
-    depth,
-    cornerRadius
-  );
-  const isPatched = (patchOpenings?.length || 0) > 0 || floorFaces.length > 1;
-
   const axis = floorFace ? v3normalize(floorFace.axis) : { x: 0, y: 0, z: 1 };
   const { xAxis, yAxis } = planeBasis(axis);
+  const cornerRadius = footprint.cornerRadius || 0;
+
+  // NX-style plugged body (outer-wire extrude patches broken floors / annuli)
+  const plug = floorFace
+    ? computePluggedBody(occt, floorFace, depth, axis)
+    : null;
+
+  let width = plug?.width || footprint.width;
+  let length = plug?.length || footprint.length;
+  let maxBoundedVolume =
+    plug?.volume ||
+    computeMaxBoundedVolume(shape, width, length, depth, cornerRadius);
+
+  // Circular: diameter from max planar extent of the plug
+  if (shape === 'circular' && circularFloor) {
+    const dia = Math.max(width, length);
+    width = dia;
+    length = dia;
+  }
+
+  const isPatched =
+    (patchOpenings?.length || 0) > 0 ||
+    floorFaces.length > 1 ||
+    !!plug;
 
   return {
     id: `brep-pocket-${Math.random().toString(36).slice(2, 9)}`,
@@ -485,9 +655,10 @@ function buildPocketRecord({
     depth,
     width,
     length,
-    maxBoundedSize: shape === 'circular'
-      ? { diameter: Math.max(width, length) }
-      : { width, length },
+    maxBoundedSize:
+      shape === 'circular'
+        ? { diameter: Math.max(width, length) }
+        : { width, length },
     maxDepth: depth,
     maxBoundedVolume,
     wallFaceIndices: faces.slice(),
@@ -500,7 +671,7 @@ function buildPocketRecord({
     isPatched,
     isStepped: stages.length > 1,
     stages,
-    // Geometry for viewer: floor + walls + ceiling of max bounded volume
+    plugMesh: plug?.mesh || null,
     outline: {
       width,
       length,
@@ -508,8 +679,8 @@ function buildPocketRecord({
       cornerRadius,
       center: center ? v3toArray(center) : null,
       axis: v3toArray(axis),
-      xAxis: v3toArray(xAxis),
-      yAxis: v3toArray(yAxis)
+      xAxis: plug?.xAxis || v3toArray(xAxis),
+      yAxis: plug?.yAxis || v3toArray(yAxis)
     },
     quality: 1,
     method: 'brep-aag',
@@ -533,6 +704,7 @@ export function recognizePockets(aag, options = {}) {
     ? new Set(options.holeFaceIndices)
     : new Set();
   const includeThrough = options.includeThroughPockets === true;
+  const occt = options.occt ?? null;
   const onProgress = options.onProgress ?? null;
   const report = (message, percent) => {
     if (typeof onProgress === 'function') onProgress({ message, percent });
@@ -555,16 +727,18 @@ export function recognizePockets(aag, options = {}) {
     if (rimEdges.length === 0 && patchOpenings.length === 0) continue;
     if (faces.length > MAX_POCKET_FACES) continue;
 
-    const floorFace = nodes[floorIdx];
     const floorIdSet = new Set(faces.filter((i) => isFloorCandidate(i, aag)));
     floorIdSet.add(floorIdx);
     const wallFaces = faces.map((i) => nodes[i]).filter((f) => !floorIdSet.has(f.faceId));
     const cylindricalWalls = wallFaces.filter((f) => f.surfaceType === 'cylinder');
     const planarWalls = wallFaces.filter((f) => f.surfaceType === 'plane');
 
-    if (isHoleBottomFalsePositive(cylindricalWalls, planarWalls, holeFaceSet)) continue;
-    // Allow blend-only walls (filleted pockets with no distinct planar wall yet)
-    if (wallFaces.length === 0) continue;
+    // Circular floors may only touch torus + cylinder (no extra planar walls)
+    const circular = isCircularPocketFloor(floorIdx, aag);
+    if (isHoleBottomFalsePositive(cylindricalWalls, planarWalls, holeFaceSet) && !circular) {
+      continue;
+    }
+    if (wallFaces.length === 0 && !circular) continue;
 
     const record = buildPocketRecord({
       floorIdx,
@@ -573,7 +747,8 @@ export function recognizePockets(aag, options = {}) {
       patchOpenings,
       nodes,
       aag,
-      isThrough: false
+      isThrough: false,
+      occt
     });
 
     if (isImplausibleFootprint(record.width, record.length, record.depth)) continue;

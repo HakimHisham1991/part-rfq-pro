@@ -355,9 +355,9 @@ C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\D
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\kznq4gujdx-{0}-6w5cdfylxp-6w5cdfylxp.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\va8ul2wrqx-{0}-fibfj7gofd-fibfj7gofd.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\twwkg08ynd-{0}-45dx3wga4n-45dx3wga4n.gz
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\zrv6rone44-{0}-rl59d7jw4k-rl59d7jw4k.gz
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\38t6l40q7b-{0}-3gv62riza4-3gv62riza4.gz
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\6uqb2bvl7x-{0}-8278eydd50-8278eydd50.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\vytffkvvps-{0}-jd8y3t640e-jd8y3t640e.gz
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\z3mpfkwqik-{0}-w622z341ee-w622z341ee.gz
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\pgzpla8mo5-{0}-9udh33jyya-9udh33jyya.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\38t6l40q7b-{0}-p3v7euco1o-p3v7euco1o.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\zrv6rone44-{0}-l81ouwjis4-l81ouwjis4.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\z3mpfkwqik-{0}-2ymtg4afzb-2ymtg4afzb.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\6uqb2bvl7x-{0}-vmortz1r54-vmortz1r54.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\pgzpla8mo5-{0}-0wenum4a1f-0wenum4a1f.gz

@@ -4,6 +4,41 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.20.7] - 2026-07-20
+
+### Changed
+
+- **Detected Pockets table:** removed the Shape column (table and CSV). Columns are now Name | Max Bounded Size | Max Depth | Max Bounded Volume.
+
+---
+
+## [1.20.6] - 2026-07-20
+
+### Fixed
+
+- **Pocket plug solids empty in browser:** `analyzeStepFileFeatures` returned `recognizeFeaturesFromAag(...)` without `await`, so `finally { occt.releaseSince(mark) }` freed all B-Rep face handles while pocket recognition was still running. `outerWire`/`extrude` then threw, leaving no `plugMesh` and falling back to inflated face-center footprint sizes (e.g. 71×83 mm / 59k mm³ instead of ~54×72 / 20k). Hard-reload after updating; worker cache-bust is now `?v=1.20.6`.
+
+---
+
+## [1.20.5] - 2026-07-18
+
+### Fixed
+
+- **Stale worker code in browser:** `brep-feature-worker.js` and its module imports (`brep-feature-recognition.js`, `brep-pocket-recognition.js`) are now cache-busted with `?v=` — pocket fixes since v1.20.0 never reached users with a cached worker, which is why plugs rendered as offset boxes/slabs.
+- **Circular misclassification:** broken floors whose wall walk reaches only blends/bores were labeled *Circular* and squared-up to `max × max` (e.g. 140.75 × 140.75). Circular now requires a genuine round floor (torus + cylinder); others stay *Irregular* with true in-plane extents.
+- **Corner pockets dropped by hole exclusion:** when the wall walk hit a recognized hole wall it was silently skipped, leaving zero rim/patch edges and rejecting the pocket. Hole walls crossing a pocket are now recorded as patch openings — the four Ø17.93 filleted corner pockets on `CNC-milling-7.stp` are detected again (8 pockets total, plugged-body volumes within ~3% of NX for the two rectangular pockets).
+
+---
+
+## [1.20.4] - 2026-07-18
+
+### Changed
+
+- **Plugged-body volume (NX-style):** Max Bounded Volume is the OCCT solid from the floor **outer wire** extruded to depth (inner holes patched). Magenta plug mesh follows the real floor contour + radii, not an AABB/rounded-rect fake.
+- Circular pocket floors (torus + cylinder) are included; hole-wall faces are still excluded from seeding.
+
+---
+
 ## [1.20.3] - 2026-07-18
 
 ### Added

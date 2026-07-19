@@ -2223,7 +2223,7 @@ function getHoleWorker() {
 
 function getBrepHoleWorker() {
   if (!brepHoleWorker) {
-    brepHoleWorker = new Worker('/js/brep-feature-worker.js', { type: 'module' });
+    brepHoleWorker = new Worker('/js/brep-feature-worker.js?v=1.20.6', { type: 'module' });
     brepHoleWorker.onmessage = handleHoleWorkerMessage;
     brepHoleWorker.onerror = (err) => {
       console.error('B-Rep hole worker error:', err);
@@ -3002,10 +3002,51 @@ function orientPocketVolumeGroup(group, center, normal, xAxisArr) {
 }
 
 /**
- * Max-bounded volume: floor + corner radii + walls + ceiling (not an AABB).
+ * NX-style plugged body visual: prefer OCCT outer-wire extrude mesh;
+ * fall back to rounded-rect extrusion.
  */
 function createPocketVisual(pocket) {
   const group = new THREE.Group();
+  const plug = pocket.plugMesh;
+  if (plug?.positions?.length && plug?.indices?.length) {
+    const geo = new THREE.BufferGeometry();
+    const pos = plug.positions instanceof Float32Array
+      ? plug.positions
+      : new Float32Array(plug.positions);
+    const idx =
+      plug.indices instanceof Uint32Array
+        ? plug.indices
+        : new Uint32Array(plug.indices);
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    geo.computeVertexNormals();
+
+    const volMat = new THREE.MeshBasicMaterial({
+      color: 0xe040a0,
+      transparent: true,
+      opacity: 0.45,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const volumeMesh = new THREE.Mesh(geo, volMat);
+    volumeMesh.raycast = () => {};
+    group.add(volumeMesh);
+
+    const edges = new THREE.EdgesGeometry(geo);
+    const edgeMat = new THREE.LineBasicMaterial({
+      color: 0xb01070,
+      transparent: true,
+      opacity: 0.85
+    });
+    const wire = new THREE.LineSegments(edges, edgeMat);
+    wire.raycast = () => {};
+    group.add(wire);
+
+    group.userData.pocketId = pocket.id;
+    group.userData.pocketMats = { volMat, edgeMat, floorMat: volMat, ceilingMat: volMat };
+    return group;
+  }
+
   const outline = pocket.outline || {};
   const centerArr = outline.center || pocket.center || pocket.floorLocation;
   if (!centerArr) return group;
@@ -3025,7 +3066,10 @@ function createPocketVisual(pocket) {
   }
   width = Math.min(Math.max(width, 2), MAX_VIS);
   length = Math.min(Math.max(length, 2), MAX_VIS);
-  const depth = Math.min(Math.max(outline.depth || pocket.maxDepth || pocket.depth || 1, 0.5), MAX_VIS);
+  const depth = Math.min(
+    Math.max(outline.depth || pocket.maxDepth || pocket.depth || 1, 0.5),
+    MAX_VIS
+  );
   const cornerRadius = Math.min(
     outline.cornerRadius || pocket.cornerRadius || 0,
     width / 2,
@@ -3038,17 +3082,15 @@ function createPocketVisual(pocket) {
       : createRoundedRectShape(width, length, cornerRadius);
 
   const volGroup = new THREE.Group();
-
-  // Solid volume (floor → ceiling) with rounded corners
   const extrudeGeo = new THREE.ExtrudeGeometry(shape, {
     depth,
     bevelEnabled: false,
     curveSegments: 12
   });
   const volMat = new THREE.MeshBasicMaterial({
-    color: POCKET_COLOR_NORMAL,
+    color: 0xe040a0,
     transparent: true,
-    opacity: 0.22,
+    opacity: 0.4,
     side: THREE.DoubleSide,
     depthWrite: false
   });
@@ -3056,36 +3098,9 @@ function createPocketVisual(pocket) {
   volumeMesh.raycast = () => {};
   volGroup.add(volumeMesh);
 
-  // Floor (z = 0)
-  const floorGeo = new THREE.ShapeGeometry(shape, 12);
-  const floorMat = new THREE.MeshBasicMaterial({
-    color: POCKET_COLOR_FLOOR,
-    transparent: true,
-    opacity: 0.45,
-    side: THREE.DoubleSide,
-    depthWrite: false
-  });
-  const floorMesh = new THREE.Mesh(floorGeo, floorMat);
-  floorMesh.raycast = () => {};
-  volGroup.add(floorMesh);
-
-  // Ceiling (z = depth)
-  const ceilingMat = new THREE.MeshBasicMaterial({
-    color: POCKET_COLOR_CEILING,
-    transparent: true,
-    opacity: 0.28,
-    side: THREE.DoubleSide,
-    depthWrite: false
-  });
-  const ceilingMesh = new THREE.Mesh(floorGeo.clone(), ceilingMat);
-  ceilingMesh.position.z = depth;
-  ceilingMesh.raycast = () => {};
-  volGroup.add(ceilingMesh);
-
-  // Wall outline
   const edges = new THREE.EdgesGeometry(extrudeGeo);
   const edgeMat = new THREE.LineBasicMaterial({
-    color: POCKET_COLOR_NORMAL_EDGE,
+    color: 0xb01070,
     transparent: true,
     opacity: 0.9
   });
@@ -3097,7 +3112,7 @@ function createPocketVisual(pocket) {
   group.add(volGroup);
 
   group.userData.pocketId = pocket.id;
-  group.userData.pocketMats = { volMat, floorMat, ceilingMat, edgeMat };
+  group.userData.pocketMats = { volMat, edgeMat, floorMat: volMat, ceilingMat: volMat };
   return group;
 }
 
@@ -3116,18 +3131,19 @@ function renderPocketVisuals() {
 function updatePocketVisualHighlights() {
   if (!pocketVisualGroup) return;
   const hasHighlight = highlightedPocketIds.size > 0;
+  const PLUG = 0xe040a0;
+  const PLUG_EDGE = 0xb01070;
 
   pocketVisualGroup.children.forEach((group) => {
     const highlighted = hasHighlight && highlightedPocketIds.has(group.userData.pocketId);
     const mats = group.userData.pocketMats;
-    if (!mats) return;
-    mats.volMat.color.setHex(highlighted ? POCKET_COLOR_HIGHLIGHT : POCKET_COLOR_NORMAL);
-    mats.volMat.opacity = highlighted ? 0.38 : 0.22;
-    mats.floorMat.color.setHex(highlighted ? POCKET_COLOR_HIGHLIGHT : POCKET_COLOR_FLOOR);
-    mats.floorMat.opacity = highlighted ? 0.65 : 0.45;
-    mats.ceilingMat.color.setHex(highlighted ? POCKET_COLOR_HIGHLIGHT_EDGE : POCKET_COLOR_CEILING);
-    mats.edgeMat.color.setHex(highlighted ? POCKET_COLOR_HIGHLIGHT_EDGE : POCKET_COLOR_NORMAL_EDGE);
-    mats.edgeMat.opacity = highlighted ? 1 : 0.9;
+    if (!mats?.volMat) return;
+    mats.volMat.color.setHex(highlighted ? POCKET_COLOR_HIGHLIGHT : PLUG);
+    mats.volMat.opacity = highlighted ? 0.65 : 0.45;
+    if (mats.edgeMat) {
+      mats.edgeMat.color.setHex(highlighted ? POCKET_COLOR_HIGHLIGHT_EDGE : PLUG_EDGE);
+      mats.edgeMat.opacity = highlighted ? 1 : 0.85;
+    }
   });
 }
 
@@ -3169,7 +3185,6 @@ function renderPocketsList() {
   thead.innerHTML =
     '<tr>' +
     '<th class="col-name">Name</th>' +
-    '<th class="col-shape">Shape</th>' +
     '<th class="col-size">Max Bounded Size</th>' +
     '<th class="col-depth">Max Depth</th>' +
     '<th class="col-volume">Max Bounded Volume</th>' +
@@ -3189,10 +3204,6 @@ function renderPocketsList() {
     else if (pocket.isThrough) name += ' (thru)';
     nameCell.textContent = name;
 
-    const shapeCell = document.createElement('td');
-    shapeCell.className = 'col-shape';
-    shapeCell.textContent = pocketShapeLabel(pocket.shape);
-
     const sizeCell = document.createElement('td');
     sizeCell.className = 'col-size';
     sizeCell.textContent = formatPocketBoundedSize(pocket);
@@ -3209,7 +3220,6 @@ function renderPocketsList() {
     volumeCell.textContent = vol > 0 ? `${formatNum(vol, 1)} mm³` : '—';
 
     row.appendChild(nameCell);
-    row.appendChild(shapeCell);
     row.appendChild(sizeCell);
     row.appendChild(depthCell);
     row.appendChild(volumeCell);
@@ -3278,7 +3288,6 @@ function exportDetectedPocketsCsv() {
 
   const rows = detectedPockets.map((pocket, index) => [
     `Pocket ${index + 1}${pocket.isPatched ? ' (patched)' : ''}`,
-    pocket.shape || '',
     formatPocketBoundedSize(pocket),
     formatNum(pocket.maxDepth ?? pocket.depth, 2),
     formatNum(pocket.maxBoundedVolume ?? 0, 1),
@@ -3290,7 +3299,6 @@ function exportDetectedPocketsCsv() {
     `${holeCsvFilePrefix()}_detected-pockets.csv`,
     [
       'Name',
-      'Shape',
       'MaxBoundedSize',
       'MaxDepth_mm',
       'MaxBoundedVolume_mm3',

@@ -2,7 +2,7 @@
  * Web Worker for B-Rep feature recognition (holes + pockets).
  * Offloads OCCT WASM STEP import + AAG construction from the main thread.
  */
-import { analyzeStepFileFeatures } from './brep-feature-recognition.js';
+import { analyzeStepFileFeatures } from './brep-feature-recognition.js?v=1.20.6';
 
 self.onmessage = async (event) => {
   const { type, arrayBuffer, options, requestId } = event.data;

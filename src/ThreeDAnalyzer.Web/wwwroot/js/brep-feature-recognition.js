@@ -683,17 +683,31 @@ export function recognizeHoles(aag, options = {}) {
  * Run selected recognizer(s) on one AAG.
  * @param {'holes'|'pockets'} features
  */
-async function recognizeFeaturesFromAag(aag, onProgress, features = 'holes') {
+async function recognizeFeaturesFromAag(aag, onProgress, features = 'holes', occt = null) {
   if (features === 'pockets') {
-    const { recognizePockets } = await import('./brep-pocket-recognition.js');
-    // Exclude hole-bore faces so blind-hole bottoms are not reported as pockets.
-    // Silent — do not emit hole progress or return hole results.
+    const { recognizePockets } = await import('./brep-pocket-recognition.js?v=1.20.6');
+    // Exclude cylindrical/conical hole *walls* only — planar hole bottoms may
+    // still be circular pockets (NX plugged-body style).
     const holesForExclude = recognizeHoles(aag, { onProgress: null });
     const holeFaceIndices = new Set();
     for (const h of holesForExclude) {
-      for (const idx of h.faceIndices ?? []) holeFaceIndices.add(idx);
+      for (const idx of h.faceIndices ?? []) {
+        const n = aag.nodes[idx];
+        if (!n || n.surfaceType === 'plane') continue;
+        // A cylinder blending smoothly into a torus fillet is a milled
+        // circular-pocket wall (filleted floor), not a drilled hole wall.
+        const hasFloorFillet =
+          n.surfaceType === 'cylinder' &&
+          aag.adjacency[idx].some(
+            (e) =>
+              e.classification === 'smooth' &&
+              aag.nodes[e.to]?.surfaceType === 'torus'
+          );
+        if (hasFloorFillet) continue;
+        holeFaceIndices.add(idx);
+      }
     }
-    const pockets = recognizePockets(aag, { onProgress, holeFaceIndices });
+    const pockets = recognizePockets(aag, { onProgress, holeFaceIndices, occt });
     return { holes: [], pockets };
   }
 
@@ -744,7 +758,12 @@ export async function analyzeStepFileFeatures(arrayBuffer, options = {}) {
             const scaled = 15 + Math.round((percent / 100) * 80);
             report(`[solid ${s + 1}] ${message}`, scaled);
           });
-          const { holes, pockets } = await recognizeFeaturesFromAag(aag, onProgress, features);
+          const { holes, pockets } = await recognizeFeaturesFromAag(
+            aag,
+            onProgress,
+            features,
+            occt
+          );
           allHoles.push(...holes);
           allPockets.push(...pockets);
         }
@@ -753,7 +772,10 @@ export async function analyzeStepFileFeatures(arrayBuffer, options = {}) {
     }
 
     const aag = await buildAAG(target, occt, onProgress);
-    return recognizeFeaturesFromAag(aag, onProgress, features);
+    // Must await: without it, finally{releaseSince} frees face handles while
+    // pocket plugging (outerWire/extrude) is still running → empty plugMesh
+    // and inflated footprint/volume fallbacks in the browser worker.
+    return await recognizeFeaturesFromAag(aag, onProgress, features, occt);
   } finally {
     try {
       occt.releaseSince(mark);
