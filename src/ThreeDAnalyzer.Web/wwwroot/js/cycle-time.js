@@ -25,7 +25,6 @@ import {
   getPartModelFile,
   savePartModelFile
 } from './part-model-store.js';
-import { analyzeStepFile } from './step-analyzer.js';
 import {
   OPERATION_TYPES,
   TABLE_DATA_COLUMNS,
@@ -40,8 +39,14 @@ import {
   QUOTE_HR_STEP,
   recalcOperations,
   roundUpTo
-} from './operation-formulas.js?v=1.15.2';
+} from './operation-formulas.js';
 import { bindModal, closeModal, openModal } from './settings-modal.js';
+import { onDomReady } from './dom-ready.js';
+
+async function analyzeStepFile(buffer, stockOffsets) {
+  const { analyzeStepFile: analyze } = await import('./step-analyzer.js');
+  return analyze(buffer, stockOffsets);
+}
 
 const ADD_MODAL_ID = 'cycle-add-modal';
 
@@ -1074,6 +1079,4 @@ async function init() {
   render();
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  init().catch(console.error);
-});
+onDomReady(() => init());

@@ -4,6 +4,24 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.20.10] - 2026-07-21
+
+### Fixed
+
+- **MonsterASP: "Failed to fetch …/step-analyzer.js" when adding STEP in Cycle Time:** live site had `lib/` nested under `wwwroot/wwwroot/lib` (FTP unzip one level too deep), so `/lib/three.module.min.js` 404'd and the module import failed. App now also serves `/lib` from that nested folder when the correct path is missing. Prefer fixing the server layout: move `wwwroot/wwwroot/lib` → `wwwroot/lib`.
+
+---
+
+## [1.20.9] - 2026-07-21
+
+### Fixed
+
+- **MonsterASP: Edit Cycle Time stuck on "Loading…":** ES modules often finish after `DOMContentLoaded` on slower hosts, so init never ran. All page modules now use `onDomReady` (runs immediately if the document is already ready). Cycle Time no longer eagerly imports THREE/`step-analyzer` (lazy-load only when a 3D model is analyzed).
+- **MonsterASP: Open STEP loads nothing:** removed `?v=` query strings from `/lib` and `.wasm` URLs (breaks OCCT/Emscripten on some IIS hosts). Worker JS cache-bust kept for `/js` only.
+- **MonsterASP FTP unzip "Unable to extract /Data/machines-master.json":** `publish.bat` now builds the zip with forward-slash entry names; checklist requires stopping the app pool before extract (running site locks `Data/*.json`).
+
+---
+
 ## [1.20.8] - 2026-07-20
 
 ### Fixed

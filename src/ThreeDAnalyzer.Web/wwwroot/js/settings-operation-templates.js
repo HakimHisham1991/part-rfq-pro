@@ -6,6 +6,7 @@ import {
 } from './data-store.js';
 import { FIELD_SCHEMAS, OPERATION_TYPES } from './operation-field-schemas.js';
 import { bindModal, closeModal, openModal, showModalError } from './settings-modal.js';
+import { onDomReady } from './dom-ready.js';
 
 const MODAL_ID = 'operation-template-modal';
 
@@ -182,7 +183,7 @@ async function renderTemplates() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+onDomReady(() => {
   bindModal(MODAL_ID, {
     onClose: () => showModalError(document.getElementById('operation-template-modal-error'), '')
   });

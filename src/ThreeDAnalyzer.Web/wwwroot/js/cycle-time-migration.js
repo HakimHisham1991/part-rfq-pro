@@ -1,5 +1,5 @@
 import { mergeParams } from './operation-field-schemas.js';
-import { calcOperationCt } from './operation-formulas.js?v=1.15.2';
+import { calcOperationCt } from './operation-formulas.js';
 
 function n(v) {
   const x = Number(v);

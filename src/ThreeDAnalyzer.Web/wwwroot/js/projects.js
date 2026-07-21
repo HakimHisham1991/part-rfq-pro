@@ -1,5 +1,6 @@
 import { createProject, getProjects, renameProject } from './data-store.js';
 import { bindModal, closeModal, openModal, showModalError } from './settings-modal.js';
+import { onDomReady } from './dom-ready.js';
 
 const ADD_PROJECT_MODAL_ID = 'project-add-modal';
 const RENAME_PROJECT_MODAL_ID = 'project-rename-modal';
@@ -96,7 +97,7 @@ async function renderTable() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+onDomReady(() => {
   bindModal(ADD_PROJECT_MODAL_ID, {
     onClose: () => showModalError(document.getElementById('project-add-modal-error'), '')
   });

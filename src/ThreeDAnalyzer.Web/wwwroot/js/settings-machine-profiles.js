@@ -5,6 +5,7 @@ import {
   updateMachineProfile
 } from './data-store.js';
 import { bindModal, closeModal, openModal, showModalError } from './settings-modal.js';
+import { onDomReady } from './dom-ready.js';
 
 const MODAL_ID = 'machine-profile-modal';
 const AXIS_TYPE_OPTIONS = ['2X', '3X', '4X', '5X'];
@@ -254,7 +255,7 @@ async function renderMachineProfiles() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+onDomReady(() => {
   renderMachineProfileTableHeader();
 
   bindModal(MODAL_ID, {

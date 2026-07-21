@@ -13,6 +13,7 @@ import {
   uploadPartPicture
 } from './data-store.js';
 import { bindModal, closeModal, openModal, showModalError } from './settings-modal.js';
+import { onDomReady } from './dom-ready.js';
 
 const ADD_PART_MODAL_ID = 'rfq-add-part-modal';
 const PICTURE_EXTENSIONS = new Set(['.jpeg', '.jpg', '.png', '.gif', '.bmp', '.wmf', '.tif', '.tiff']);
@@ -404,7 +405,7 @@ async function runPartsExport(exportFn, buttonId, errorMessage) {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+onDomReady(() => {
   bindModal(ADD_PART_MODAL_ID, {
     onClose: () => showModalError(document.getElementById('rfq-add-part-modal-error'), '')
   });

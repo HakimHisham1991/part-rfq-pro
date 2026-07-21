@@ -204,7 +204,7 @@ export async function analyzeStepFileFeatures(arrayBuffer, options = {}) {
   if (USE_BREP_FEATURE_RECOGNITION) {
     try {
       const { analyzeStepFileFeatures: analyzeBrep } = await import(
-        './brep-feature-recognition.js?v=1.20.8'
+        './brep-feature-recognition.js?v=1.20.9'
       );
       const { holes, pockets } = await analyzeBrep(arrayBuffer, {
         onProgress,

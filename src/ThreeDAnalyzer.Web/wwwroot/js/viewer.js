@@ -1,4 +1,4 @@
-import * as THREE from '/lib/three.module.min.js?v=1.20.8';
+import * as THREE from '/lib/three.module.min.js';
 import { getPart, getPartCycleData, savePartCycleData } from './data-store.js';
 import { getPartModelFile } from './part-model-store.js';
 import {
@@ -11,9 +11,8 @@ import {
   BREP_HOLE_METHOD
 } from './hole-detection.js';
 
-/** Bump when /lib assets change so production browsers skip stale immutable caches. */
-const LIB_ASSET_V = '1.20.8';
-const libUrl = (path) => `/lib/${path}?v=${LIB_ASSET_V}`;
+/** Cache-bust only our JS workers — never append ?v= to .wasm (breaks OCCT on some hosts). */
+const JS_ASSET_V = '1.20.9';
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('three-canvas');
@@ -1697,13 +1696,13 @@ async function loadOcctLibrary() {
   if (occtInstancePromise) return occtInstancePromise;
 
   const moduleOptions = {
-    locateFile: (path) => libUrl(path)
+    locateFile: (path) => `/lib/${path}`
   };
 
   // Lazy OCCT/WASM load — only when a STEP is opened (saves mobile memory at idle)
   occtInstancePromise = (async () => {
     try {
-      const occtModule = await import(libUrl('occt-import-js.js'));
+      const occtModule = await import('/lib/occt-import-js.js');
       const initFn = typeof occtModule.default === 'function'
         ? occtModule.default
         : (typeof globalThis.occtimportjs === 'function' ? globalThis.occtimportjs : null);
@@ -1714,7 +1713,7 @@ async function loadOcctLibrary() {
 
       await new Promise((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = libUrl('occt-import-js.js');
+        script.src = '/lib/occt-import-js.js';
         script.onload = () => resolve();
         script.onerror = () => reject(new Error('Failed to load occt-import-js.js'));
         document.head.appendChild(script);
@@ -2254,7 +2253,7 @@ function getHoleWorker() {
 
 function getBrepHoleWorker() {
   if (!brepHoleWorker) {
-    brepHoleWorker = new Worker('/js/brep-feature-worker.js?v=1.20.8', { type: 'module' });
+    brepHoleWorker = new Worker(`/js/brep-feature-worker.js?v=${JS_ASSET_V}`, { type: 'module' });
     brepHoleWorker.onmessage = handleHoleWorkerMessage;
     brepHoleWorker.onerror = (err) => {
       console.error('B-Rep hole worker error:', err);

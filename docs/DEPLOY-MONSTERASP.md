@@ -40,6 +40,18 @@ Push to `main` or `master` triggers `.github/workflows/deploy.yml`:
 
 No npm, OCCT, or native build steps in CI.
 
+## Manual FTP zip upload
+
+1. Run `publish.bat` → produces `C:\Users\Public\Documents\part-rfq-pro\publish_clean.zip`
+2. **Stop** the MonsterASP website / app pool (required — otherwise extract fails on locked `Data/*.json`)
+3. Upload the zip and extract into the **site root** (`web.config` next to `ThreeDAnalyzer.Web.dll`)
+4. If extract still errors on `Data/machines-master.json`: delete the server `Data` folder, extract again  
+   (`Data/*.json` are seed files; live RFQ data stays in `App_Data/part-rfq.db`)
+5. **Start** the website / app pool
+6. Hard-refresh the browser (Ctrl+F5)
+7. Verify in the browser: `https://YOUR-SITE/lib/three.module.min.js` must return **200**  
+   If only `…/wwwroot/lib/three.module.min.js` works, the zip was extracted one level too deep — move the inner `wwwroot/lib` folder up to sit next to `wwwroot/js`.
+
 ## After deploy
 
 1. Control panel → confirm **ASP.NET Core** is detected and the app pool is **running**.

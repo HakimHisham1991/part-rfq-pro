@@ -32,9 +32,9 @@ let occtPromise = null;
 export async function loadOcct(options = {}) {
   if (!occtPromise) {
     occtPromise = (async () => {
-      const { OcctKernel } = await import('/lib/occt-wasm/index.js?v=1.20.8');
+      const { OcctKernel } = await import('/lib/occt-wasm/index.js');
       return OcctKernel.init({
-        wasm: options.wasm ?? '/lib/occt-wasm/occt-wasm.wasm?v=1.20.8'
+        wasm: options.wasm ?? '/lib/occt-wasm/occt-wasm.wasm'
       });
     })().catch((err) => {
       occtPromise = null;
@@ -685,7 +685,7 @@ export function recognizeHoles(aag, options = {}) {
  */
 async function recognizeFeaturesFromAag(aag, onProgress, features = 'holes', occt = null) {
   if (features === 'pockets') {
-    const { recognizePockets } = await import('./brep-pocket-recognition.js?v=1.20.8');
+    const { recognizePockets } = await import('./brep-pocket-recognition.js?v=1.20.9');
     // Exclude cylindrical/conical hole *walls* only — planar hole bottoms may
     // still be circular pockets (NX plugged-body style).
     const holesForExclude = recognizeHoles(aag, { onProgress: null });

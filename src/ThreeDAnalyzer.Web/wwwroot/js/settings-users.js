@@ -1,5 +1,6 @@
 import { createUser, deleteUser, getUsers, updateUser } from './data-store.js';
 import { bindModal, closeModal, openModal, showModalError } from './settings-modal.js';
+import { onDomReady } from './dom-ready.js';
 
 const MODAL_ID = 'user-modal';
 
@@ -110,7 +111,7 @@ async function renderUsers() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+onDomReady(() => {
   bindModal(MODAL_ID, {
     onClose: () => showModalError(document.getElementById('user-modal-error'), '')
   });
