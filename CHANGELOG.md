@@ -4,6 +4,14 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.20.11] - 2026-07-21
+
+### Changed
+
+- **Manual-only MonsterASP deployment:** GitHub Actions no longer deploys (build verification only — Web Deploy step and secrets removed from `deploy.yml`). `publish.bat` no longer creates a zip; it publishes to `publish_clean` and prints the manual zip → FTP → unzip → restart checklist. Deploy docs updated with the correct server folder layout.
+
+---
+
 ## [1.20.10] - 2026-07-21
 
 ### Fixed

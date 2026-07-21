@@ -13,44 +13,39 @@ This repo publishes **portable framework-dependent** output with `UseAppHost=fal
 
 All STEP parsing runs in the browser (occt-import-js WASM). The server only serves static files and the Razor page.
 
-## GitHub Actions secrets
+## CI workflow (build verification only — NO deploy)
 
-In the repo: **Settings → Secrets and variables → Actions**, add values from the MonsterASP control panel (Web Deploy):
+Deployment is **manual**. `.github/workflows/deploy.yml` only verifies the project builds:
 
-| Secret | Example |
-|--------|---------|
-| `WEBSITE_NAME` | `site12345` |
-| `SERVER_COMPUTER_NAME` | `https://site12345.siteasp.net:8172` |
-| `SERVER_USERNAME` | `site12345` |
-| `SERVER_PASSWORD` | (Web Deploy password) |
+1. `dotnet publish` (Release, portable, no app host)
+2. Verify required files exist and **no** `.exe`
 
-`MONSTER_*` names are also accepted (same values).
+No secrets, no Web Deploy, no npm/OCCT/native build steps in CI.
 
-**Do not** put `/msdeploy.axd?site=...` in `SERVER_COMPUTER_NAME` — use only `https://siteXXXX.siteasp.net:8172`.
+## Manual deploy (publish → zip → FTP → unzip → restart)
 
-## CI workflow
-
-Push to `main` or `master` triggers `.github/workflows/deploy.yml`:
-
-1. Validate Web Deploy secrets
-2. `dotnet publish` (Release, portable, no app host)
-3. Verify `ThreeDAnalyzer.Web.dll` exists and **no** `.exe`
-4. Patch `web.config` for OutOfProcess + stdout logging
-5. Web Deploy to MonsterASP
-
-No npm, OCCT, or native build steps in CI.
-
-## Manual FTP zip upload
-
-1. Run `publish.bat` → produces `C:\Users\Public\Documents\part-rfq-pro\publish_clean.zip`
-2. **Stop** the MonsterASP website / app pool (required — otherwise extract fails on locked `Data/*.json`)
-3. Upload the zip and extract into the **site root** (`web.config` next to `ThreeDAnalyzer.Web.dll`)
-4. If extract still errors on `Data/machines-master.json`: delete the server `Data` folder, extract again  
+1. Run `publish.bat` → produces `C:\Users\Public\Documents\part-rfq-pro\publish_clean` (folder only, no zip)
+2. **Zip the CONTENTS** of `publish_clean` manually — `web.config` must be at the **zip root** (do not zip the folder itself)
+3. **Stop** the MonsterASP website / app pool (required — otherwise extract fails on locked `Data/*.json`)
+4. Upload the zip and extract into the **site root** (`web.config` next to `ThreeDAnalyzer.Web.dll`)
+5. If extract still errors on `Data/machines-master.json`: delete the server `Data` folder, extract again  
    (`Data/*.json` are seed files; live RFQ data stays in `App_Data/part-rfq.db`)
-5. **Start** the website / app pool
-6. Hard-refresh the browser (Ctrl+F5)
-7. Verify in the browser: `https://YOUR-SITE/lib/three.module.min.js` must return **200**  
+6. **Start** the website / app pool, wait 30–60 s
+7. Hard-refresh the browser (Ctrl+F5)
+8. Verify in the browser: `https://YOUR-SITE/lib/three.module.min.js` must return **200**  
    If only `…/wwwroot/lib/three.module.min.js` works, the zip was extracted one level too deep — move the inner `wwwroot/lib` folder up to sit next to `wwwroot/js`.
+
+Correct server layout after extraction:
+
+```
+wwwroot            ← MonsterASP site root
+├── web.config
+├── ThreeDAnalyzer.Web.dll (+ .deps.json / .runtimeconfig.json)
+├── Data\           (seed json files)
+├── App_Data\       (live SQLite database — never delete)
+├── logs\
+└── wwwroot\        ← the app's static files (css / js / lib)
+```
 
 ## After deploy
 

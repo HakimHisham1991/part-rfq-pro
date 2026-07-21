@@ -5,6 +5,7 @@ REM ---------------------------------------------------------------------------
 REM  Part RFQ Pro — clean Release publish for MonsterASP manual FTP upload
 REM  Double-click or:  publish.bat
 REM  Output: C:\Users\Public\Documents\part-rfq-pro\publish_clean
+REM  Zip / upload / unzip / restart are done MANUALLY (no zip step here).
 REM  Paths are absolute — safe to run this .bat from any location.
 REM ---------------------------------------------------------------------------
 
@@ -36,6 +37,7 @@ if exist "%PUBLISH_DIR%" (
     rmdir /s /q "%PUBLISH_DIR%"
     if errorlevel 1 (
         echo ERROR: Could not remove "%PUBLISH_DIR%"
+        echo        Close any Explorer windows / apps using that folder, then retry.
         set "EXIT_CODE=1"
         goto :done
     )
@@ -76,9 +78,13 @@ echo.
 echo [4/4] Verifying publish output...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$pub = '%PUBLISH_DIR%';" ^
-  "$required = @('web.config','ThreeDAnalyzer.Web.dll','ThreeDAnalyzer.Web.deps.json','ThreeDAnalyzer.Web.runtimeconfig.json','Data\material-specs-master.json','wwwroot\lib\occt-import-js.wasm','wwwroot\js\viewer.js');" ^
+  "$required = @('web.config','ThreeDAnalyzer.Web.dll','ThreeDAnalyzer.Web.deps.json','ThreeDAnalyzer.Web.runtimeconfig.json','Data\material-specs-master.json','Data\machines-master.json','wwwroot\lib\occt-import-js.wasm','wwwroot\lib\three.module.min.js','wwwroot\js\viewer.js');" ^
   "foreach ($f in $required) { if (-not (Test-Path (Join-Path $pub $f))) { throw \"Missing: $f\" } };" ^
   "if (Test-Path (Join-Path $pub 'ThreeDAnalyzer.Web.exe')) { throw 'ThreeDAnalyzer.Web.exe must not be present' };" ^
+  "$viewer = Get-Item (Join-Path $pub 'wwwroot\js\viewer.js');" ^
+  "$three = Get-Item (Join-Path $pub 'wwwroot\lib\three.module.min.js');" ^
+  "if ($viewer.Length -lt 10000) { throw 'viewer.js looks truncated' };" ^
+  "if ($three.Length -lt 100000) { throw 'three.module.min.js looks truncated' };" ^
   "Write-Host '       All required files present. No .exe — OK for MonsterASP.'"
 if errorlevel 1 (
     echo ERROR: Publish verification failed.
@@ -87,17 +93,23 @@ if errorlevel 1 (
 )
 
 echo.
-echo Publish complete.
-echo Upload everything inside:
-echo   %PUBLISH_DIR%
-echo to MonsterASP wwwroot via FTP ^(merge/replace files^).
+echo Publish complete. Manual deploy steps:
+echo   1. Zip the CONTENTS of:  %PUBLISH_DIR%
+echo      ^(web.config must be at the zip ROOT — do not zip the folder itself^)
+echo   2. In MonsterASP: STOP the website
+echo   3. Upload the zip, unzip into the SITE ROOT
+echo      ^(web.config lands next to ThreeDAnalyzer.Web.dll; the app's wwwroot
+echo       folder sits INSIDE the site root — do not flatten or double-nest it^)
+echo   4. START the website, wait 30-60 s
+echo   5. Verify in browser: /login , /js/viewer.js , /lib/three.module.min.js
+echo   6. Hard-refresh ^(Ctrl+F5^)
 echo.
 
 :done
 if not "%EXIT_CODE%"=="0" (
     echo Finished with errors ^(exit %EXIT_CODE%^).
 ) else (
-    echo Ready for manual FTP upload.
+    echo Ready for manual zip + FTP upload.
 )
 echo.
 pause

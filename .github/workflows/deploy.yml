@@ -1,4 +1,11 @@
-name: Deploy to MonsterASP.NET
+name: Build (CI only — no deploy)
+
+# Deployment to MonsterASP is MANUAL:
+#   1. Run publish.bat locally  → C:\Users\Public\Documents\part-rfq-pro\publish_clean
+#   2. Zip the publish_clean CONTENTS manually (web.config at zip root)
+#   3. Upload the zip via FTP / control panel
+#   4. Unzip into the site root, restart the website
+# This workflow only verifies the project builds and the publish output is valid.
 
 on:
   push:
@@ -6,11 +13,11 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: monsterasp-deploy-${{ github.ref }}
+  group: build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build_and_deploy:
+  build:
     runs-on: windows-latest
     permissions:
       contents: read
@@ -18,36 +25,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate deployment secrets
-        shell: pwsh
-        env:
-          WEBSITE_NAME: ${{ secrets.WEBSITE_NAME }}
-          SERVER_COMPUTER_NAME: ${{ secrets.SERVER_COMPUTER_NAME }}
-          SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
-          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
-          MONSTER_WEBSITE_NAME: ${{ secrets.MONSTER_WEBSITE_NAME }}
-          MONSTER_SERVER_COMPUTER_NAME: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
-          MONSTER_SERVER_USERNAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
-          MONSTER_SERVER_PASSWORD: ${{ secrets.MONSTER_SERVER_PASSWORD }}
-        run: |
-          $site = $env:WEBSITE_NAME; if (-not $site) { $site = $env:MONSTER_WEBSITE_NAME }
-          $computer = $env:SERVER_COMPUTER_NAME; if (-not $computer) { $computer = $env:MONSTER_SERVER_COMPUTER_NAME }
-          $user = $env:SERVER_USERNAME; if (-not $user) { $user = $env:MONSTER_SERVER_USERNAME }
-          $pass = $env:SERVER_PASSWORD; if (-not $pass) { $pass = $env:MONSTER_SERVER_PASSWORD }
-          if (-not ($site -and $computer -and $user -and $pass)) {
-            Write-Error "Missing Web Deploy secrets. Add WEBSITE_NAME, SERVER_COMPUTER_NAME, SERVER_USERNAME, SERVER_PASSWORD from the MonsterASP control panel."
-          }
-          "DEPLOY_WEBSITE_NAME=$site" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "DEPLOY_SERVER_COMPUTER_NAME=$computer" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "DEPLOY_SERVER_USERNAME=$user" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "DEPLOY_SERVER_PASSWORD=$pass" | Out-File -FilePath $env:GITHUB_ENV -Append
-
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
-      - name: Publish web application
+      - name: Publish web application (verification build)
         run: >-
           dotnet publish src/ThreeDAnalyzer.Web/ThreeDAnalyzer.Web.csproj
           -c Release
@@ -59,38 +42,21 @@ jobs:
         shell: pwsh
         run: |
           $pub = "${{ github.workspace }}\publish"
-          @("web.config","ThreeDAnalyzer.Web.dll","ThreeDAnalyzer.Web.deps.json","ThreeDAnalyzer.Web.runtimeconfig.json") | ForEach-Object {
+          @(
+            "web.config",
+            "ThreeDAnalyzer.Web.dll",
+            "ThreeDAnalyzer.Web.deps.json",
+            "ThreeDAnalyzer.Web.runtimeconfig.json",
+            "Data\material-specs-master.json",
+            "Data\machines-master.json",
+            "wwwroot\js\viewer.js",
+            "wwwroot\lib\three.module.min.js",
+            "wwwroot\lib\occt-import-js.wasm"
+          ) | ForEach-Object {
             if (-not (Test-Path (Join-Path $pub $_))) { throw "Missing required file: $_" }
             Write-Host "OK: $_"
           }
           if (Test-Path (Join-Path $pub "ThreeDAnalyzer.Web.exe")) {
             throw "FAIL: ThreeDAnalyzer.Web.exe found in publish output. MonsterASP requires DLL-only. Check UseAppHost=false."
           }
-          Write-Host "Publish output is valid for MonsterASP OutOfProcess DLL hosting."
-
-      - name: Configure web.config for MonsterASP OutOfProcess
-        shell: pwsh
-        run: |
-          $pub = "${{ github.workspace }}\publish"
-          New-Item -ItemType Directory -Force -Path (Join-Path $pub "logs") | Out-Null
-          $wc = Join-Path $pub "web.config"
-          [xml]$doc = Get-Content -LiteralPath $wc -Raw
-          $asp = $doc.SelectSingleNode("//*[local-name()='aspNetCore']")
-          if (-not $asp) { throw "aspNetCore element not found in web.config" }
-          $asp.SetAttribute("processPath","dotnet")
-          $asp.SetAttribute("arguments",".\ThreeDAnalyzer.Web.dll")
-          $asp.SetAttribute("hostingModel","OutOfProcess")
-          $asp.SetAttribute("stdoutLogEnabled","true")
-          $asp.SetAttribute("stdoutLogFile",".\logs\stdout")
-          $doc.Save($wc)
-          Write-Host "web.config configured for OutOfProcess DLL hosting."
-
-      - name: Deploy to MonsterASP via Web Deploy
-        uses: rasmusbuchholdt/simply-web-deploy@2.1.0
-        with:
-          website-name: ${{ env.DEPLOY_WEBSITE_NAME }}
-          server-computer-name: ${{ env.DEPLOY_SERVER_COMPUTER_NAME }}
-          server-username: ${{ env.DEPLOY_SERVER_USERNAME }}
-          server-password: ${{ env.DEPLOY_SERVER_PASSWORD }}
-          source-path: publish
-          target-delete: true
+          Write-Host "Publish output is valid. Deploy manually with publish.bat + FTP."
