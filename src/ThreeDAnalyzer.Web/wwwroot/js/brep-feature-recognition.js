@@ -685,7 +685,7 @@ export function recognizeHoles(aag, options = {}) {
  */
 async function recognizeFeaturesFromAag(aag, onProgress, features = 'holes', occt = null) {
   if (features === 'pockets') {
-    const { recognizePockets } = await import('./brep-pocket-recognition.js?v=1.20.9');
+    const { recognizePockets } = await import('./brep-pocket-recognition.js?v=1.21.0');
     // Exclude cylindrical/conical hole *walls* only — planar hole bottoms may
     // still be circular pockets (NX plugged-body style).
     const holesForExclude = recognizeHoles(aag, { onProgress: null });

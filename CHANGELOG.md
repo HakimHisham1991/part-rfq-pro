@@ -4,6 +4,19 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.0] - 2026-07-22
+
+### Added
+
+- **Pocket detection methods (hole-plugged Body 2 gate):** Pocket detection now requires Hole Detection first. Detected holes are plugged on a duplicate solid (Body 2); the viewer swaps to Body 2 automatically. Four methods in one panel:
+  - **AAG Face Walk** (default) — existing floor-anchored recognizer on Body 2
+  - **Convex Hull Subtraction** — QuickHull of Body 2 minus the solid; per-cavity volume/depth
+  - **Slicing-Based (2.5D)** — section loops along one axis with floor bisection
+  - **User-Hinted** — select floor → detect/select walls → axis → Calculate → add to table
+- New modules: `pocket-state.js`, `pocket-body-preparation.js` (wired), `pocket-detection-pipeline.js`, `pocket-hull-subtraction.js`, `pocket-slicing.js`, `pocket-user-hinted.js`, `brep-sew-utils.js`; vendored `quickhull3d.bundle.js`.
+
+---
+
 ## [1.20.12] - 2026-07-22
 
 ### Fixed

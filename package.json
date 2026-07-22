@@ -8,6 +8,7 @@
   "dependencies": {
     "occt-import-js": "^0.0.23",
     "occt-wasm": "^3.7.0",
+    "quickhull3d": "^3.1.2",
     "three": "^0.165.0"
   }
 }

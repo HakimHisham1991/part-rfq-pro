@@ -10,9 +10,16 @@ import {
   isBrepHoleMethod,
   BREP_HOLE_METHOD
 } from './hole-detection.js';
+import {
+  getPocketBodyState,
+  setPocketBodyState,
+  resetPocketSessionFlags,
+  getHoleDetectionCompleted,
+  setHoleDetectionCompleted
+} from './pocket-state.js';
 
 /** Cache-bust only our JS workers — never append ?v= to .wasm (breaks OCCT on some hosts). */
-const JS_ASSET_V = '1.20.9';
+const JS_ASSET_V = '1.21.0';
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('three-canvas');
@@ -77,6 +84,37 @@ const pocketCountBadge = document.getElementById('pocket-count-badge');
 const btnClearPockets = document.getElementById('btn-clear-pockets');
 const btnCsvDetectedPockets = document.getElementById('btn-csv-detected-pockets');
 const pocketDetectionSection = document.getElementById('pocket-detection-section');
+const pocketGateWarning = document.getElementById('pocket-gate-warning');
+const pocketPreparingNotice = document.getElementById('pocket-preparing-notice');
+const pocketPrepWarning = document.getElementById('pocket-prep-warning');
+const pocketPrepHoleCount = document.getElementById('pocket-prep-hole-count');
+const pocketPrepSkippedText = document.getElementById('pocket-prep-skipped-text');
+const pocketDetectionMethod = document.getElementById('pocket-detection-method');
+const pocketParamsAagWalk = document.getElementById('pocket-params-aag-walk');
+const pocketParamsHullSubtract = document.getElementById('pocket-params-hull-subtract');
+const pocketParamsSlicing = document.getElementById('pocket-params-slicing');
+const pocketParamsUserHinted = document.getElementById('pocket-params-user-hinted');
+const btnGotoHoleDetection = document.getElementById('btn-goto-hole-detection');
+const btnSelectFloor = document.getElementById('btn-select-floor');
+const btnClearFloor = document.getElementById('btn-clear-floor');
+const floorSelectionCount = document.getElementById('floor-selection-count');
+const btnSelectWalls = document.getElementById('btn-select-walls');
+const btnDetectWalls = document.getElementById('btn-detect-walls');
+const wallSelectionCount = document.getElementById('wall-selection-count');
+const hintWallStep = document.getElementById('hint-wall-step');
+const hintDetectWallOptions = document.getElementById('hint-detect-wall-options');
+const hintIncludeFillets = document.getElementById('hint-include-fillets');
+const hintMaxDepth = document.getElementById('hint-max-depth');
+const hintPlugStep = document.getElementById('hint-plug-step');
+const hintAxisMode = document.getElementById('hint-axis-mode');
+const hintAxisManual = document.getElementById('hint-axis-manual');
+const hintAxisX = document.getElementById('hint-axis-x');
+const hintAxisY = document.getElementById('hint-axis-y');
+const hintAxisZ = document.getElementById('hint-axis-z');
+const hintAxisPreview = document.getElementById('hint-axis-preview');
+const hintCalculateStep = document.getElementById('hint-calculate-step');
+const btnHintCalculate = document.getElementById('btn-hint-calculate');
+const btnHintNewPocket = document.getElementById('btn-hint-new-pocket');
 
 // File picker: Open button uses HTML onclick so it works even if this module
 // fails later. Only the change→load path is wired here.
@@ -973,6 +1011,16 @@ let detectedPockets = [];
 let pocketVisualGroup = null;
 let activePocketId = null;
 const highlightedPocketIds = new Set();
+/** Original occt-import-js meshes kept when Body 2 replaces the display. */
+let body1PartGroupBackup = null;
+/** faceGroups triples from Body 2 meshShape: [triStart, triCount, faceHash] */
+let body2FaceGroups = null;
+/** 'floor' | 'wall-select' | null */
+let hintPickMode = null;
+const hintFloorHashes = new Set();
+const hintWallHashes = new Set();
+let hintAxis = null;
+let hintHighlightGroup = null;
 
 // Rectangle surface selection state
 const RECT_SELECT_MIN_DRAG = 4;
@@ -1377,20 +1425,27 @@ function resetAnalyzerSession() {
   deactivateAllTools();
 
   disposePartGroup();
+  disposeBody1Backup();
   disposePartBboxMesh();
   disposeStockMesh();
   disposeCoordAxisGroup();
+  disposeHintHighlight();
+  resetHintWorkflow();
 
   resetAllMeasurements();
   clearHoleDetection();
   clearPocketDetection();
   clearSurfaceSelection();
+  resetPocketSessionFlags();
+  resetPocketWorkerSession();
+  refreshPocketGateUI();
 
   customCoordSystem = null;
   partVolumeMm3 = 0;
   partBBox = null;
   loadedFileName = '';
   lastLoadedArrayBuffer = null;
+  body2FaceGroups = null;
   activePartContext.projectId = null;
   activePartContext.partId = null;
 
@@ -1842,6 +1897,13 @@ async function loadStepFile(arrayBuffer, fileName) {
     clearHoleDetection();
     clearPocketDetection();
     clearSurfaceSelection();
+    disposeBody1Backup();
+    disposeHintHighlight();
+    resetHintWorkflow();
+    body2FaceGroups = null;
+    resetPocketSessionFlags();
+    resetPocketWorkerSession();
+    refreshPocketGateUI();
     coordStatus.textContent = 'Click 3 points on model to define';
 
     const doneMsg = `Loaded ${meshCount} mesh(es) from ${displayName}`;
@@ -2381,11 +2443,24 @@ function runHoleDetection() {
 }
 
 /**
- * Pocket detection — B-Rep AAG only (same worker as hole recognition).
+ * Pocket detection — gated on Body 2 (hole-plugged duplicate).
  */
 function runPocketDetection() {
   if (holeDetectionRunning) {
     setStatus('Feature detection already in progress');
+    return;
+  }
+
+  const method = pocketDetectionMethod?.value || 'aag-walk';
+  if (method === 'user-hinted') {
+    setStatus('User-hinted mode uses the step buttons — not Detect Pockets');
+    return;
+  }
+
+  const state = getPocketBodyState();
+  if (!state || state.status !== 'ready') {
+    setStatus('Run hole detection first, then wait for Body 2 preparation');
+    refreshPocketGateUI();
     return;
   }
 
@@ -2394,21 +2469,200 @@ function runPocketDetection() {
     return;
   }
 
-  if (!lastLoadedArrayBuffer || lastLoadedArrayBuffer.byteLength === 0) {
-    setStatus('Pocket detection requires a STEP file (B-Rep)');
-    return;
-  }
-
   const requestId = ++holeWorkerRequestId;
   activeFeatureJob = 'pockets';
   activeHoleDetectionSource = 'brep';
 
-  setStatus('Detecting pockets…');
+  let params = {};
+  if (method === 'hull-subtract') {
+    params = {
+      minVolume: Number(document.getElementById('pocket-min-volume')?.value ?? 1),
+      minOpeningWidth: Number(document.getElementById('pocket-min-opening')?.value ?? 0.5),
+      hullDeflection: Number(document.getElementById('pocket-hull-deflection')?.value ?? 0.02)
+    };
+  } else if (method === 'slicing') {
+    params = {
+      axisOverride: document.getElementById('pocket-slicing-axis')?.value || 'auto',
+      sliceStep: Number(document.getElementById('pocket-slice-step')?.value ?? 0.5),
+      minContourArea: Number(document.getElementById('pocket-min-contour-area')?.value ?? 1)
+    };
+  }
+
+  setStatus(`Detecting pockets (${method})…`);
   setHoleDetectionBusy(true);
-  beginProgressLog('Pocket Detection', 'Starting pocket detection (B-Rep AAG)…');
+  beginProgressLog('Pocket Detection', `Starting pocket detection (${method})…`);
   setHoleProgressStopVisible(true);
   clearPocketDetection();
-  appendHoleProgressLog('Method: B-Rep AAG — floor-anchored cavities…');
+  appendHoleProgressLog(`Method: ${method} on hole-plugged Body 2…`);
+  setHoleProgressPercent(2);
+
+  try {
+    const worker = getBrepHoleWorker();
+    worker.postMessage({
+      type: 'detectPockets',
+      requestId,
+      method,
+      params
+    });
+  } catch (err) {
+    console.error('Failed to start pocket detection', err);
+    setHoleDetectionBusy(false);
+    activeFeatureJob = null;
+    activeHoleDetectionSource = null;
+    appendHoleProgressLog(`Worker unavailable: ${err.message || err}`, 'is-error');
+    setStatus('Pocket detection error: worker unavailable');
+  }
+}
+
+function resetPocketWorkerSession() {
+  try {
+    if (brepHoleWorker) {
+      brepHoleWorker.postMessage({ type: 'reset', requestId: ++holeWorkerRequestId });
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function disposeBody1Backup() {
+  if (!body1PartGroupBackup) return;
+  body1PartGroupBackup.traverse((child) => {
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
+      else child.material.dispose();
+    }
+  });
+  body1PartGroupBackup = null;
+}
+
+function disposeHintHighlight() {
+  if (!hintHighlightGroup) return;
+  scene.remove(hintHighlightGroup);
+  disposeObject(hintHighlightGroup);
+  hintHighlightGroup = null;
+}
+
+function resetHintWorkflow() {
+  hintPickMode = null;
+  hintFloorHashes.clear();
+  hintWallHashes.clear();
+  hintAxis = null;
+  disposeHintHighlight();
+  if (floorSelectionCount) floorSelectionCount.textContent = '0 face(s) selected';
+  if (wallSelectionCount) wallSelectionCount.textContent = '0 face(s)';
+  if (hintWallStep) hintWallStep.dataset.disabled = 'true';
+  if (hintPlugStep) hintPlugStep.dataset.disabled = 'true';
+  if (hintCalculateStep) hintCalculateStep.dataset.disabled = 'true';
+  if (hintDetectWallOptions) hintDetectWallOptions.hidden = true;
+  if (btnHintNewPocket) btnHintNewPocket.hidden = true;
+  if (hintAxisPreview) hintAxisPreview.textContent = '';
+}
+
+function syncPocketMethodParamsUI() {
+  const method = pocketDetectionMethod?.value || 'aag-walk';
+  if (pocketParamsAagWalk) pocketParamsAagWalk.hidden = method !== 'aag-walk';
+  if (pocketParamsHullSubtract) pocketParamsHullSubtract.hidden = method !== 'hull-subtract';
+  if (pocketParamsSlicing) pocketParamsSlicing.hidden = method !== 'slicing';
+  if (pocketParamsUserHinted) pocketParamsUserHinted.hidden = method !== 'user-hinted';
+  if (btnRunPocketDetection) btnRunPocketDetection.hidden = method === 'user-hinted';
+}
+
+function refreshPocketGateUI() {
+  const state = getPocketBodyState();
+  const hasHolesRun = getHoleDetectionCompleted();
+  const methodSelect = pocketDetectionMethod;
+  const runBtn = btnRunPocketDetection;
+
+  if (!hasHolesRun) {
+    if (pocketGateWarning) pocketGateWarning.hidden = false;
+    if (pocketPreparingNotice) pocketPreparingNotice.hidden = true;
+    if (pocketPrepWarning) pocketPrepWarning.hidden = true;
+    if (methodSelect) methodSelect.disabled = true;
+    if (runBtn) {
+      runBtn.disabled = true;
+      runBtn.title = 'Run hole detection first';
+    }
+    return;
+  }
+
+  if (pocketGateWarning) pocketGateWarning.hidden = true;
+
+  if (!state || state.status === 'not-ready') {
+    prepareBody2();
+    return;
+  }
+
+  if (state.status === 'preparing') {
+    if (pocketPreparingNotice) pocketPreparingNotice.hidden = false;
+    if (pocketPrepHoleCount) pocketPrepHoleCount.textContent = String(state.holeCount ?? detectedHoles.length);
+    if (methodSelect) methodSelect.disabled = true;
+    if (runBtn) runBtn.disabled = true;
+    return;
+  }
+
+  if (pocketPreparingNotice) pocketPreparingNotice.hidden = true;
+
+  if (state.status === 'failed') {
+    if (pocketPrepWarning) pocketPrepWarning.hidden = false;
+    if (pocketPrepSkippedText) {
+      pocketPrepSkippedText.textContent =
+        `Body preparation failed: ${state.error}. Pocket detection unavailable for this part.`;
+    }
+    if (methodSelect) methodSelect.disabled = true;
+    if (runBtn) runBtn.disabled = true;
+    return;
+  }
+
+  // ready
+  if (methodSelect) methodSelect.disabled = false;
+  syncPocketMethodParamsUI();
+  if (runBtn) {
+    runBtn.disabled = holeDetectionRunning || !partGroup;
+    runBtn.title = '';
+  }
+
+  if (state.skippedHoles?.length > 0) {
+    if (pocketPrepWarning) pocketPrepWarning.hidden = false;
+    if (pocketPrepSkippedText) {
+      pocketPrepSkippedText.textContent =
+        `${state.skippedHoles.length} hole(s) could not be plugged and may still appear as spurious cavities.`;
+    }
+  } else if (pocketPrepWarning) {
+    pocketPrepWarning.hidden = true;
+  }
+}
+
+function prepareBody2() {
+  if (!lastLoadedArrayBuffer?.byteLength) {
+    setPocketBodyState({ status: 'failed', skippedHoles: [], holeCount: 0, error: 'No STEP buffer', note: null });
+    refreshPocketGateUI();
+    return;
+  }
+
+  const existing = getPocketBodyState();
+  if (existing?.status === 'preparing' || existing?.status === 'ready') return;
+  if (holeDetectionRunning && activeFeatureJob === 'prepareBody2') return;
+
+  setPocketBodyState({
+    status: 'preparing',
+    skippedHoles: [],
+    holeCount: detectedHoles.length,
+    error: null,
+    note: null
+  });
+  // Update notices without re-entering prepare
+  if (pocketGateWarning) pocketGateWarning.hidden = true;
+  if (pocketPreparingNotice) pocketPreparingNotice.hidden = false;
+  if (pocketPrepHoleCount) pocketPrepHoleCount.textContent = String(detectedHoles.length);
+  if (pocketDetectionMethod) pocketDetectionMethod.disabled = true;
+  if (btnRunPocketDetection) btnRunPocketDetection.disabled = true;
+
+  const requestId = ++holeWorkerRequestId;
+  activeFeatureJob = 'prepareBody2';
+  setHoleDetectionBusy(true);
+  beginProgressLog('Pocket Body Prep', 'Plugging holes and preparing Body 2…');
+  setHoleProgressStopVisible(true);
   setHoleProgressPercent(2);
 
   try {
@@ -2416,20 +2670,110 @@ function runPocketDetection() {
     const bufferCopy = lastLoadedArrayBuffer.slice(0);
     worker.postMessage(
       {
-        type: 'detect',
+        type: 'prepareBody2',
         requestId,
-        arrayBuffer: bufferCopy,
-        options: { features: 'pockets' }
+        arrayBuffer: bufferCopy
       },
       [bufferCopy]
     );
   } catch (err) {
-    console.error('Failed to start B-Rep pocket worker', err);
     setHoleDetectionBusy(false);
     activeFeatureJob = null;
-    activeHoleDetectionSource = null;
-    appendHoleProgressLog(`B-Rep worker unavailable: ${err.message || err}`, 'is-error');
-    setStatus('Pocket detection error: B-Rep worker unavailable');
+    setPocketBodyState({
+      status: 'failed',
+      skippedHoles: [],
+      holeCount: detectedHoles.length,
+      error: String(err?.message ?? err),
+      note: null
+    });
+    refreshPocketGateUI();
+  }
+}
+
+function applyBody2Mesh(meshPayload) {
+  if (!meshPayload?.positions?.length || !meshPayload?.indices?.length) return;
+
+  // Keep Body 1 meshes for restore on new load (disposePartGroup clears display)
+  if (partGroup && !body1PartGroupBackup) {
+    body1PartGroupBackup = partGroup;
+    scene.remove(partGroup);
+    partGroup = null;
+  } else if (partGroup) {
+    disposePartGroup();
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  const pos = meshPayload.positions instanceof Float32Array
+    ? meshPayload.positions
+    : new Float32Array(meshPayload.positions);
+  const idx = meshPayload.indices instanceof Uint32Array
+    ? meshPayload.indices
+    : new Uint32Array(meshPayload.indices);
+  geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geometry.setIndex(new THREE.BufferAttribute(idx, 1));
+  if (meshPayload.normals?.length) {
+    const nrm = meshPayload.normals instanceof Float32Array
+      ? meshPayload.normals
+      : new Float32Array(meshPayload.normals);
+    geometry.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  } else {
+    geometry.computeVertexNormals();
+  }
+
+  body2FaceGroups = meshPayload.faceGroups || null;
+
+  const mesh = createShadedMeshWithEdges(geometry);
+  mesh.userData.meshIndex = 0;
+  mesh.userData.isBody2 = true;
+  // Slightly different tint so Body 2 is visually distinct
+  if (mesh.material && mesh.material.color) {
+    mesh.material.color.setHex(0xb8c8e0);
+  }
+
+  partGroup = new THREE.Group();
+  partGroup.userData.isBody2 = true;
+  partGroup.add(mesh);
+  scene.add(partGroup);
+  clearSurfaceSelection();
+  setStatus('Showing Body 2 (holes plugged) — ready for pocket detection');
+}
+
+function faceHashFromTriangle(triIndex) {
+  if (!body2FaceGroups?.length) return null;
+  for (let i = 0; i + 2 < body2FaceGroups.length; i += 3) {
+    const triStart = body2FaceGroups[i];
+    const triCount = body2FaceGroups[i + 1];
+    const faceHash = body2FaceGroups[i + 2];
+    if (triIndex >= triStart && triIndex < triStart + triCount) return faceHash;
+  }
+  return null;
+}
+
+function rebuildHintHighlight() {
+  disposeHintHighlight();
+  if (!partGroup || (!hintFloorHashes.size && !hintWallHashes.size)) return;
+  // Highlight by recoloring is hard without per-face materials; use status text primarily.
+  // Soft overlay: outline whole Body 2 when selecting.
+  hintHighlightGroup = new THREE.Group();
+  scene.add(hintHighlightGroup);
+}
+
+function updateHintStepUI() {
+  if (floorSelectionCount) {
+    floorSelectionCount.textContent = `${hintFloorHashes.size} face(s) selected`;
+  }
+  if (wallSelectionCount) {
+    wallSelectionCount.textContent = `${hintWallHashes.size} face(s)`;
+  }
+  if (hintWallStep) hintWallStep.dataset.disabled = hintFloorHashes.size === 0 ? 'true' : 'false';
+  if (hintPlugStep) hintPlugStep.dataset.disabled = hintWallHashes.size === 0 ? 'true' : 'false';
+  const axisOk = hintAxis && hintAxis.length === 3;
+  if (hintCalculateStep) {
+    hintCalculateStep.dataset.disabled =
+      hintFloorHashes.size === 0 || hintWallHashes.size === 0 || !axisOk ? 'true' : 'false';
+  }
+  if (hintAxisPreview && hintAxis) {
+    hintAxisPreview.textContent = `axis [${hintAxis.map((v) => v.toFixed(3)).join(', ')}]`;
   }
 }
 
@@ -2461,19 +2805,33 @@ function stopHoleDetection() {
     brepHoleWorker = null;
   }
 
-  if (stoppedJob === 'pockets') {
+  if (stoppedJob === 'pockets' || stoppedJob === 'hintCalc' || stoppedJob === 'hintWalls') {
     clearPocketDetection();
-  } else {
+  } else if (stoppedJob === 'prepareBody2') {
+    setPocketBodyState({
+      status: 'not-ready',
+      skippedHoles: [],
+      holeCount: detectedHoles.length,
+      error: null,
+      note: null
+    });
+    refreshPocketGateUI();
+  } else if (stoppedJob !== 'hintAxis') {
     clearHoleDetection();
   }
   setHoleDetectionBusy(false);
   setHoleProgressPercent(100);
   appendHoleProgressLog('Detection stopped by user — results cleared', 'is-error');
-  setStatus(stoppedJob === 'pockets' ? 'Pocket detection stopped' : 'Hole detection stopped');
+  setStatus(
+    stoppedJob === 'pockets' || stoppedJob === 'prepareBody2'
+      ? 'Pocket preparation/detection stopped'
+      : 'Hole detection stopped'
+  );
 }
 
 function handleHoleWorkerMessage(event) {
-  const { type, requestId, holes, pockets, elapsedMs, message, percent, source } = event.data;
+  const data = event.data;
+  const { type, requestId, holes, pockets, elapsedMs, message, percent, source } = data;
   if (requestId !== holeWorkerRequestId) return;
 
   if (type === 'progress') {
@@ -2481,13 +2839,103 @@ function handleHoleWorkerMessage(event) {
     return;
   }
 
+  if (type === 'body2-ready') {
+    setHoleDetectionBusy(false);
+    activeFeatureJob = null;
+    activeHoleDetectionSource = null;
+    setPocketBodyState({
+      status: 'ready',
+      skippedHoles: data.skippedHoles ?? [],
+      holeCount: data.holeCount ?? 0,
+      error: null,
+      note: data.note ?? null
+    });
+    applyBody2Mesh(data.mesh);
+    setHoleProgressPercent(100);
+    appendHoleProgressLog(
+      `Body 2 ready — ${data.holeCount ?? 0} hole(s) plugged` +
+        (data.skippedHoles?.length ? ` (${data.skippedHoles.length} skipped)` : '') +
+        ` (${Math.round(elapsedMs || 0)} ms)`,
+      'is-done'
+    );
+    refreshPocketGateUI();
+    return;
+  }
+
+  if (type === 'hint-walls') {
+    setHoleDetectionBusy(false);
+    activeFeatureJob = null;
+    hintWallHashes.clear();
+    for (const h of data.wallHashes ?? []) hintWallHashes.add(h);
+    updateHintStepUI();
+    setStatus(`Detected ${data.wallCount ?? 0} wall face(s)`);
+    // Auto-suggest axis
+    try {
+      const worker = getBrepHoleWorker();
+      const rid = ++holeWorkerRequestId;
+      activeFeatureJob = 'hintAxis';
+      worker.postMessage({
+        type: 'hintSuggestAxis',
+        requestId: rid,
+        payload: {
+          floorHashes: [...hintFloorHashes],
+          wallHashes: [...hintWallHashes]
+        }
+      });
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+
+  if (type === 'hint-axis') {
+    activeFeatureJob = null;
+    hintAxis = data.axis ?? [0, 0, 1];
+    updateHintStepUI();
+    return;
+  }
+
+  if (type === 'hint-result') {
+    setHoleDetectionBusy(false);
+    activeFeatureJob = null;
+    if (data.pocket) {
+      detectedPockets = [...detectedPockets, data.pocket];
+      clearPocketHighlightState();
+      renderPocketVisuals();
+      renderPocketsList();
+      updatePocketCountBadge();
+      updatePocketCsvButtons();
+      if (btnHintNewPocket) btnHintNewPocket.hidden = false;
+      setStatus(`Added user-hinted pocket (${Math.round(elapsedMs || 0)} ms)`);
+      appendHoleProgressLog('User-hinted pocket added to table', 'is-done');
+    }
+    setHoleProgressPercent(100);
+    return;
+  }
+
   if (type === 'error') {
-    // Pocket job has no mesh fallback
-    if (activeFeatureJob === 'pockets') {
+    if (activeFeatureJob === 'prepareBody2') {
       setHoleDetectionBusy(false);
       activeHoleDetectionSource = null;
       activeFeatureJob = null;
-      clearPocketDetection();
+      setPocketBodyState({
+        status: 'failed',
+        skippedHoles: [],
+        holeCount: detectedHoles.length,
+        error: message,
+        note: null
+      });
+      setHoleProgressPercent(100);
+      appendHoleProgressLog(`Body 2 prep failed: ${message}`, 'is-error');
+      setStatus(`Body 2 preparation failed: ${message}`);
+      refreshPocketGateUI();
+      return;
+    }
+
+    if (activeFeatureJob === 'pockets' || activeFeatureJob === 'hintCalc' || activeFeatureJob === 'hintWalls') {
+      setHoleDetectionBusy(false);
+      activeHoleDetectionSource = null;
+      activeFeatureJob = null;
       setHoleProgressPercent(100);
       appendHoleProgressLog(`Error: ${message}`, 'is-error');
       setStatus(`Pocket detection error: ${message}`);
@@ -2514,6 +2962,8 @@ function handleHoleWorkerMessage(event) {
     return;
   }
 
+  if (type !== 'result') return;
+
   setHoleDetectionBusy(false);
   activeHoleDetectionSource = null;
   const job = activeFeatureJob;
@@ -2525,7 +2975,8 @@ function handleHoleWorkerMessage(event) {
 
   if (job === 'pockets') {
     applyDetectedPockets(pockets ?? []);
-    const doneMsg = `Found ${pocketCount} pocket(s) via ${srcLabel} (${Math.round(elapsedMs)} ms)`;
+    const methodLabel = data.detectionMethod || 'pockets';
+    const doneMsg = `Found ${pocketCount} pocket(s) via ${methodLabel} (${Math.round(elapsedMs)} ms)`;
     setHoleProgressPercent(100);
     appendHoleProgressLog(doneMsg, 'is-done');
     setStatus(doneMsg);
@@ -2533,10 +2984,15 @@ function handleHoleWorkerMessage(event) {
   }
 
   applyDetectedHoles(holes ?? []);
+  setHoleDetectionCompleted(true);
+  // Invalidate / rebuild Body 2 from the new hole set
+  setPocketBodyState(null);
+  resetPocketWorkerSession();
   const doneMsg = `Found ${holeCount} hole(s) via ${srcLabel} on ${selectedFaces.size} selected surface(s) (${Math.round(elapsedMs)} ms)`;
   setHoleProgressPercent(100);
   appendHoleProgressLog(doneMsg, 'is-done');
   setStatus(doneMsg);
+  refreshPocketGateUI();
 }
 
 function applyDetectedHoles(holes) {
@@ -3230,8 +3686,13 @@ function renderPocketsList() {
     const nameCell = document.createElement('td');
     nameCell.className = 'col-name';
     let name = `Pocket ${index + 1}`;
-    if (pocket.isPatched) name += ' (patched)';
-    else if (pocket.isThrough) name += ' (thru)';
+    if (pocket.detectionMethod && pocket.detectionMethod !== 'aag-walk') {
+      name += ` [${pocket.detectionMethod}]`;
+    }
+    if (pocket.isFullyEnclosed) name += ' (enclosed)';
+    else if (pocket.isPatched) name += ' (patched)';
+    else if (pocket.isThrough || pocket.accessType === 'through') name += ' (thru)';
+    if (pocket.flagged) name += ` *`;
     nameCell.textContent = name;
 
     const sizeCell = document.createElement('td');
@@ -3614,6 +4075,29 @@ function handleSurfaceSelectClick(e) {
   const hit = raycastMeshFace(e);
   if (!hit) return;
 
+  // User-hinted floor/wall picking on Body 2 (B-Rep face hashes via faceGroups)
+  if (hintPickMode === 'floor' || hintPickMode === 'wall-select') {
+    const faceHash = faceHashFromTriangle(hit.faceIndex);
+    if (faceHash == null) {
+      setStatus('Face hash unavailable — wait for Body 2 mesh with face groups');
+      return;
+    }
+    const set = hintPickMode === 'floor' ? hintFloorHashes : hintWallHashes;
+    if (set.has(faceHash)) set.delete(faceHash);
+    else set.add(faceHash);
+    if (hintPickMode === 'floor') {
+      hintWallHashes.clear();
+      hintAxis = null;
+    }
+    updateHintStepUI();
+    setStatus(
+      hintPickMode === 'floor'
+        ? `Floor: ${hintFloorHashes.size} face(s)`
+        : `Walls: ${hintWallHashes.size} face(s)`
+    );
+    return;
+  }
+
   const meshIndex = hit.object.userData.meshIndex ?? 0;
   const faceIndex = hit.faceIndex;
   const key = `${meshIndex}:${faceIndex}`;
@@ -3651,13 +4135,11 @@ function updateSurfaceSelectionUI() {
   }
   if (btnClearSelection) btnClearSelection.disabled = noSelection || holeDetectionRunning;
 
-  // Detect Holes / Pockets stay available whenever a part is loaded (and not busy).
-  // Empty selection → runHoleDetection auto-selects all bodies.
+  // Detect Holes stays available whenever a part is loaded (and not busy).
+  // Pocket Detect is gated on Body 2 readiness (refreshPocketGateUI).
   const detectDisabled = holeDetectionRunning || !partGroup;
   if (btnRunHoleDetection) btnRunHoleDetection.disabled = detectDisabled;
-  const pocketDisabled =
-    holeDetectionRunning || !partGroup || !lastLoadedArrayBuffer;
-  if (btnRunPocketDetection) btnRunPocketDetection.disabled = pocketDisabled;
+  refreshPocketGateUI();
 }
 
 function clearSurfaceSelection() {
@@ -3825,6 +4307,128 @@ function bindHoleDetectionEvents() {
 
   btnRunHoleDetection?.addEventListener('click', () => runHoleDetection());
   btnRunPocketDetection?.addEventListener('click', () => runPocketDetection());
+
+  btnGotoHoleDetection?.addEventListener('click', () => {
+    if (holePanel?.classList.contains('collapsed')) toggleHolePanelCollapse();
+    btnRunHoleDetection?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    btnRunHoleDetection?.focus();
+  });
+
+  pocketDetectionMethod?.addEventListener('change', () => {
+    syncPocketMethodParamsUI();
+    if (pocketDetectionMethod.value !== 'user-hinted') {
+      hintPickMode = null;
+      setSurfaceSelectMode(false);
+    }
+    refreshPocketGateUI();
+  });
+
+  btnSelectFloor?.addEventListener('click', () => {
+    hintPickMode = 'floor';
+    setSurfaceSelectMode(true);
+    setStatus('Click faces to define the pocket floor');
+  });
+  btnClearFloor?.addEventListener('click', () => {
+    resetHintWorkflow();
+    setStatus('Floor selection cleared');
+  });
+  btnSelectWalls?.addEventListener('click', () => {
+    if (!hintFloorHashes.size) return;
+    hintPickMode = 'wall-select';
+    if (hintDetectWallOptions) hintDetectWallOptions.hidden = true;
+    setSurfaceSelectMode(true);
+    setStatus('Click faces to include as pocket walls');
+  });
+  btnDetectWalls?.addEventListener('click', () => {
+    if (!hintFloorHashes.size) return;
+    if (hintDetectWallOptions) hintDetectWallOptions.hidden = false;
+    const requestId = ++holeWorkerRequestId;
+    activeFeatureJob = 'hintWalls';
+    setHoleDetectionBusy(true);
+    beginProgressLog('User-Hinted', 'Detecting walls from floor…');
+    try {
+      getBrepHoleWorker().postMessage({
+        type: 'hintDetectWalls',
+        requestId,
+        payload: {
+          floorHashes: [...hintFloorHashes],
+          opts: {
+            includeFillets: hintIncludeFillets?.checked !== false,
+            maxDepth: Number(hintMaxDepth?.value ?? 200)
+          }
+        }
+      });
+    } catch (err) {
+      setHoleDetectionBusy(false);
+      activeFeatureJob = null;
+      setStatus(String(err?.message ?? err));
+    }
+  });
+
+  hintAxisMode?.addEventListener('change', () => {
+    const mode = hintAxisMode.value;
+    if (hintAxisManual) hintAxisManual.hidden = mode !== 'manual';
+    if (mode === 'auto' && hintFloorHashes.size && hintWallHashes.size) {
+      const requestId = ++holeWorkerRequestId;
+      activeFeatureJob = 'hintAxis';
+      getBrepHoleWorker().postMessage({
+        type: 'hintSuggestAxis',
+        requestId,
+        payload: {
+          floorHashes: [...hintFloorHashes],
+          wallHashes: [...hintWallHashes]
+        }
+      });
+    } else if (mode === 'manual') {
+      hintAxis = [
+        Number(hintAxisX?.value ?? 0),
+        Number(hintAxisY?.value ?? 0),
+        Number(hintAxisZ?.value ?? 1)
+      ];
+      updateHintStepUI();
+    }
+  });
+  for (const el of [hintAxisX, hintAxisY, hintAxisZ]) {
+    el?.addEventListener('input', () => {
+      if (hintAxisMode?.value !== 'manual') return;
+      hintAxis = [
+        Number(hintAxisX?.value ?? 0),
+        Number(hintAxisY?.value ?? 0),
+        Number(hintAxisZ?.value ?? 1)
+      ];
+      updateHintStepUI();
+    });
+  }
+
+  btnHintCalculate?.addEventListener('click', () => {
+    if (!hintFloorHashes.size || !hintWallHashes.size) return;
+    const requestId = ++holeWorkerRequestId;
+    activeFeatureJob = 'hintCalc';
+    setHoleDetectionBusy(true);
+    beginProgressLog('User-Hinted', 'Calculating pocket volume…');
+    try {
+      getBrepHoleWorker().postMessage({
+        type: 'hintCalculate',
+        requestId,
+        payload: {
+          floorHashes: [...hintFloorHashes],
+          wallHashes: [...hintWallHashes],
+          axis: hintAxis
+        }
+      });
+    } catch (err) {
+      setHoleDetectionBusy(false);
+      activeFeatureJob = null;
+      setStatus(String(err?.message ?? err));
+    }
+  });
+  btnHintNewPocket?.addEventListener('click', () => {
+    resetHintWorkflow();
+    setStatus('Define another pocket');
+  });
+
+  syncPocketMethodParamsUI();
+  refreshPocketGateUI();
 
   btnSelectSurfaces?.addEventListener('click', () => {
     setSurfaceSelectMode(!surfaceSelectMode);

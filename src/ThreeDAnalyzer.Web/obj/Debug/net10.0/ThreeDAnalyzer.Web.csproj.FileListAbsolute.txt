@@ -347,10 +347,7 @@ C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\D
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\39xyxd72v0-{0}-o5vohfkdly-o5vohfkdly.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\kznq4gujdx-{0}-6w5cdfylxp-6w5cdfylxp.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\va8ul2wrqx-{0}-fibfj7gofd-fibfj7gofd.gz
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\vytffkvvps-{0}-jd8y3t640e-jd8y3t640e.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\z3mpfkwqik-{0}-2ymtg4afzb-2ymtg4afzb.gz
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\38t6l40q7b-{0}-yrg1hlidc2-yrg1hlidc2.gz
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\zrv6rone44-{0}-lnref2x1pg-lnref2x1pg.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\p3c7f260f7-{0}-w1olpwlqjt-w1olpwlqjt.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\8656ui7y6x-{0}-je7tpbn9dh-je7tpbn9dh.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\sd6mvxek2z-{0}-bjf60luvjm-bjf60luvjm.gz
@@ -361,4 +358,15 @@ C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\D
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\1ckztelr5b-{0}-r2dg7g4ntt-r2dg7g4ntt.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\5kx3pmzt7c-{0}-y6jlzb8q2f-y6jlzb8q2f.gz
 C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\6uqb2bvl7x-{0}-u1qxta7fy6-u1qxta7fy6.gz
-C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\pgzpla8mo5-{0}-e6kh5k9lck-e6kh5k9lck.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\vytffkvvps-{0}-1calxn3nda-1calxn3nda.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\38t6l40q7b-{0}-1yguh2wy4v-1yguh2wy4v.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\zrv6rone44-{0}-86bbol3o18-86bbol3o18.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\9u6j0bxrx8-{0}-d1prqbs027-d1prqbs027.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\0lc9ar59t9-{0}-xqpqp58iyf-xqpqp58iyf.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\ej1f77647z-{0}-apvehh76oe-apvehh76oe.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\a6z1kz3tt4-{0}-ijfatzd8my-ijfatzd8my.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\5l4jfxyr7k-{0}-zezfaw33ll-zezfaw33ll.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\z62n1lap2x-{0}-q3jcccy275-q3jcccy275.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\hx7ry4xwsg-{0}-kry1cr27h6-kry1cr27h6.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\pgzpla8mo5-{0}-8454jy6u9g-8454jy6u9g.gz
+C:\Users\Public\Documents\part-rfq-pro\part-rfq-pro\src\ThreeDAnalyzer.Web\obj\Debug\net10.0\compressed\v8edkvf3j8-{0}-syc1uittmu-syc1uittmu.gz

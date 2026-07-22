@@ -90,8 +90,110 @@
                 </div>
                 <div class="feature-panel-body">
                     <div id="pocket-detection-section" class="hole-detection-section">
-                        <div class="surface-selection-status">B-Rep AAG — floor-anchored cavities (rectangular, circular, slot)</div>
-                        <button id="btn-run-pocket-detection" type="button" class="info-panel-btn" disabled title="Load a STEP file first">Detect Pockets</button>
+                        <div id="pocket-gate-warning" class="pocket-method-note" hidden>
+                            Hole detection must be run first — pocket detection operates on
+                            a copy of the part with all holes plugged, to avoid reporting
+                            hole bores as false pocket cavities.
+                            <button id="btn-goto-hole-detection" type="button" class="info-panel-btn-inline">Run Hole Detection</button>
+                        </div>
+                        <div id="pocket-preparing-notice" class="pocket-method-note" hidden>
+                            Plugging <span id="pocket-prep-hole-count">0</span> detected hole(s) and preparing the part for pocket detection…
+                        </div>
+                        <div id="pocket-prep-warning" class="pocket-method-note pocket-method-note-warn" hidden>
+                            <span id="pocket-prep-skipped-text"></span>
+                        </div>
+                        <div class="prop-group">
+                            <div class="prop-label">Detection Method</div>
+                            <select id="pocket-detection-method" class="hole-select" disabled>
+                                <option value="aag-walk">AAG Face Walk (recommended)</option>
+                                <option value="hull-subtract">Convex Hull Subtraction</option>
+                                <option value="slicing">Slicing-Based (2.5D)</option>
+                                <option value="user-hinted">User-Hinted (Manual/Assisted)</option>
+                            </select>
+                        </div>
+                        <div id="pocket-params-aag-walk" class="pocket-method-params">
+                            <div class="surface-selection-status">Floor-anchored cavities on the hole-plugged body (Body 2).</div>
+                        </div>
+                        <div id="pocket-params-hull-subtract" class="pocket-method-params" hidden>
+                            <div class="prop-group">
+                                <div class="prop-label">Min Cavity Volume (mm³)</div>
+                                <input id="pocket-min-volume" type="number" class="hole-input" value="1" min="0" step="0.5" />
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Min Opening Width (mm)</div>
+                                <input id="pocket-min-opening" type="number" class="hole-input" value="0.5" min="0.1" step="0.1" />
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Hull Tessellation Deflection (mm)</div>
+                                <input id="pocket-hull-deflection" type="number" class="hole-input" value="0.02" min="0.001" step="0.005" />
+                            </div>
+                        </div>
+                        <div id="pocket-params-slicing" class="pocket-method-params" hidden>
+                            <div class="pocket-method-note">
+                                Only finds pockets aligned to the slicing axis. Multi-axis or enclosed voids need Hull Subtraction or AAG Face Walk.
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Slicing Axis</div>
+                                <select id="pocket-slicing-axis" class="hole-select">
+                                    <option value="auto">Auto (largest flat face normal)</option>
+                                    <option value="x">X</option>
+                                    <option value="y">Y</option>
+                                    <option value="z">Z</option>
+                                </select>
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Slice Step (mm)</div>
+                                <input id="pocket-slice-step" type="number" class="hole-input" value="0.5" min="0.05" step="0.05" />
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Min Contour Area (mm²)</div>
+                                <input id="pocket-min-contour-area" type="number" class="hole-input" value="1" min="0" step="0.5" />
+                            </div>
+                        </div>
+                        <div id="pocket-params-user-hinted" class="pocket-method-params" hidden>
+                            <div class="pocket-method-note">
+                                Define one pocket at a time by selecting Body 2 faces in the viewer.
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Step 1 — Floor</div>
+                                <button id="btn-select-floor" type="button" class="info-panel-btn-inline">Select Floor</button>
+                                <span id="floor-selection-count" class="hint-selection-count">0 face(s) selected</span>
+                                <button id="btn-clear-floor" type="button" class="info-panel-btn-inline info-panel-btn-secondary">Clear</button>
+                            </div>
+                            <div class="prop-group" id="hint-wall-step" data-disabled="true">
+                                <div class="prop-label">Step 2 — Walls</div>
+                                <button id="btn-select-walls" type="button" class="info-panel-btn-inline">Select Walls</button>
+                                <button id="btn-detect-walls" type="button" class="info-panel-btn-inline">Detect Walls</button>
+                                <span id="wall-selection-count" class="hint-selection-count">0 face(s)</span>
+                                <div id="hint-detect-wall-options" hidden>
+                                    <div class="prop-group">
+                                        <label><input id="hint-include-fillets" type="checkbox" checked /> Include Fillets</label>
+                                    </div>
+                                    <div class="prop-group">
+                                        <div class="prop-label">Max Traversal Depth</div>
+                                        <input id="hint-max-depth" type="number" class="hole-input" value="200" min="1" step="1" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="prop-group" id="hint-plug-step" data-disabled="true">
+                                <div class="prop-label">Step 3 — Axis</div>
+                                <select id="hint-axis-mode" class="hole-select">
+                                    <option value="auto">Auto-suggest (from floor/walls)</option>
+                                    <option value="manual">Manual XYZ</option>
+                                </select>
+                                <div id="hint-axis-manual" hidden>
+                                    <input id="hint-axis-x" type="number" class="hole-input hint-axis-input" value="0" step="0.1" placeholder="X" />
+                                    <input id="hint-axis-y" type="number" class="hole-input hint-axis-input" value="0" step="0.1" placeholder="Y" />
+                                    <input id="hint-axis-z" type="number" class="hole-input hint-axis-input" value="1" step="0.1" placeholder="Z" />
+                                </div>
+                                <span id="hint-axis-preview" class="hint-selection-count"></span>
+                            </div>
+                            <div class="prop-group" id="hint-calculate-step" data-disabled="true">
+                                <button id="btn-hint-calculate" type="button" class="info-panel-btn">Calculate → Add to Table</button>
+                                <button id="btn-hint-new-pocket" type="button" class="info-panel-btn-secondary" hidden>Define Another Pocket</button>
+                            </div>
+                        </div>
+                        <button id="btn-run-pocket-detection" type="button" class="info-panel-btn" disabled title="Run hole detection first">Detect Pockets</button>
                     </div>
                     <div class="hole-panel-results">
                         <h2>Detected Pockets <span id="pocket-count-badge" class="hole-count-badge">0</span></h2>
