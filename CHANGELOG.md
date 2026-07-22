@@ -4,6 +4,14 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.20.12] - 2026-07-22
+
+### Fixed
+
+- **MonsterASP: all `/lib/*` URLs returned 404 (three.js / OCCT WASM unreachable, STEP import broken).** The `<location path="lib">` cache-header section in `web.config` made IIS intercept `/lib/*` and answer 404 itself instead of forwarding to the app. Removed the section; `/lib` cache headers are already set by the app in `Program.cs`.
+
+---
+
 ## [1.20.11] - 2026-07-21
 
 ### Changed
