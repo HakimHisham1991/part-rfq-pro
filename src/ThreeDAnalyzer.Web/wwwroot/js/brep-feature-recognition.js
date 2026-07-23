@@ -10,6 +10,8 @@
  * See THIRD_PARTY_NOTICES.md for Analysis Situs BSD-3-Clause attribution.
  */
 
+import { OCCT_HASH_UPPER } from './occt-hash.js?v=1.21.1';
+
 const SMOOTH_ANGLE_TOL = 0.02; // rad — |angle - π| below this ⇒ smooth
 const AXIS_DIR_DOT_MIN = 0.999; // ~2.5° — coaxial direction agreement
 const AXIS_LINE_TOL = 1e-4; // mm — perpendicular distance for coincident axes
@@ -323,7 +325,7 @@ export async function buildAAG(shapeHandle, occt, onProgress = null) {
     }
     const face = faces[i];
     const surf = getSurfaceInfo(occt, face);
-    const hash = occt.hashCode(face, 1 << 30);
+    const hash = occt.hashCode(face, OCCT_HASH_UPPER);
     nodes.push({
       faceId: i,
       faceHash: hash,
@@ -355,7 +357,7 @@ export async function buildAAG(shapeHandle, occt, onProgress = null) {
     }
     const neighbors = occt.adjacentFaces(shapeHandle, nodes[i].faceHandle);
     for (const neigh of neighbors) {
-      const j = faceIdByHash.get(occt.hashCode(neigh, 1 << 30));
+      const j = faceIdByHash.get(occt.hashCode(neigh, OCCT_HASH_UPPER));
       if (j == null || j <= i) continue;
       const pairKey = `${i}|${j}`;
       if (edgeSeen.has(pairKey)) continue;
@@ -364,7 +366,7 @@ export async function buildAAG(shapeHandle, occt, onProgress = null) {
       const shared = occt.sharedEdges(nodes[i].faceHandle, nodes[j].faceHandle);
       if (!shared.length) continue;
       const edge = shared[0];
-      const eHash = occt.hashCode(edge, 1 << 30);
+      const eHash = occt.hashCode(edge, OCCT_HASH_UPPER);
       const { classification, angle } = classifySharedEdge(
         occt,
         shapeHandle,
@@ -685,7 +687,7 @@ export function recognizeHoles(aag, options = {}) {
  */
 async function recognizeFeaturesFromAag(aag, onProgress, features = 'holes', occt = null) {
   if (features === 'pockets') {
-    const { recognizePockets } = await import('./brep-pocket-recognition.js?v=1.21.0');
+    const { recognizePockets } = await import('./brep-pocket-recognition.js?v=1.21.1');
     // Exclude cylindrical/conical hole *walls* only — planar hole bottoms may
     // still be circular pockets (NX plugged-body style).
     const holesForExclude = recognizeHoles(aag, { onProgress: null });

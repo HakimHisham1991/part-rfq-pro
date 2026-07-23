@@ -7,17 +7,18 @@
  * Shape handles stay in this module; only meshes / serializable results leave.
  */
 
-import { loadOcct, buildAAG, recognizeHoles } from './brep-feature-recognition.js?v=1.21.0';
-import { plugHoles, pickTargetSolid } from './pocket-body-preparation.js?v=1.21.0';
-import { recognizePockets } from './brep-pocket-recognition.js?v=1.21.0';
-import { detectPocketsByHullSubtraction, computeDepthAlongAxis } from './pocket-hull-subtraction.js?v=1.21.0';
-import { detectPocketsBySlicing } from './pocket-slicing.js?v=1.21.0';
+import { loadOcct, buildAAG, recognizeHoles } from './brep-feature-recognition.js?v=1.21.1';
+import { plugHoles, pickTargetSolid } from './pocket-body-preparation.js?v=1.21.1';
+import { recognizePockets } from './brep-pocket-recognition.js?v=1.21.1';
+import { detectPocketsByHullSubtraction, computeDepthAlongAxis } from './pocket-hull-subtraction.js?v=1.21.1';
+import { detectPocketsBySlicing } from './pocket-slicing.js?v=1.21.1';
 import {
   detectWallsFromFloor,
   suggestAxisFromFaces,
   buildHintedPocketRecord
-} from './pocket-user-hinted.js?v=1.21.0';
-import { sewFaces } from './brep-sew-utils.js?v=1.21.0';
+} from './pocket-user-hinted.js?v=1.21.1';
+import { sewFaces } from './brep-sew-utils.js?v=1.21.1';
+import { OCCT_HASH_UPPER } from './occt-hash.js?v=1.21.1';
 
 /** @type {null | {
  *   occt: object,
@@ -51,7 +52,7 @@ function buildFaceHashMap(occt, shape) {
   const faces = occt.getSubShapes(shape, 'face');
   for (const f of faces) {
     try {
-      map.set(occt.hashCode(f, 1 << 30), f);
+      map.set(occt.hashCode(f, OCCT_HASH_UPPER), f);
     } catch {
       /* skip */
     }

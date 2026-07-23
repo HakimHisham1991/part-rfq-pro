@@ -2,7 +2,7 @@
  * Web Worker for B-Rep feature recognition (holes + pocket methods).
  * Offloads OCCT WASM STEP import + AAG / hull / slicing from the main thread.
  */
-import { analyzeStepFileFeatures } from './brep-feature-recognition.js?v=1.21.0';
+import { analyzeStepFileFeatures } from './brep-feature-recognition.js?v=1.21.1';
 import {
   prepareBody2FromStep,
   detectPocketsOnBody2,
@@ -10,7 +10,7 @@ import {
   hintDetectWalls,
   hintCalculate,
   hintSuggestAxis
-} from './pocket-detection-pipeline.js?v=1.21.0';
+} from './pocket-detection-pipeline.js?v=1.21.1';
 
 function progressSink(requestId) {
   let lastProgressAt = 0;

@@ -4,6 +4,17 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.1] - 2026-07-23
+
+### Fixed
+
+- **Hole plugging on milled parts:** `BRepAlgoAPI_Defeaturing` was failing on every hole (warning “N hole(s) could not be plugged”). Body 2 prep now fills bores by fusing cylindrical plugs (defeaturing kept as a fast path / last resort).
+- **Convex hull subtraction returned 0 pockets:** faceted hull faces coincide with the part so the boolean cut collapsed. Now expands the hull slightly for the cut, then keeps only mesh triangles inside the tight hull and clusters them into cavities.
+- **Slicing returned 0 pockets:** section results are edge compounds without wires. Contours are now chained from sampled edge endpoints into closed loops.
+- **User-hinted “floor face(s) not found on Body 2 AAG”:** AAG/`hashCode` used upper bound `1<<30` while `meshShape` faceGroups use `2147483647`, so picked face hashes never matched. Unified on `OCCT_HASH_UPPER = 2147483647`.
+
+---
+
 ## [1.21.0] - 2026-07-22
 
 ### Added
