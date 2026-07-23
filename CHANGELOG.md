@@ -4,6 +4,17 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.2] - 2026-07-23
+
+### Fixed
+
+- **Hole plugs no longer stub far past the mouth:** plugs are placed from the opening into the bore with only a ~0.25 mm overhang (previously mid-centered on the opening with `depth + radius` height, which left a long protrusion on one side).
+- **Step / counterbore plugging:** holes are processed smallest-radius first; within a step feature each cylinder stage is fused small → large.
+- **Countersink / counterdrill defeature:** cylinder faces are removed first, the solid is healed, then the cone is removed in a second pass.
+- **Hole 3D display:** detected holes render as solid simplified cylinders (not open wall tubes); row selection tints the full cylinder volume red.
+
+---
+
 ## [1.21.1] - 2026-07-23
 
 ### Fixed

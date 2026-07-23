@@ -9,7 +9,7 @@
  */
 
 import quickhull3d from '/lib/quickhull3d.bundle.js';
-import { sewFaces, healShape, makeTriangleFace } from './brep-sew-utils.js?v=1.21.1';
+import { sewFaces, healShape, makeTriangleFace } from './brep-sew-utils.js?v=1.21.2';
 
 function dot(a, b) {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];

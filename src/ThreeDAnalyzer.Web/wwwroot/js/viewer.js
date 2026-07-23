@@ -19,7 +19,7 @@ import {
 } from './pocket-state.js';
 
 /** Cache-bust only our JS workers — never append ?v= to .wasm (breaks OCCT on some hosts). */
-const JS_ASSET_V = '1.21.1';
+const JS_ASSET_V = '1.21.2';
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('three-canvas');
@@ -3069,44 +3069,72 @@ const HOLE_COLOR_HIGHLIGHT_RING = 0xff3b3b;
 function createHoleVisual(hole) {
   const group = new THREE.Group();
   const radius = hole.radius;
-  const depth = hole.depth || radius * 2;
+  const depth = Math.max(hole.depth || radius * 2, radius * 0.5);
   const axis = new THREE.Vector3(hole.axis[0], hole.axis[1], hole.axis[2]).normalize();
-  const center = new THREE.Vector3(hole.center[0], hole.center[1], hole.center[2]);
+  // hole.center is the opening; build a solid cylinder that fills the bore
+  const opening = new THREE.Vector3(hole.center[0], hole.center[1], hole.center[2]);
+  const mid = opening.clone().add(axis.clone().multiplyScalar(depth / 2));
 
-  // Semi-transparent cylinder along hole axis
-  const cylinderGeo = new THREE.CylinderGeometry(radius, radius, depth, 32, 1, true);
+  // Closed solid cylinder (not an open tube) so selection shows a full plug volume
+  const cylinderGeo = new THREE.CylinderGeometry(radius, radius, depth, 32, 1, false);
   const cylinderMat = new THREE.MeshBasicMaterial({
     color: HOLE_COLOR_NORMAL,
     transparent: true,
-    opacity: 0.35,
+    opacity: 0.4,
     side: THREE.DoubleSide,
     depthWrite: false
   });
   const cylinder = new THREE.Mesh(cylinderGeo, cylinderMat);
   cylinder.raycast = () => {};
+  cylinder.name = 'hole-cylinder';
 
   const defaultAxis = new THREE.Vector3(0, 1, 0);
   const cylQuat = new THREE.Quaternion().setFromUnitVectors(defaultAxis, axis);
   cylinder.setRotationFromQuaternion(cylQuat);
-  cylinder.position.copy(center).add(axis.clone().multiplyScalar(depth / 2));
+  cylinder.position.copy(mid);
   group.add(cylinder);
 
-  // Torus ring at opening
+  // Torus ring at the opening (visual cue for the mouth)
   const torusGeo = new THREE.TorusGeometry(radius, Math.max(radius * 0.04, 0.05), 8, 48);
   const torusMat = new THREE.MeshBasicMaterial({
     color: HOLE_COLOR_NORMAL_RING,
     transparent: true,
-    opacity: 0.7,
+    opacity: 0.75,
     depthWrite: false
   });
   const torus = new THREE.Mesh(torusGeo, torusMat);
   torus.raycast = () => {};
-  torus.position.copy(center);
+  torus.name = 'hole-ring';
+  torus.position.copy(opening);
   const torusQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis);
   torus.setRotationFromQuaternion(torusQuat);
   group.add(torus);
 
+  // Cap disks so the solid reads clearly when highlighted (extra fill at both ends)
+  const capGeo = new THREE.CircleGeometry(radius, 32);
+  const capMat = new THREE.MeshBasicMaterial({
+    color: HOLE_COLOR_NORMAL,
+    transparent: true,
+    opacity: 0.4,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+  const capQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis);
+  const capTop = new THREE.Mesh(capGeo, capMat.clone());
+  capTop.raycast = () => {};
+  capTop.name = 'hole-cap';
+  capTop.setRotationFromQuaternion(capQuat);
+  capTop.position.copy(opening);
+  group.add(capTop);
+  const capBot = new THREE.Mesh(capGeo.clone(), capMat.clone());
+  capBot.raycast = () => {};
+  capBot.name = 'hole-cap';
+  capBot.setRotationFromQuaternion(capQuat);
+  capBot.position.copy(opening.clone().add(axis.clone().multiplyScalar(depth)));
+  group.add(capBot);
+
   group.userData.holeId = hole.id;
+  group.userData.holeMats = [cylinderMat, torusMat, capTop.material, capBot.material];
   return group;
 }
 
@@ -3128,16 +3156,17 @@ function updateHoleVisualHighlights() {
 
   holeVisualGroup.children.forEach((group) => {
     const highlighted = hasHighlight && highlightedHoleIds.has(group.userData.holeId);
-    const cylinder = group.children[0];
-    const torus = group.children[1];
-    if (cylinder?.material) {
-      cylinder.material.color.setHex(highlighted ? HOLE_COLOR_HIGHLIGHT : HOLE_COLOR_NORMAL);
-      cylinder.material.opacity = highlighted ? 0.55 : 0.35;
-    }
-    if (torus?.material) {
-      torus.material.color.setHex(highlighted ? HOLE_COLOR_HIGHLIGHT_RING : HOLE_COLOR_NORMAL_RING);
-      torus.material.opacity = highlighted ? 0.9 : 0.7;
-    }
+    group.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const isRing = child.name === 'hole-ring';
+      if (isRing) {
+        child.material.color.setHex(highlighted ? HOLE_COLOR_HIGHLIGHT_RING : HOLE_COLOR_NORMAL_RING);
+        child.material.opacity = highlighted ? 0.95 : 0.75;
+      } else {
+        child.material.color.setHex(highlighted ? HOLE_COLOR_HIGHLIGHT : HOLE_COLOR_NORMAL);
+        child.material.opacity = highlighted ? 0.65 : 0.4;
+      }
+    });
   });
 }
 

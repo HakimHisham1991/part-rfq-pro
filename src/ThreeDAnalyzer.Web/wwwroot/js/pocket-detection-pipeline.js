@@ -7,18 +7,18 @@
  * Shape handles stay in this module; only meshes / serializable results leave.
  */
 
-import { loadOcct, buildAAG, recognizeHoles } from './brep-feature-recognition.js?v=1.21.1';
-import { plugHoles, pickTargetSolid } from './pocket-body-preparation.js?v=1.21.1';
-import { recognizePockets } from './brep-pocket-recognition.js?v=1.21.1';
-import { detectPocketsByHullSubtraction, computeDepthAlongAxis } from './pocket-hull-subtraction.js?v=1.21.1';
-import { detectPocketsBySlicing } from './pocket-slicing.js?v=1.21.1';
+import { loadOcct, buildAAG, recognizeHoles } from './brep-feature-recognition.js?v=1.21.2';
+import { plugHoles, pickTargetSolid } from './pocket-body-preparation.js?v=1.21.2';
+import { recognizePockets } from './brep-pocket-recognition.js?v=1.21.2';
+import { detectPocketsByHullSubtraction, computeDepthAlongAxis } from './pocket-hull-subtraction.js?v=1.21.2';
+import { detectPocketsBySlicing } from './pocket-slicing.js?v=1.21.2';
 import {
   detectWallsFromFloor,
   suggestAxisFromFaces,
   buildHintedPocketRecord
-} from './pocket-user-hinted.js?v=1.21.1';
-import { sewFaces } from './brep-sew-utils.js?v=1.21.1';
-import { OCCT_HASH_UPPER } from './occt-hash.js?v=1.21.1';
+} from './pocket-user-hinted.js?v=1.21.2';
+import { sewFaces } from './brep-sew-utils.js?v=1.21.2';
+import { OCCT_HASH_UPPER } from './occt-hash.js?v=1.21.2';
 
 /** @type {null | {
  *   occt: object,

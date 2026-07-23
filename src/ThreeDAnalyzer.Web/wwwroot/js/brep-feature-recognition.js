@@ -10,7 +10,7 @@
  * See THIRD_PARTY_NOTICES.md for Analysis Situs BSD-3-Clause attribution.
  */
 
-import { OCCT_HASH_UPPER } from './occt-hash.js?v=1.21.1';
+import { OCCT_HASH_UPPER } from './occt-hash.js?v=1.21.2';
 
 const SMOOTH_ANGLE_TOL = 0.02; // rad — |angle - π| below this ⇒ smooth
 const AXIS_DIR_DOT_MIN = 0.999; // ~2.5° — coaxial direction agreement
@@ -687,7 +687,7 @@ export function recognizeHoles(aag, options = {}) {
  */
 async function recognizeFeaturesFromAag(aag, onProgress, features = 'holes', occt = null) {
   if (features === 'pockets') {
-    const { recognizePockets } = await import('./brep-pocket-recognition.js?v=1.21.1');
+    const { recognizePockets } = await import('./brep-pocket-recognition.js?v=1.21.2');
     // Exclude cylindrical/conical hole *walls* only — planar hole bottoms may
     // still be circular pockets (NX plugged-body style).
     const holesForExclude = recognizeHoles(aag, { onProgress: null });
