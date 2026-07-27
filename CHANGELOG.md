@@ -4,6 +4,28 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.4] - 2026-07-27
+
+### Fixed
+
+- **Viewer failed to load (`Unexpected end of input`):** `isHolePlugsActive()` was missing its closing brace after the Plug Holes UI work.
+
+---
+
+## [1.21.3] - 2026-07-27
+
+### Changed
+
+- **Hole plugging is now manual:** Detect Holes no longer auto-prepares Body 2. New **Plug Holes** and **Clear Hole Plugs** buttons sit below Detect Holes.
+- **Detect Pockets** requires Plug Holes to be active; attempting it while plugs are inactive shows a warning.
+- **Clear Hole Plugs** confirms that all Pocket Detection data will be reset, then restores Body 1.
+
+### Fixed
+
+- **Mobile hole lists:** Detected Holes and Hole Groups sections were too short on Android (45vh panel cap). Expanded panel height and gave both lists a usable min-height.
+
+---
+
 ## [1.21.2] - 2026-07-23
 
 ### Fixed

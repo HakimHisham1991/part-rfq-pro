@@ -59,6 +59,8 @@
                         <button id="btn-clear-selection" type="button" class="info-panel-btn" disabled>Clear Selection</button>
                         <div id="surface-selection-status" class="surface-selection-status">No surfaces selected</div>
                         <button id="btn-run-hole-detection" type="button" class="info-panel-btn" disabled title="Load a STEP file first">Detect Holes</button>
+                        <button id="btn-plug-holes" type="button" class="info-panel-btn" disabled title="Run Detect Holes first">Plug Holes</button>
+                        <button id="btn-clear-hole-plugs" type="button" class="info-panel-btn" disabled title="No hole plugs active">Clear Hole Plugs</button>
                     </div>
                     <div class="hole-panel-results">
                         <h2>Detected Holes <span id="hole-count-badge" class="hole-count-badge">0</span></h2>
@@ -91,10 +93,12 @@
                 <div class="feature-panel-body">
                     <div id="pocket-detection-section" class="hole-detection-section">
                         <div id="pocket-gate-warning" class="pocket-method-note" hidden>
-                            Hole detection must be run first — pocket detection operates on
-                            a copy of the part with all holes plugged, to avoid reporting
-                            hole bores as false pocket cavities.
-                            <button id="btn-goto-hole-detection" type="button" class="info-panel-btn-inline">Run Hole Detection</button>
+                            <span id="pocket-gate-warning-text">
+                                Plug Holes must be active first — pocket detection operates on
+                                a copy of the part with all holes plugged, to avoid reporting
+                                hole bores as false pocket cavities.
+                            </span>
+                            <button id="btn-goto-hole-detection" type="button" class="info-panel-btn-inline">Plug Holes</button>
                         </div>
                         <div id="pocket-preparing-notice" class="pocket-method-note" hidden>
                             Plugging <span id="pocket-prep-hole-count">0</span> detected hole(s) and preparing the part for pocket detection…

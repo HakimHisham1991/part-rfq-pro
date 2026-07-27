@@ -1015,7 +1015,26 @@ body.surface-select-mode #three-canvas {
   }
 
   .feature-panel:not(.collapsed) {
-    max-height: 45vh;
+    max-height: none;
+    min-height: 55vh;
+  }
+
+  .feature-panel:not(.collapsed) .hole-panel-results {
+    min-height: 280px;
+  }
+
+  .feature-panel:not(.collapsed) #holes-list,
+  .feature-panel:not(.collapsed) #holes-summary-list {
+    min-height: 140px;
+    max-height: none;
+  }
+
+  .feature-panel:not(.collapsed) .holes-table {
+    font-size: 13px;
+  }
+
+  .feature-panel:not(.collapsed) .holes-table tbody td {
+    padding: 10px 8px;
   }
 
   .feature-panel.collapsed {

@@ -13,13 +13,14 @@ import {
 import {
   getPocketBodyState,
   setPocketBodyState,
+  resetPocketBodyState,
   resetPocketSessionFlags,
   getHoleDetectionCompleted,
   setHoleDetectionCompleted
 } from './pocket-state.js';
 
 /** Cache-bust only our JS workers — never append ?v= to .wasm (breaks OCCT on some hosts). */
-const JS_ASSET_V = '1.21.2';
+const JS_ASSET_V = '1.21.4';
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('three-canvas');
@@ -56,6 +57,9 @@ const btnSelectSurfaces = document.getElementById('btn-select-surfaces');
 const btnSelectAllBodies = document.getElementById('btn-select-all-bodies');
 const btnClearSelection = document.getElementById('btn-clear-selection');
 const btnRunHoleDetection = document.getElementById('btn-run-hole-detection');
+const btnPlugHoles = document.getElementById('btn-plug-holes');
+const btnClearHolePlugs = document.getElementById('btn-clear-hole-plugs');
+const pocketGateWarningText = document.getElementById('pocket-gate-warning-text');
 const surfaceSelectionStatus = document.getElementById('surface-selection-status');
 const holesList = document.getElementById('holes-list');
 const holesSummaryList = document.getElementById('holes-summary-list');
@@ -2386,6 +2390,16 @@ function runHoleDetection() {
     return;
   }
 
+  // New hole run invalidates plugs / Body 2 and pocket results first
+  if (body1PartGroupBackup || getPocketBodyState()) {
+    clearPocketDetection();
+    resetHintWorkflow();
+    disposeHintHighlight();
+    restoreBody1Mesh({ clearSelection: true });
+    resetPocketBodyState();
+    resetPocketWorkerSession();
+  }
+
   // No selection yet → treat as whole-part detection
   if (selectedFaces.size === 0) {
     selectAllBodies();
@@ -2459,7 +2473,10 @@ function runPocketDetection() {
 
   const state = getPocketBodyState();
   if (!state || state.status !== 'ready') {
-    setStatus('Run hole detection first, then wait for Body 2 preparation');
+    window.alert(
+      'Plug Holes is inactive.\n\nRun “Plug Holes” after Detect Holes before running Detect Pockets. Pocket detection requires the hole-plugged Body 2.'
+    );
+    setStatus('Plug Holes first — then run Detect Pockets');
     refreshPocketGateUI();
     return;
   }
@@ -2568,51 +2585,105 @@ function syncPocketMethodParamsUI() {
   if (btnRunPocketDetection) btnRunPocketDetection.hidden = method === 'user-hinted';
 }
 
+function isHolePlugsActive() {
+  return getPocketBodyState()?.status === 'ready';
+}
+
 function refreshPocketGateUI() {
   const state = getPocketBodyState();
   const hasHolesRun = getHoleDetectionCompleted();
+  const plugsActive = state?.status === 'ready';
+  const plugsPreparing = state?.status === 'preparing';
   const methodSelect = pocketDetectionMethod;
   const runBtn = btnRunPocketDetection;
 
+  // Plug Holes / Clear Hole Plugs controls
+  if (btnPlugHoles) {
+    const canPlug =
+      hasHolesRun &&
+      !!lastLoadedArrayBuffer?.byteLength &&
+      !holeDetectionRunning &&
+      !plugsActive &&
+      !plugsPreparing;
+    btnPlugHoles.disabled = !canPlug;
+    btnPlugHoles.classList.toggle('active', plugsActive);
+    btnPlugHoles.title = plugsActive
+      ? 'Hole plugs active (Body 2 ready)'
+      : !hasHolesRun
+        ? 'Run Detect Holes first'
+        : plugsPreparing
+          ? 'Plugging holes…'
+          : 'Plug detected holes and prepare Body 2 for pocket detection';
+  }
+  if (btnClearHolePlugs) {
+    const canClear =
+      plugsActive ||
+      plugsPreparing ||
+      state?.status === 'failed';
+    // Allow clear while Plug Holes is running so the user can abort/reset
+    const blockedByOtherJob = holeDetectionRunning && activeFeatureJob !== 'prepareBody2';
+    btnClearHolePlugs.disabled = !canClear || blockedByOtherJob;
+    btnClearHolePlugs.title = canClear
+      ? 'Remove hole plugs and restore original Body 1 (clears pocket detection)'
+      : 'No hole plugs active';
+  }
+
   if (!hasHolesRun) {
     if (pocketGateWarning) pocketGateWarning.hidden = false;
+    if (pocketGateWarningText) {
+      pocketGateWarningText.textContent =
+        'Run Detect Holes, then Plug Holes — pocket detection operates on a copy of the part with holes plugged, to avoid reporting hole bores as false pocket cavities.';
+    }
+    if (btnGotoHoleDetection) btnGotoHoleDetection.textContent = 'Detect Holes';
     if (pocketPreparingNotice) pocketPreparingNotice.hidden = true;
     if (pocketPrepWarning) pocketPrepWarning.hidden = true;
     if (methodSelect) methodSelect.disabled = true;
     if (runBtn) {
       runBtn.disabled = true;
-      runBtn.title = 'Run hole detection first';
+      runBtn.title = 'Run Detect Holes, then Plug Holes first';
+    }
+    return;
+  }
+
+  if (!plugsActive && !plugsPreparing) {
+    if (pocketGateWarning) pocketGateWarning.hidden = false;
+    if (pocketGateWarningText) {
+      pocketGateWarningText.textContent =
+        'Plug Holes must be active first — pocket detection operates on a copy of the part with all holes plugged, to avoid reporting hole bores as false pocket cavities.';
+    }
+    if (btnGotoHoleDetection) btnGotoHoleDetection.textContent = 'Plug Holes';
+    if (pocketPreparingNotice) pocketPreparingNotice.hidden = true;
+    if (state?.status !== 'failed' && pocketPrepWarning) pocketPrepWarning.hidden = true;
+    if (methodSelect) methodSelect.disabled = true;
+    if (runBtn) {
+      // Keep clickable so the user gets an explicit warning
+      runBtn.disabled = holeDetectionRunning || !partGroup;
+      runBtn.title = 'Plug Holes first';
+    }
+    if (state?.status === 'failed') {
+      if (pocketPrepWarning) pocketPrepWarning.hidden = false;
+      if (pocketPrepSkippedText) {
+        pocketPrepSkippedText.textContent =
+          `Body preparation failed: ${state.error}. Pocket detection unavailable until Plug Holes succeeds.`;
+      }
     }
     return;
   }
 
   if (pocketGateWarning) pocketGateWarning.hidden = true;
 
-  if (!state || state.status === 'not-ready') {
-    prepareBody2();
-    return;
-  }
-
-  if (state.status === 'preparing') {
+  if (plugsPreparing) {
     if (pocketPreparingNotice) pocketPreparingNotice.hidden = false;
     if (pocketPrepHoleCount) pocketPrepHoleCount.textContent = String(state.holeCount ?? detectedHoles.length);
     if (methodSelect) methodSelect.disabled = true;
-    if (runBtn) runBtn.disabled = true;
+    if (runBtn) {
+      runBtn.disabled = true;
+      runBtn.title = 'Waiting for Plug Holes…';
+    }
     return;
   }
 
   if (pocketPreparingNotice) pocketPreparingNotice.hidden = true;
-
-  if (state.status === 'failed') {
-    if (pocketPrepWarning) pocketPrepWarning.hidden = false;
-    if (pocketPrepSkippedText) {
-      pocketPrepSkippedText.textContent =
-        `Body preparation failed: ${state.error}. Pocket detection unavailable for this part.`;
-    }
-    if (methodSelect) methodSelect.disabled = true;
-    if (runBtn) runBtn.disabled = true;
-    return;
-  }
 
   // ready
   if (methodSelect) methodSelect.disabled = false;
@@ -2631,6 +2702,58 @@ function refreshPocketGateUI() {
   } else if (pocketPrepWarning) {
     pocketPrepWarning.hidden = true;
   }
+}
+
+function restoreBody1Mesh({ clearSelection = true } = {}) {
+  if (!body1PartGroupBackup) return false;
+  if (partGroup) {
+    scene.remove(partGroup);
+    partGroup.traverse((child) => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
+        else child.material.dispose();
+      }
+    });
+    partGroup = null;
+  }
+  partGroup = body1PartGroupBackup;
+  body1PartGroupBackup = null;
+  scene.add(partGroup);
+  body2FaceGroups = null;
+  if (clearSelection) clearSurfaceSelection();
+  return true;
+}
+
+function clearHolePlugs({ confirm = true } = {}) {
+  const state = getPocketBodyState();
+  const hasPlugs =
+    state &&
+    (state.status === 'ready' || state.status === 'preparing' || state.status === 'failed');
+  if (!hasPlugs && !body1PartGroupBackup) {
+    setStatus('No hole plugs to clear');
+    return;
+  }
+
+  if (confirm) {
+    const ok = window.confirm(
+      'Clear Hole Plugs?\n\nThis will restore the original part (Body 1) and reset all Pocket Detection data (detected pockets will be cleared).'
+    );
+    if (!ok) return;
+  }
+
+  if (holeDetectionRunning && activeFeatureJob === 'prepareBody2') {
+    stopHoleDetection();
+  }
+
+  clearPocketDetection();
+  resetHintWorkflow();
+  disposeHintHighlight();
+  restoreBody1Mesh();
+  resetPocketBodyState();
+  resetPocketWorkerSession();
+  refreshPocketGateUI();
+  setStatus('Hole plugs cleared — Body 1 restored; pocket detection reset');
 }
 
 function prepareBody2() {
@@ -4335,12 +4458,16 @@ function bindHoleDetectionEvents() {
   });
 
   btnRunHoleDetection?.addEventListener('click', () => runHoleDetection());
+  btnPlugHoles?.addEventListener('click', () => prepareBody2());
+  btnClearHolePlugs?.addEventListener('click', () => clearHolePlugs());
   btnRunPocketDetection?.addEventListener('click', () => runPocketDetection());
 
   btnGotoHoleDetection?.addEventListener('click', () => {
     if (holePanel?.classList.contains('collapsed')) toggleHolePanelCollapse();
-    btnRunHoleDetection?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    btnRunHoleDetection?.focus();
+    const plugsNeeded = getHoleDetectionCompleted() && !isHolePlugsActive();
+    const target = plugsNeeded ? btnPlugHoles : btnRunHoleDetection;
+    target?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    target?.focus();
   });
 
   pocketDetectionMethod?.addEventListener('change', () => {
