@@ -255,12 +255,14 @@ body {
 }
 
 .feature-side-panels {
-  width: 440px;
+  width: 528px; /* 440 × 1.2 */
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  overflow: hidden;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--color-surface);
   transition: width 0.18s ease;
 }
@@ -273,6 +275,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overflow-x: hidden;
   gap: 0;
   padding: 14px;
   border-bottom: 1px solid var(--color-border-light);
@@ -285,6 +288,25 @@ body {
 
 .feature-panel:not(.collapsed) {
   flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+/* Both Hole + Pocket open: size to content and scroll the sidebar column
+   (equal flex-split was clipping Pocket Detection below the viewport). */
+.feature-side-panels:has(> #hole-panel:not(.collapsed)):has(> #pocket-panel:not(.collapsed)) > .feature-panel:not(.collapsed) {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
+}
+
+.feature-side-panels:has(> #hole-panel:not(.collapsed)):has(> #pocket-panel:not(.collapsed)) .feature-panel-body {
+  overflow: visible;
+}
+
+.feature-side-panels:has(> #hole-panel:not(.collapsed)):has(> #pocket-panel:not(.collapsed)) .hole-panel-results {
+  flex: 0 0 auto;
+  max-height: 36vh;
+  min-height: 120px;
 }
 
 .feature-panel-header {
@@ -573,6 +595,7 @@ body {
 
 .holes-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-family: var(--font-family);
   font-size: 12px;
@@ -588,14 +611,19 @@ body {
   color: var(--color-text-muted);
   border-bottom: 1px solid var(--color-border);
   padding: 6px 8px;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
 }
 
 .holes-table tbody td {
   padding: 7px 8px;
   border-bottom: 1px solid var(--color-border-light);
   color: var(--color-text);
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   font-variant-numeric: tabular-nums;
 }
 
@@ -667,6 +695,18 @@ body {
 .holes-table .col-qty {
   text-align: right;
   font-weight: 600;
+}
+
+.holes-table tfoot td {
+  padding: 8px;
+  border-top: 2px solid var(--color-border);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.holes-table tfoot .col-volume {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .hole-action-btn {

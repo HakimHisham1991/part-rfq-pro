@@ -20,7 +20,7 @@ import {
 } from './pocket-state.js';
 
 /** Cache-bust only our JS workers — never append ?v= to .wasm (breaks OCCT on some hosts). */
-const JS_ASSET_V = '1.21.4';
+const JS_ASSET_V = '1.21.7';
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('three-canvas');
@@ -2505,6 +2505,19 @@ function runPocketDetection() {
     };
   }
 
+  // Serialize holes the viewer already detected so the worker can filter plug ghosts
+  // even if its Body-2 session hole list differs.
+  params.pluggedHoles = detectedHoles.map((h) => ({
+    radius: h.radius,
+    diameter: h.diameter,
+    depth: h.depth,
+    center: h.center,
+    axis: h.axis,
+    stages: (h.stages || [])
+      .filter((s) => s.type === 'cylinder' && s.radius > 0)
+      .map((s) => ({ type: 'cylinder', radius: s.radius, depth: s.depth }))
+  }));
+
   setStatus(`Detecting pockets (${method})…`);
   setHoleDetectionBusy(true);
   beginProgressLog('Pocket Detection', `Starting pocket detection (${method})…`);
@@ -3141,8 +3154,68 @@ function clearHoleDetection() {
   if (btnAddHolesToCycle) btnAddHolesToCycle.disabled = true;
 }
 
+function pocketFootprintDiameterForFilter(pocket) {
+  if (pocket.maxBoundedSize?.diameter > 0) return pocket.maxBoundedSize.diameter;
+  const w = pocket.maxBoundedSize?.width ?? pocket.width ?? 0;
+  const l = pocket.maxBoundedSize?.length ?? pocket.length ?? 0;
+  if (pocket.shape === 'circular') return Math.max(w, l);
+  if (w > 0 && l > 0 && Math.abs(w - l) / Math.max(w, l) < 0.1) return (w + l) / 2;
+  return 0;
+}
+
+function holeRadiiForFilter(hole) {
+  const radii = [];
+  if (hole.radius > 0) radii.push(hole.radius);
+  if (hole.diameter > 0) radii.push(hole.diameter / 2);
+  for (const s of hole.stages ?? []) {
+    if (s.type === 'cylinder' && s.radius > 0) radii.push(s.radius);
+    else if (s.radius > 0) radii.push(s.radius);
+  }
+  return radii;
+}
+
+/** Main-thread safety net: drop shallow circular cavities that match detected holes. */
+function filterPluggedHoleGhostPocketsLocal(pockets, holes) {
+  if (!pockets?.length) return [];
+  if (!holes?.length) return pockets;
+  return pockets.filter((pocket) => {
+    const dia = pocketFootprintDiameterForFilter(pocket);
+    const depth = pocket.maxDepth ?? pocket.depth ?? 0;
+    // Ultra-shallow circular/patched cavities after hole plugging are plug-face ghosts
+    if (
+      dia >= 8 &&
+      depth > 0 &&
+      depth <= 2.25 &&
+      (pocket.isPatched || pocket.flagged || pocket.shape === 'circular')
+    ) {
+      return false;
+    }
+    if (!(dia > 0) || !holes?.length) return true;
+    const pR = dia / 2;
+    for (const hole of holes) {
+      for (const r of holeRadiiForFilter(hole)) {
+        const tol = Math.max(0.6, r * 0.08);
+        if (Math.abs(pR - r) > tol && Math.abs(pR - r * 1.01) > tol) continue;
+        if (depth > 0 && depth <= Math.max(3.5, (hole.depth || 0) * 0.45)) return false;
+        if ((pocket.shape === 'circular' || pocket.isPatched) && depth > 0 && depth < 6) {
+          return false;
+        }
+      }
+    }
+    return true;
+  });
+}
+
 function applyDetectedPockets(pockets) {
-  detectedPockets = pockets ?? [];
+  const incoming = pockets ?? [];
+  const filtered = filterPluggedHoleGhostPocketsLocal(incoming, detectedHoles);
+  if (filtered.length < incoming.length) {
+    appendHoleProgressLog(
+      `Removed ${incoming.length - filtered.length} plugged-hole ghost pocket(s)`,
+      'is-done'
+    );
+  }
+  detectedPockets = filtered;
   clearPocketHighlightState();
   renderPocketVisuals();
   renderPocketsList();
@@ -3191,34 +3264,107 @@ const HOLE_COLOR_HIGHLIGHT_RING = 0xff3b3b;
 
 function createHoleVisual(hole) {
   const group = new THREE.Group();
-  const radius = hole.radius;
-  const depth = Math.max(hole.depth || radius * 2, radius * 0.5);
+  if (!hole?.axis || !hole?.center || !(hole.radius > 0)) return group;
+
   const axis = new THREE.Vector3(hole.axis[0], hole.axis[1], hole.axis[2]).normalize();
-  // hole.center is the opening; build a solid cylinder that fills the bore
   const opening = new THREE.Vector3(hole.center[0], hole.center[1], hole.center[2]);
-  const mid = opening.clone().add(axis.clone().multiplyScalar(depth / 2));
-
-  // Closed solid cylinder (not an open tube) so selection shows a full plug volume
-  const cylinderGeo = new THREE.CylinderGeometry(radius, radius, depth, 32, 1, false);
-  const cylinderMat = new THREE.MeshBasicMaterial({
-    color: HOLE_COLOR_NORMAL,
-    transparent: true,
-    opacity: 0.4,
-    side: THREE.DoubleSide,
-    depthWrite: false
-  });
-  const cylinder = new THREE.Mesh(cylinderGeo, cylinderMat);
-  cylinder.raycast = () => {};
-  cylinder.name = 'hole-cylinder';
-
   const defaultAxis = new THREE.Vector3(0, 1, 0);
   const cylQuat = new THREE.Quaternion().setFromUnitVectors(defaultAxis, axis);
-  cylinder.setRotationFromQuaternion(cylQuat);
-  cylinder.position.copy(mid);
-  group.add(cylinder);
+  const capQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis);
+  const mats = [];
 
-  // Torus ring at the opening (visual cue for the mouth)
-  const torusGeo = new THREE.TorusGeometry(radius, Math.max(radius * 0.04, 0.05), 8, 48);
+  // Draw every cylindrical stage so counterbore / step holes show large + small
+  // overlapping solids (not only the smallest radius).
+  const cylStages = (hole.stages || []).filter(
+    (s) => s.type === 'cylinder' && s.radius > 0 && (s.depth > 0 || s.location)
+  );
+  /** @type {Array<{ radius: number, depth: number, mid: THREE.Vector3, mouth: THREE.Vector3 }>} */
+  let segments;
+  if (cylStages.length > 0) {
+    segments = cylStages.map((s) => {
+      const depth = Math.max(s.depth || hole.radius * 0.5, s.radius * 0.25);
+      let mid;
+      let mouth;
+      if (s.location && Array.isArray(s.location)) {
+        mid = new THREE.Vector3(s.location[0], s.location[1], s.location[2]);
+        // Prefer stage axis if present; else hole axis
+        let sAxis = axis;
+        if (s.axis && Array.isArray(s.axis)) {
+          sAxis = new THREE.Vector3(s.axis[0], s.axis[1], s.axis[2]).normalize();
+          if (sAxis.dot(axis) < 0) sAxis.negate();
+        }
+        mouth = mid.clone().addScaledVector(sAxis, -depth / 2);
+      } else {
+        mouth = opening.clone();
+        mid = opening.clone().addScaledVector(axis, depth / 2);
+      }
+      return { radius: s.radius, depth, mid, mouth };
+    });
+  } else {
+    const depth = Math.max(hole.depth || hole.radius * 2, hole.radius * 0.5);
+    segments = [
+      {
+        radius: hole.radius,
+        depth,
+        mid: opening.clone().addScaledVector(axis, depth / 2),
+        mouth: opening.clone()
+      }
+    ];
+  }
+
+  // Largest first so smaller bore draws on top when transparent
+  segments.sort((a, b) => b.radius - a.radius);
+
+  for (const seg of segments) {
+    const cylinderGeo = new THREE.CylinderGeometry(seg.radius, seg.radius, seg.depth, 32, 1, false);
+    const cylinderMat = new THREE.MeshBasicMaterial({
+      color: HOLE_COLOR_NORMAL,
+      transparent: true,
+      opacity: 0.4,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      depthTest: true
+    });
+    const cylinder = new THREE.Mesh(cylinderGeo, cylinderMat);
+    cylinder.raycast = () => {};
+    cylinder.name = 'hole-cylinder';
+    cylinder.setRotationFromQuaternion(cylQuat);
+    cylinder.position.copy(seg.mid);
+    // Keep both stages visible when they occupy the same space
+    cylinder.renderOrder = Math.round(seg.radius * 10);
+    group.add(cylinder);
+    mats.push(cylinderMat);
+
+    const capGeo = new THREE.CircleGeometry(seg.radius, 32);
+    const capMat = new THREE.MeshBasicMaterial({
+      color: HOLE_COLOR_NORMAL,
+      transparent: true,
+      opacity: 0.4,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const capTop = new THREE.Mesh(capGeo, capMat);
+    capTop.raycast = () => {};
+    capTop.name = 'hole-cap';
+    capTop.setRotationFromQuaternion(capQuat);
+    capTop.position.copy(seg.mouth);
+    capTop.renderOrder = cylinder.renderOrder + 1;
+    group.add(capTop);
+    mats.push(capMat);
+
+    const capBot = new THREE.Mesh(capGeo.clone(), capMat.clone());
+    capBot.raycast = () => {};
+    capBot.name = 'hole-cap';
+    capBot.setRotationFromQuaternion(capQuat);
+    capBot.position.copy(seg.mouth.clone().addScaledVector(axis, seg.depth));
+    capBot.renderOrder = cylinder.renderOrder + 1;
+    group.add(capBot);
+    mats.push(capBot.material);
+  }
+
+  // Ring at the overall hole opening (largest mouth radius)
+  const ringR = Math.max(...segments.map((s) => s.radius), hole.radius);
+  const torusGeo = new THREE.TorusGeometry(ringR, Math.max(ringR * 0.04, 0.05), 8, 48);
   const torusMat = new THREE.MeshBasicMaterial({
     color: HOLE_COLOR_NORMAL_RING,
     transparent: true,
@@ -3231,33 +3377,12 @@ function createHoleVisual(hole) {
   torus.position.copy(opening);
   const torusQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis);
   torus.setRotationFromQuaternion(torusQuat);
+  torus.renderOrder = 50;
   group.add(torus);
-
-  // Cap disks so the solid reads clearly when highlighted (extra fill at both ends)
-  const capGeo = new THREE.CircleGeometry(radius, 32);
-  const capMat = new THREE.MeshBasicMaterial({
-    color: HOLE_COLOR_NORMAL,
-    transparent: true,
-    opacity: 0.4,
-    side: THREE.DoubleSide,
-    depthWrite: false
-  });
-  const capQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis);
-  const capTop = new THREE.Mesh(capGeo, capMat.clone());
-  capTop.raycast = () => {};
-  capTop.name = 'hole-cap';
-  capTop.setRotationFromQuaternion(capQuat);
-  capTop.position.copy(opening);
-  group.add(capTop);
-  const capBot = new THREE.Mesh(capGeo.clone(), capMat.clone());
-  capBot.raycast = () => {};
-  capBot.name = 'hole-cap';
-  capBot.setRotationFromQuaternion(capQuat);
-  capBot.position.copy(opening.clone().add(axis.clone().multiplyScalar(depth)));
-  group.add(capBot);
+  mats.push(torusMat);
 
   group.userData.holeId = hole.id;
-  group.userData.holeMats = [cylinderMat, torusMat, capTop.material, capBot.material];
+  group.userData.holeMats = mats;
   return group;
 }
 
@@ -3825,11 +3950,12 @@ function renderPocketsList() {
     '<th class="col-name">Name</th>' +
     '<th class="col-size">Max Bounded Size</th>' +
     '<th class="col-depth">Max Depth</th>' +
-    '<th class="col-volume">Max Bounded Volume</th>' +
+    '<th class="col-volume">Cavity Volume</th>' +
     '</tr>';
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
+  let cavityVolumeTotal = 0;
   detectedPockets.forEach((pocket, index) => {
     const row = document.createElement('tr');
     row.dataset.pocketId = pocket.id;
@@ -3859,7 +3985,8 @@ function renderPocketsList() {
 
     const volumeCell = document.createElement('td');
     volumeCell.className = 'col-volume';
-    const vol = pocket.maxBoundedVolume ?? 0;
+    const vol = pocket.maxBoundedVolume ?? pocket.volume ?? 0;
+    if (vol > 0) cavityVolumeTotal += vol;
     volumeCell.textContent = vol > 0 ? `${formatNum(vol, 1)} mm³` : '—';
 
     row.appendChild(nameCell);
@@ -3875,6 +4002,16 @@ function renderPocketsList() {
   });
 
   table.appendChild(tbody);
+
+  const tfoot = document.createElement('tfoot');
+  const totalRow = document.createElement('tr');
+  totalRow.className = 'pocket-volume-total-row';
+  totalRow.innerHTML =
+    '<td class="col-name" colspan="3">Total</td>' +
+    `<td class="col-volume">${formatNum(cavityVolumeTotal, 1)} mm³</td>`;
+  tfoot.appendChild(totalRow);
+  table.appendChild(tfoot);
+
   pocketsList.appendChild(table);
 }
 
@@ -3933,10 +4070,16 @@ function exportDetectedPocketsCsv() {
     `Pocket ${index + 1}${pocket.isPatched ? ' (patched)' : ''}`,
     formatPocketBoundedSize(pocket),
     formatNum(pocket.maxDepth ?? pocket.depth, 2),
-    formatNum(pocket.maxBoundedVolume ?? 0, 1),
+    formatNum(pocket.maxBoundedVolume ?? pocket.volume ?? 0, 1),
     pocket.isPatched ? 'yes' : 'no',
     formatNum(pocket.cornerRadius ?? 0, 2)
   ]);
+
+  const cavityTotal = detectedPockets.reduce(
+    (sum, p) => sum + (p.maxBoundedVolume ?? p.volume ?? 0),
+    0
+  );
+  rows.push(['Total', '', '', formatNum(cavityTotal, 1), '', '']);
 
   downloadCsv(
     `${holeCsvFilePrefix()}_detected-pockets.csv`,
@@ -3944,7 +4087,7 @@ function exportDetectedPocketsCsv() {
       'Name',
       'MaxBoundedSize',
       'MaxDepth_mm',
-      'MaxBoundedVolume_mm3',
+      'CavityVolume_mm3',
       'Patched',
       'CornerRadius_mm'
     ],

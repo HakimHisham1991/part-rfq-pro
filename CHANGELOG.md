@@ -4,6 +4,39 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.7] - 2026-07-28
+
+### Changed
+
+- **Feature panel width:** Hole / Pocket Detection sidebar is 1.2× wider (528px) on desktop; table text wraps so columns no longer force horizontal scrolling.
+
+### Fixed
+
+- **Step-hole visuals:** every cylindrical stage is drawn as a simplified solid (large + small overlapping), not only the smallest radius.
+- **Plugged-hole ghost pockets:** stronger diameter/depth filtering, plus the viewer passes detected holes into the worker and re-filters on the main thread so shallow Ø-matched cavities (e.g. Ø17.93 × 1.75 mm) are removed.
+
+---
+
+## [1.21.6] - 2026-07-28
+
+### Changed
+
+- **Detected Pockets table:** renamed “Max Bounded Volume” to **Cavity Volume**, with a column total at the bottom (also included in CSV export).
+
+### Fixed
+
+- **Plugged holes no longer reported as pockets:** after Body 2 prep, shallow circular cavities that match plugged-hole diameter/axis/opening (plug end-face ghosts) are filtered out of AAG, hull, and slicing results.
+
+---
+
+## [1.21.5] - 2026-07-28
+
+### Fixed
+
+- **Desktop sidebar scroll:** Expanding both Hole Detection and Pocket Detection no longer clips Pocket Detection below the viewport. The feature sidebar scrolls so both panels remain reachable.
+
+---
+
 ## [1.21.4] - 2026-07-27
 
 ### Fixed
