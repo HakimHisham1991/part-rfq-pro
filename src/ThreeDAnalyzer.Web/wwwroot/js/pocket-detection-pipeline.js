@@ -10,7 +10,7 @@
 import { loadOcct, buildAAG, recognizeHoles } from './brep-feature-recognition.js?v=1.21.2';
 import { plugHoles, pickTargetSolid } from './pocket-body-preparation.js?v=1.21.2';
 import { recognizePockets } from './brep-pocket-recognition.js?v=1.21.2';
-import { detectPocketsByHullSubtraction, computeDepthAlongAxis } from './pocket-hull-subtraction.js?v=1.21.2';
+import { detectPocketsByHullSubtraction, computeDepthAlongAxis } from './pocket-hull-subtraction.js?v=1.21.11';
 import { detectPocketsBySlicing } from './pocket-slicing.js?v=1.21.2';
 import {
   detectWallsFromFloor,

@@ -1,15 +1,17 @@
 /**
  * Convex-hull subtraction pocket detection — operates on Body 2 only.
  *
- * OCCT boolean of a faceted hull that coincides with the part fails (near-zero
- * cut). We expand the hull slightly so the cut succeeds, then keep only mesh
- * triangles whose centroids lie inside the *tight* hull (geometric half-space
- * tests — no slow containsPoint). Connected components of those triangles are
- * the pocket cavities.
+ * Intended method (user-specified):
+ *  1. Wrap the plugged body with its convex hull (closes open / broken / large cavities)
+ *  2. Build that wrap as one enclosed solid
+ *  3. Subtract Body 2 from the wrap:  cavities = hull − Body2
+ *  4. Each resulting solid (or the single complement) is pocket volume
+ *
+ * A tiny outward expand is used only so the boolean does not collapse where hull
+ * facets coincide with the part skin; the thin expand-band shell is discarded.
  */
 
 import quickhull3d from '/lib/quickhull3d.bundle.js';
-import { sewFaces, healShape, makeTriangleFace } from './brep-sew-utils.js?v=1.21.2';
 
 function dot(a, b) {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -41,15 +43,6 @@ function centroidOf(points) {
   return [x / n, y / n, z / n];
 }
 
-function expandPoints(points, center, mm) {
-  return points.map((p) => {
-    const d = sub(p, center);
-    const L = Math.hypot(d[0], d[1], d[2]) || 1;
-    const s = (L + mm) / L;
-    return [center[0] + d[0] * s, center[1] + d[1] * s, center[2] + d[2] * s];
-  });
-}
-
 function tessellateForHull(occt, shape, deflection) {
   const mesh = occt.tessellate(shape, {
     linearDeflection: deflection,
@@ -63,15 +56,7 @@ function tessellateForHull(occt, shape, deflection) {
   return pts;
 }
 
-function buildHullSolid(occt, points, faces) {
-  const triFaces = [];
-  for (const face of faces) {
-    const [i, j, k] = face;
-    triFaces.push(makeTriangleFace(occt, points[i], points[j], points[k]));
-  }
-  return healShape(occt, sewFaces(occt, triFaces, 1e-3), 1e-3);
-}
-
+/** Hull face planes with outward normals (centroid on the negative / inside side). */
 function hullPlanesFromPoints(points, faces) {
   const planes = [];
   for (const face of faces) {
@@ -79,9 +64,8 @@ function hullPlanesFromPoints(points, faces) {
     const b = points[face[1]];
     const c = points[face[2]];
     const n = normalize(cross(sub(b, a), sub(c, a)));
-    planes.push({ normal: n, location: a, d: dot(n, a) });
+    planes.push({ normal: n, location: [...a], d: dot(n, a) });
   }
-  // Orient planes so the hull centroid is on the negative side
   const c = centroidOf(points);
   for (const p of planes) {
     if (dot(p.normal, c) - p.d > 0) {
@@ -92,7 +76,21 @@ function hullPlanesFromPoints(points, faces) {
   return planes;
 }
 
-/** Point inside convex hull if on the inward side of every face (tol in mm). */
+function uniqueHullPlanes(planes, angTol = 0.02, distTol = 0.4) {
+  const out = [];
+  for (const p of planes) {
+    let dup = false;
+    for (const q of out) {
+      if (dot(p.normal, q.normal) < 1 - angTol) continue;
+      if (Math.abs(p.d - q.d) > distTol) continue;
+      dup = true;
+      break;
+    }
+    if (!dup) out.push(p);
+  }
+  return out;
+}
+
 function pointInConvexHull(pt, planes, tol = 0.35) {
   for (const p of planes) {
     if (dot(p.normal, pt) - p.d > tol) return false;
@@ -100,114 +98,102 @@ function pointInConvexHull(pt, planes, tol = 0.35) {
   return true;
 }
 
-function meshVolumeAndBounds(pos, idx, triList) {
-  const verts = new Set();
-  for (const ti of triList) {
-    verts.add(idx[ti * 3]);
-    verts.add(idx[ti * 3 + 1]);
-    verts.add(idx[ti * 3 + 2]);
-  }
-  let minx = Infinity;
-  let miny = Infinity;
-  let minz = Infinity;
-  let maxx = -Infinity;
-  let maxy = -Infinity;
-  let maxz = -Infinity;
-  let cx = 0;
-  let cy = 0;
-  let cz = 0;
-  for (const v of verts) {
-    const x = pos[v * 3];
-    const y = pos[v * 3 + 1];
-    const z = pos[v * 3 + 2];
-    if (x < minx) minx = x;
-    if (y < miny) miny = y;
-    if (z < minz) minz = z;
-    if (x > maxx) maxx = x;
-    if (y > maxy) maxy = y;
-    if (z > maxz) maxz = z;
-    cx += x;
-    cy += y;
-    cz += z;
-  }
-  const n = verts.size || 1;
-  cx /= n;
-  cy /= n;
-  cz /= n;
+/**
+ * One enclosed convex solid = padded AABB ∩ half-spaces.
+ * expandMm > 0 pushes planes outward so cut(hull, body) does not vanish on
+ * coincident faces; the thin outer band is filtered after the cut.
+ */
+function buildHullSolidFromPlanes(occt, planes, bb, expandMm) {
+  const pad = Math.max(expandMm * 3, 8);
+  let solid = occt.makeBoxFromCorners(
+    { x: bb.xmin - pad, y: bb.ymin - pad, z: bb.zmin - pad },
+    { x: bb.xmax + pad, y: bb.ymax + pad, z: bb.zmax + pad }
+  );
 
-  let vol = 0;
-  const outPos = [];
-  const outIdx = [];
-  const remap = new Map();
-  for (const ti of triList) {
-    const tri = [];
-    for (let k = 0; k < 3; k++) {
-      const v = idx[ti * 3 + k];
-      if (!remap.has(v)) {
-        remap.set(v, outPos.length / 3);
-        outPos.push(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]);
-      }
-      tri.push(remap.get(v));
+  for (const p of planes) {
+    const origin = {
+      x: p.location[0] + p.normal[0] * expandMm,
+      y: p.location[1] + p.normal[1] * expandMm,
+      z: p.location[2] + p.normal[2] * expandMm
+    };
+    // halfSpace fills the side its normal points into → inward keeps the hull interior
+    const inward = { x: -p.normal[0], y: -p.normal[1], z: -p.normal[2] };
+    const hs = occt.halfSpace(origin, inward);
+    solid = occt.common(solid, hs);
+    if (occt.isNull(solid)) throw new Error('Hull half-space clip returned null');
+    if (!(Math.abs(occt.getVolume(solid)) > 1e-6)) {
+      throw new Error('Hull half-space clip collapsed');
     }
-    outIdx.push(tri[0], tri[1], tri[2]);
-    const ax = pos[idx[ti * 3] * 3] - cx;
-    const ay = pos[idx[ti * 3] * 3 + 1] - cy;
-    const az = pos[idx[ti * 3] * 3 + 2] - cz;
-    const bx = pos[idx[ti * 3 + 1] * 3] - cx;
-    const by = pos[idx[ti * 3 + 1] * 3 + 1] - cy;
-    const bz = pos[idx[ti * 3 + 1] * 3 + 2] - cz;
-    const cx2 = pos[idx[ti * 3 + 2] * 3] - cx;
-    const cy2 = pos[idx[ti * 3 + 2] * 3 + 1] - cy;
-    const cz2 = pos[idx[ti * 3 + 2] * 3 + 2] - cz;
-    vol += (ax * (by * cz2 - bz * cy2) - ay * (bx * cz2 - bz * cx2) + az * (bx * cy2 - by * cx2)) / 6;
+  }
+  return solid;
+}
+
+function solidMeshPayload(occt, solid, deflection = 0.35) {
+  const mesh = occt.tessellate(solid, {
+    linearDeflection: deflection,
+    angularDeflection: 0.35
+  });
+  if (!mesh?.positions?.length || !mesh?.indices?.length) return null;
+
+  const bb = occt.getBoundingBox(solid, true);
+  const dx = bb.xmax - bb.xmin;
+  const dy = bb.ymax - bb.ymin;
+  const dz = bb.zmax - bb.zmin;
+  const sorted = [dx, dy, dz].sort((a, b) => a - b);
+
+  let center;
+  try {
+    const com = occt.getCenterOfMass(solid);
+    center = [com.x, com.y, com.z];
+  } catch {
+    center = [(bb.xmin + bb.xmax) / 2, (bb.ymin + bb.ymax) / 2, (bb.zmin + bb.zmax) / 2];
   }
 
-  const dx = maxx - minx;
-  const dy = maxy - miny;
-  const dz = maxz - minz;
-  const sorted = [dx, dy, dz].sort((a, b) => a - b);
+  const pos =
+    mesh.positions instanceof Float32Array
+      ? Array.from(mesh.positions)
+      : [...mesh.positions];
+  const indices =
+    mesh.indices instanceof Uint32Array ? Array.from(mesh.indices) : [...mesh.indices];
+
   return {
-    volume: Math.abs(vol),
-    center: [cx, cy, cz],
+    volume: Math.abs(occt.getVolume(solid)),
+    center,
     depth: sorted[2],
     maxBoundedSize: { width: sorted[1], length: sorted[2], diameter: null },
-    plugMesh: { positions: outPos, indices: outIdx },
+    plugMesh: { positions: pos, indices },
     dims: { dx, dy, dz }
   };
 }
 
-function connectedTriangleComponents(idx, keepTris) {
-  const parent = new Int32Array(keepTris.length);
-  for (let i = 0; i < parent.length; i++) parent[i] = i;
-  const find = (a) => (parent[a] === a ? a : (parent[a] = find(parent[a])));
-  const uni = (a, b) => {
-    a = find(a);
-    b = find(b);
-    if (a !== b) parent[a] = b;
-  };
-
-  const localIndex = new Map();
-  keepTris.forEach((ti, i) => localIndex.set(ti, i));
-
-  const vertToLocals = new Map();
-  keepTris.forEach((ti, li) => {
-    for (let k = 0; k < 3; k++) {
-      const v = idx[ti * 3 + k];
-      if (!vertToLocals.has(v)) vertToLocals.set(v, []);
-      vertToLocals.get(v).push(li);
-    }
-  });
-  for (const locals of vertToLocals.values()) {
-    for (let i = 1; i < locals.length; i++) uni(locals[0], locals[i]);
+/** Fraction of sampled mesh centroids that lie inside the tight hull. */
+function fractionInsideTightHull(occt, solid, planes, tol = 0.5) {
+  let mesh;
+  try {
+    mesh = occt.tessellate(solid, { linearDeflection: 0.8, angularDeflection: 0.5 });
+  } catch {
+    return 0;
   }
-
-  const comps = new Map();
-  keepTris.forEach((ti, li) => {
-    const r = find(li);
-    if (!comps.has(r)) comps.set(r, []);
-    comps.get(r).push(ti);
-  });
-  return [...comps.values()];
+  if (!mesh?.indices?.length) return 0;
+  const pos = mesh.positions;
+  const idx = mesh.indices;
+  const triCount = idx.length / 3;
+  const stride = Math.max(1, Math.floor(triCount / 60));
+  let inside = 0;
+  let n = 0;
+  for (let t = 0; t < idx.length; t += 3 * stride) {
+    const i0 = idx[t] * 3;
+    const i1 = idx[t + 1] * 3;
+    const i2 = idx[t + 2] * 3;
+    const pt = [
+      (pos[i0] + pos[i1] + pos[i2]) / 3,
+      (pos[i0 + 1] + pos[i1 + 1] + pos[i2 + 1]) / 3,
+      (pos[i0 + 2] + pos[i1 + 2] + pos[i2 + 2]) / 3
+    ];
+    n += 1;
+    if (pointInConvexHull(pt, planes, tol)) inside += 1;
+  }
+  return n > 0 ? inside / n : 0;
 }
 
 export function groupByParallelNormal(occt, faces, tol = 0.08) {
@@ -242,11 +228,9 @@ export function areOpposite(g0, g1, tol = 0.08) {
 }
 
 export function computeDepthAlongAxis(_occt, solidOrDims, axis) {
-  // Accept either an OCCT solid or a dims/center record from mesh cavities
   if (solidOrDims?.dims) {
     const a = normalize(axis);
     const { dx, dy, dz } = solidOrDims.dims;
-    // Project AABB extent onto axis (axis-aligned approx)
     return Math.abs(a[0]) * dx + Math.abs(a[1]) * dy + Math.abs(a[2]) * dz;
   }
   const occt = _occt;
@@ -275,7 +259,7 @@ export function computeDepthAlongAxis(_occt, solidOrDims, axis) {
 
 /**
  * @param {object} occt
- * @param {number} body2Shape
+ * @param {number} body2Shape  hole-plugged body
  * @param {{ minVolume?:number, minOpeningWidth?:number, hullDeflection?:number, hullExpandMm?:number }} params
  */
 export function detectPocketsByHullSubtraction(occt, body2Shape, params = {}, onProgress = null) {
@@ -285,71 +269,103 @@ export function detectPocketsByHullSubtraction(occt, body2Shape, params = {}, on
 
   const minVolume = params.minVolume ?? 1;
   const minOpeningWidth = params.minOpeningWidth ?? 0.5;
-  const hullDeflection = params.hullDeflection ?? 0.5;
-  const expandMm = params.hullExpandMm ?? 1.2;
+  // UI default was 0.02 (very fine); clamp so hull build stays responsive
+  const hullDeflection = Math.max(params.hullDeflection ?? 0.5, 0.15);
+  // Small expand so boolean succeeds on coincident hull/part faces
+  const expandMm = params.hullExpandMm ?? 0.35;
 
-  report('Tessellating Body 2 for convex hull…', 15);
+  report('Tessellating Body 2 for convex hull…', 10);
   const points = tessellateForHull(occt, body2Shape, hullDeflection);
   if (points.length < 4) throw new Error('Too few points for convex hull');
 
-  report(`Building convex hull (${points.length} points)…`, 30);
+  report(`Building convex hull (${points.length} points)…`, 22);
   const hullFaceIdx = quickhull3d(points);
   if (!hullFaceIdx?.length) throw new Error('QuickHull produced no faces');
 
-  const center = centroidOf(points);
-  const tightPlanes = hullPlanesFromPoints(points, hullFaceIdx);
-  const expandedPts = expandPoints(points, center, expandMm);
+  const tightPlanes = uniqueHullPlanes(hullPlanesFromPoints(points, hullFaceIdx));
+  const bb = occt.getBoundingBox(body2Shape, true);
+  const bodyVol = Math.abs(occt.getVolume(body2Shape));
 
-  report('Boolean cut: expanded hull − Body 2…', 45);
-  let cutMesh = null;
+  report(`Building enclosed hull solid (${tightPlanes.length} planes)…`, 35);
+  const hullSolid = buildHullSolidFromPlanes(occt, tightPlanes, bb, expandMm);
+  const hullVol = Math.abs(occt.getVolume(hullSolid));
+  if (!(hullVol > bodyVol * 0.99)) {
+    throw new Error('Hull solid is not larger than Body 2 — wrap failed');
+  }
+
+  report('Subtracting Body 2 from hull wrap (cavities = hull − part)…', 55);
+  let cavityCompound;
   try {
-    const hullExp = buildHullSolid(occt, expandedPts, hullFaceIdx);
-    const cut = occt.cut(hullExp, body2Shape);
-    if (!occt.isNull(cut)) {
-      cutMesh = occt.tessellate(cut, { linearDeflection: 0.5, angularDeflection: 0.35 });
-    }
+    // Removes Body2 from the wrap → leftover volume is every closed cavity
+    cavityCompound = occt.cut(hullSolid, body2Shape);
   } catch (err) {
-    throw new Error(`Hull cut failed: ${err?.message ?? err}`);
+    throw new Error(`Hull − Body2 cut failed: ${err?.message ?? err}`);
   }
-  if (!cutMesh?.indices?.length) throw new Error('Hull cut produced empty mesh');
+  if (occt.isNull(cavityCompound)) throw new Error('Hull − Body2 returned null');
 
-  report('Filtering shell padding from cavities…', 65);
-  const pos = cutMesh.positions;
-  const idx = cutMesh.indices;
-  const keep = [];
-  for (let t = 0; t < idx.length; t += 3) {
-    const i0 = idx[t] * 3;
-    const i1 = idx[t + 1] * 3;
-    const i2 = idx[t + 2] * 3;
-    const cx = (pos[i0] + pos[i1] + pos[i2]) / 3;
-    const cy = (pos[i0 + 1] + pos[i1 + 1] + pos[i2 + 1]) / 3;
-    const cz = (pos[i0 + 2] + pos[i1 + 2] + pos[i2 + 2]) / 3;
-    // Keep triangles well inside the tight hull (= real cavities).
-    // A small negative tolerance rejects the thin expansion-band shell whose
-    // centroids sit just outside / on the tight hull surface.
-    if (pointInConvexHull([cx, cy, cz], tightPlanes, -0.25)) {
-      keep.push(t / 3);
-    }
+  const cutVol = Math.abs(occt.getVolume(cavityCompound));
+  report(
+    `Cavity compound ${cutVol.toFixed(0)} mm³ (hull ${hullVol.toFixed(0)} − body ${bodyVol.toFixed(0)})…`,
+    65
+  );
+
+  if (!(cutVol >= minVolume)) {
+    report('No cavity volume above minimum', 100);
+    return [];
   }
 
-  report(`Clustering ${keep.length} cavity triangles…`, 80);
-  const comps = connectedTriangleComponents(idx, keep);
+  // Explode into separate cavity solids when OCCT returns a compound
+  let solids = [];
+  try {
+    solids = occt.getSubShapes(cavityCompound, 'solid') || [];
+  } catch {
+    solids = [];
+  }
+  if (!solids.length) solids = [cavityCompound];
+  report(`Found ${solids.length} solid(s) in cavity compound…`, 72);
+
   const pockets = [];
-
-  for (let i = 0; i < comps.length; i++) {
-    const info = meshVolumeAndBounds(pos, idx, comps[i]);
-    if (info.volume < minVolume) continue;
-    if (comps[i].length < 8) continue;
-    const opening = Math.min(info.dims.dx, info.dims.dy, info.dims.dz);
-    if (opening < minOpeningWidth) continue;
-    const sorted = [info.dims.dx, info.dims.dy, info.dims.dz].sort((a, b) => b - a);
-    // Reject thin hull-cap sheets (large extent, tiny thickness)
-    if (sorted[2] > 1e-6 && sorted[0] / sorted[2] > 12 && sorted[2] < Math.max(3, minOpeningWidth * 4)) {
+  for (let i = 0; i < solids.length; i++) {
+    const solid = solids[i];
+    let vol = 0;
+    try {
+      vol = Math.abs(occt.getVolume(solid));
+    } catch {
       continue;
     }
-    const flagged = sorted[1] > 0 && sorted[0] / sorted[1] > 6 ? 'possible-merge-artifact' : null;
+    if (!(vol >= minVolume)) continue;
 
-    // Tool axis ≈ shortest bbox axis (pocket depth direction heuristic)
+    // Drop the thin expand-band shell (lives outside the tight hull)
+    const fracInside = fractionInsideTightHull(occt, solid, tightPlanes, 0.6);
+    if (fracInside < 0.35) {
+      report(`Skipping shell solid ${i + 1} (${(fracInside * 100).toFixed(0)}% inside tight hull)…`, 75);
+      continue;
+    }
+
+    // Mass center should sit in a cavity (inside tight wrap), not in the outer band
+    try {
+      const com = occt.getCenterOfMass(solid);
+      if (!pointInConvexHull([com.x, com.y, com.z], tightPlanes, Math.max(expandMm, 0.75))) {
+        // Allow if most of the mesh is still inside (mixed solid)
+        if (fracInside < 0.6) continue;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    report(`Meshing cavity solid ${i + 1}/${solids.length} (${vol.toFixed(0)} mm³)…`, 78 + Math.round((18 * i) / solids.length));
+    const info = solidMeshPayload(occt, solid, 0.35);
+    if (!info?.plugMesh) continue;
+
+    const opening = Math.min(info.dims.dx, info.dims.dy, info.dims.dz);
+    if (opening < minOpeningWidth && vol < minVolume * 5) continue;
+
+    const sorted = [info.dims.dx, info.dims.dy, info.dims.dz].sort((a, b) => b - a);
+    // Ultra-thin expand crust only
+    if (sorted[2] > 1e-6 && sorted[0] / sorted[2] > 20 && sorted[2] < expandMm * 3 && vol < bodyVol * 0.02) {
+      continue;
+    }
+
     let toolAxis = [0, 0, 1];
     if (info.dims.dx <= info.dims.dy && info.dims.dx <= info.dims.dz) toolAxis = [1, 0, 0];
     else if (info.dims.dy <= info.dims.dx && info.dims.dy <= info.dims.dz) toolAxis = [0, 1, 0];
@@ -367,7 +383,7 @@ export function detectPocketsByHullSubtraction(occt, body2Shape, params = {}, on
       shape: null,
       isFullyEnclosed: false,
       isThrough: false,
-      flagged,
+      flagged: null,
       detectionMethod: 'hull-subtract',
       faceIndices: null,
       wallSurfaceArea: null,
@@ -379,8 +395,42 @@ export function detectPocketsByHullSubtraction(occt, body2Shape, params = {}, on
     });
   }
 
+  // If filtering removed everything but the compound has real volume, keep it as one pocket
+  if (pockets.length === 0 && cutVol >= minVolume) {
+    report('Using full cavity compound as one pocket volume…', 90);
+    const info = solidMeshPayload(occt, cavityCompound, 0.4);
+    if (info?.plugMesh && info.volume >= minVolume) {
+      let toolAxis = [0, 0, 1];
+      if (info.dims.dx <= info.dims.dy && info.dims.dx <= info.dims.dz) toolAxis = [1, 0, 0];
+      else if (info.dims.dy <= info.dims.dx && info.dims.dy <= info.dims.dz) toolAxis = [0, 1, 0];
+      pockets.push({
+        id: 'hull-all',
+        volume: info.volume,
+        maxBoundedVolume: info.volume,
+        maxDepth: info.depth,
+        depth: info.depth,
+        toolAxis,
+        axis: toolAxis,
+        accessType: 'single-axis',
+        accessAxes: [toolAxis],
+        shape: null,
+        isFullyEnclosed: false,
+        isThrough: false,
+        flagged: null,
+        detectionMethod: 'hull-subtract',
+        faceIndices: null,
+        wallSurfaceArea: null,
+        minCornerRadius: null,
+        maxBoundedSize: info.maxBoundedSize,
+        center: info.center,
+        plugMesh: info.plugMesh,
+        dims: info.dims
+      });
+    }
+  }
+
   pockets.sort((a, b) => b.volume - a.volume);
-  report(`Found ${pockets.length} cavity(ies)`, 100);
+  report(`Found ${pockets.length} cavity volume(s)`, 100);
   return pockets;
 }
 

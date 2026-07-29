@@ -4,6 +4,38 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.11] - 2026-07-29
+
+### Changed
+
+- **Convex Hull Subtraction** rewritten to the intended pipeline: wrap Body 2 with one enclosed convex solid (closes open/broken cavities) → subtract the plugged part → leftover solids are cavity volumes. Dropped the “deep basin” heuristics that fought this model. Prefer testing on `SAMPLE PART/002 - HOLES_POCKET.stp`.
+
+---
+
+## [1.21.10] - 2026-07-29
+
+### Fixed
+
+- **Hull subtraction coated the whole part as one pocket:** `hull − body` is a single wrap-around complement (~part-sized). Detection now keeps only triangles deep inside the tight hull and region-grows each basin, so results are recessed cavities instead of one part-shaped volume.
+
+---
+
+## [1.21.9] - 2026-07-29
+
+### Fixed
+
+- **Hull subtraction returned 0 pockets:** the cut volume was correct, but cavity meshes were discarded because boundary faces sit on the part skin (`containsPoint` treated them as “inside the body”). Extraction now uses cut solids + tight-hull fraction checks (with a mesh-cluster fallback), so real cavities are kept.
+
+---
+
+## [1.21.8] - 2026-07-29
+
+### Fixed
+
+- **Convex hull subtraction showed the part body as pockets:** hull solid is now built by clipping a padded AABB with half-spaces (instead of sewing QuickHull triangles), then `hull − Body 2` is volume-checked. Cavity clusters whose centroids lie inside the finished solid are rejected, so magenta visuals fill real cavities rather than the workpiece skin.
+
+---
+
 ## [1.21.7] - 2026-07-28
 
 ### Changed

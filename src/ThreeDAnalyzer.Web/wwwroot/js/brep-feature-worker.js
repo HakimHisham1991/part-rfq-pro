@@ -10,7 +10,7 @@ import {
   hintDetectWalls,
   hintCalculate,
   hintSuggestAxis
-} from './pocket-detection-pipeline.js?v=1.21.7';
+} from './pocket-detection-pipeline.js?v=1.21.11';
 
 function progressSink(requestId) {
   let lastProgressAt = 0;
