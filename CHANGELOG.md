@@ -4,6 +4,14 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.12] - 2026-08-03
+
+### Changed
+
+- **Convex Hull Subtraction** pipeline: wrap Body 2 → shrink wrap **0.2 mm** inward along normals → `cavities = shrunkHull − Body2` → mesh each leftover solid. The shrink severs the thin hull/part contact so parts like `CNC-milling-7.stp` split into separate pocket cavities (expected 5) instead of one coating volume.
+
+---
+
 ## [1.21.11] - 2026-07-29
 
 ### Changed

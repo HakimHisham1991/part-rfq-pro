@@ -20,7 +20,7 @@ import {
 } from './pocket-state.js';
 
 /** Cache-bust only our JS workers — never append ?v= to .wasm (breaks OCCT on some hosts). */
-const JS_ASSET_V = '1.21.11';
+const JS_ASSET_V = '1.21.12';
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('three-canvas');
@@ -2495,7 +2495,8 @@ function runPocketDetection() {
     params = {
       minVolume: Number(document.getElementById('pocket-min-volume')?.value ?? 1),
       minOpeningWidth: Number(document.getElementById('pocket-min-opening')?.value ?? 0.5),
-      hullDeflection: Number(document.getElementById('pocket-hull-deflection')?.value ?? 0.02)
+      hullDeflection: Number(document.getElementById('pocket-hull-deflection')?.value ?? 0.3),
+      hullShrinkMm: Number(document.getElementById('pocket-hull-shrink')?.value ?? 0.2)
     };
   } else if (method === 'slicing') {
     params = {
