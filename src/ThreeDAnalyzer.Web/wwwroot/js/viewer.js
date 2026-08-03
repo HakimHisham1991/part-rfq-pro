@@ -20,7 +20,7 @@ import {
 } from './pocket-state.js';
 
 /** Cache-bust only our JS workers — never append ?v= to .wasm (breaks OCCT on some hosts). */
-const JS_ASSET_V = '1.21.12';
+const JS_ASSET_V = '1.21.13';
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('three-canvas');

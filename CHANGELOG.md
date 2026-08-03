@@ -4,6 +4,14 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.13] - 2026-08-03
+
+### Fixed
+
+- **AAG Face Walk missed sharp pockets with holes** (e.g. `002 - HOLES_POCKET.stp`): dihedral classification never produced concave edges (outward-normal bisector cannot separate box corners from pocket floors). Vexity now uses ± in-face left-of-edge probes (material on both sides ⇒ concave). Floor detection also accepts sharp floors with convex cylinder through-hole openings so the middle pocket is recognized after hole plugging.
+
+---
+
 ## [1.21.12] - 2026-08-03
 
 ### Changed

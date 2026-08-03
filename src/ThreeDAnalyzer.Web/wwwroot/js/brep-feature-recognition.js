@@ -253,8 +253,13 @@ function getSurfaceInfo(occt, face) {
 
 /**
  * Classify the shared edge between two faces as convex / concave / smooth.
- * Uses outward solid normals (orientation-aware) and a material-side probe
- * via containsPoint — the AAG vexity signal Analysis Situs relies on.
+ *
+ * Joshi & Chang / Analysis Situs: material dihedral < π ⇒ convex, > π ⇒ concave.
+ * The outward-normal bisector alone cannot separate these — it points into empty
+ * space for both a box exterior corner and a pocket floor corner. Instead we
+ * probe along ± the average of the in-face "left-of-edge" directions (t × n):
+ * - both probes in material ⇒ re-entrant / concave (material spans > π)
+ * - both probes in air ⇒ convex (material spans < π)
  */
 function classifySharedEdge(occt, solid, edge, faceA, faceB, radiusHint = 1) {
   const params = occt.curveParameters(edge);
@@ -274,18 +279,27 @@ function classifySharedEdge(occt, solid, edge, faceA, faceB, radiusHint = 1) {
     return { classification: 'smooth', angle: Math.PI };
   }
 
-  // Probe along the outward-normal bisector. For a convex edge the bisector
-  // leaves the solid; for a concave (re-entrant) edge it enters the solid.
-  const bisector = v3normalize(v3add(nA, nB));
-  const probeDist = Math.max(1e-3, Math.min(0.05, radiusHint * 0.01));
-  const probe = v3add(p, v3scale(bisector, probeDist));
+  const t = v3normalize(occt.curveTangent(edge, midParam));
+  const leftA = v3normalize(v3cross(t, nA));
+  const leftB = v3normalize(v3cross(t, nB));
+  let axis = v3add(leftA, leftB);
+  if (v3len(axis) < 1e-9) {
+    // Opposite in-face dirs — fall back to outward-normal bisector axis
+    axis = v3add(nA, nB);
+  }
+  axis = v3normalize(axis);
 
-  let inside = false;
+  const probeDist = Math.max(0.05, Math.min(0.35, (radiusHint || 1) * 0.05));
+  const probe = v3add(p, v3scale(axis, probeDist));
+  const probeOpp = v3add(p, v3scale(axis, -probeDist));
+
+  let inA = false;
+  let inB = false;
   try {
-    inside = occt.containsPoint(solid, probe, probeDist * 0.5);
+    inA = occt.containsPoint(solid, probe, probeDist * 0.35);
+    inB = occt.containsPoint(solid, probeOpp, probeDist * 0.35);
   } catch {
     // Fallback: interior dihedral from cross·tangent sign
-    const t = v3normalize(occt.curveTangent(edge, midParam));
     const convexity = v3dot(v3cross(nA, nB), t);
     return {
       classification: convexity > 0 ? 'convex' : 'concave',
@@ -293,11 +307,28 @@ function classifySharedEdge(occt, solid, edge, faceA, faceB, radiusHint = 1) {
     };
   }
 
-  // Map to the prompt's angle convention: > π+tol concave, < π−tol convex
-  const dihedral = inside ? Math.PI + angleBetweenNormals : Math.PI - angleBetweenNormals;
-  let classification = 'smooth';
-  if (dihedral > Math.PI + SMOOTH_ANGLE_TOL) classification = 'concave';
-  else if (dihedral < Math.PI - SMOOTH_ANGLE_TOL) classification = 'convex';
+  let classification;
+  if (inA && inB) {
+    classification = 'concave';
+  } else if (!inA && !inB) {
+    classification = 'convex';
+  } else {
+    // Ambiguous (near-smooth / numeric) — prefer outward-bisector: outside ⇒ convex
+    const outBis = v3normalize(v3add(nA, nB));
+    const outProbe = v3add(p, v3scale(outBis, probeDist));
+    let outInside = false;
+    try {
+      outInside = occt.containsPoint(solid, outProbe, probeDist * 0.35);
+    } catch {
+      outInside = false;
+    }
+    classification = outInside ? 'concave' : 'convex';
+  }
+
+  const dihedral =
+    classification === 'concave'
+      ? Math.PI + angleBetweenNormals
+      : Math.PI - angleBetweenNormals;
 
   return { classification, angle: dihedral };
 }
@@ -687,7 +718,7 @@ export function recognizeHoles(aag, options = {}) {
  */
 async function recognizeFeaturesFromAag(aag, onProgress, features = 'holes', occt = null) {
   if (features === 'pockets') {
-    const { recognizePockets } = await import('./brep-pocket-recognition.js?v=1.21.2');
+    const { recognizePockets } = await import('./brep-pocket-recognition.js?v=1.21.13');
     // Exclude cylindrical/conical hole *walls* only — planar hole bottoms may
     // still be circular pockets (NX plugged-body style).
     const holesForExclude = recognizeHoles(aag, { onProgress: null });

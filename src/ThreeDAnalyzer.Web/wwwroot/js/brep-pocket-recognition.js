@@ -92,8 +92,50 @@ function isCircularPocketFloor(idx, aag) {
 }
 
 /**
+ * Sharp rectangular floor with through-holes: ≥3 concave links to planar
+ * walls; convex cylinder/cone neighbors are hole openings (patched later).
+ * Stock faces and ordinary walls must not match.
+ */
+function isSharpFloorWithHoleOpenings(idx, aag) {
+  const { nodes, adjacency } = aag;
+  const n = nodes[idx];
+  if (n.surfaceType !== 'plane' || !n.axis) return false;
+  if (isLikelyStockFace(idx, aag)) return false;
+
+  const nFloor = v3normalize(n.axis);
+  let planarWallConcave = 0;
+  let convexOpenings = 0;
+  let convexOther = 0;
+
+  for (const e of adjacency[idx]) {
+    const to = nodes[e.to];
+    if (!to) continue;
+    if (e.classification === 'concave' || e.classification === 'smooth') {
+      if (to.surfaceType === 'plane' && to.axis) {
+        if (Math.abs(v3dot(nFloor, v3normalize(to.axis))) < 0.35) {
+          planarWallConcave++;
+        }
+      }
+    } else if (e.classification === 'convex') {
+      if (to.surfaceType === 'cylinder' || to.surfaceType === 'cone') {
+        convexOpenings++;
+      } else {
+        convexOther++;
+      }
+    }
+  }
+
+  // Need clear rising walls; allow many hole openings; reject if convex
+  // planar/other rims dominate (typical wall: 1 convex to ceiling).
+  if (planarWallConcave < 3) return false;
+  if (convexOther > planarWallConcave) return false;
+  return convexOpenings > 0 || planarWallConcave >= 3;
+}
+
+/**
  * Floor candidate:
  * - Closed filleted: no convex, smooth/concave into blends
+ * - Sharp + hole openings: concave walls + convex cylinder through-cuts
  * - Circular: torus + cylinder neighbors
  * - Broken (patched): many transition tori + convex through-cut openings
  */
@@ -117,6 +159,9 @@ function isFloorCandidate(idx, aag) {
     if (c.concave > 0) return true;
     return fillet && interior > 0;
   }
+
+  // Sharp pocket floor perforated by holes (e.g. HOLES_POCKET.stp)
+  if (isSharpFloorWithHoleOpenings(idx, aag)) return true;
 
   // Circular pocket / counterbore floor
   if (isCircularPocketFloor(idx, aag)) return true;
@@ -712,6 +757,7 @@ export function recognizePockets(aag, options = {}) {
 
   report('Finding pocket floors…', 96);
   const floors = findFloorCandidates(aag, holeFaceSet);
+  report(`Found ${floors.length} floor candidate(s)`, 96);
   const visited = new Set();
   const pockets = [];
 
