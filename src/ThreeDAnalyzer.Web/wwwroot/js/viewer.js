@@ -20,7 +20,7 @@ import {
 } from './pocket-state.js';
 
 /** Cache-bust only our JS workers — never append ?v= to .wasm (breaks OCCT on some hosts). */
-const JS_ASSET_V = '1.21.30';
+const JS_ASSET_V = '1.21.33';
 /** Reject hole-plug discs when picking a pocket floor on Body 2 (mm). */
 const HINT_MIN_FLOOR_PICK_SPAN_MM = 40;
 

@@ -20,6 +20,12 @@ function v3toArray(v) {
   return [v.x, v.y, v.z];
 }
 
+function toVec3(v) {
+  if (!v) return null;
+  if (Array.isArray(v)) return { x: v[0], y: v[1], z: v[2] };
+  return v;
+}
+
 function v3dot(a, b) {
   return a.x * b.x + a.y * b.y + a.z * b.z;
 }
@@ -404,7 +410,7 @@ function estimatePocketDepth(floorFace, faces, nodes, rimEdges, patchOpenings = 
  */
 function computePluggedBody(occt, floorNode, depth, axis) {
   if (!occt || !floorNode?.faceHandle || !(depth > 0)) return null;
-  const n = v3normalize(axis || floorNode.axis || { x: 0, y: 0, z: 1 });
+  const n = v3normalize(toVec3(axis) || floorNode.axis || { x: 0, y: 0, z: 1 });
   const dx = n.x * depth;
   const dy = n.y * depth;
   const dz = n.z * depth;
@@ -479,6 +485,7 @@ function computePluggedBody(occt, floorNode, depth, axis) {
       volume,
       width: Math.max(0, maxU - minU),
       length: Math.max(0, maxV - minV),
+      solid: prism,
       mesh: { positions, indices },
       xAxis: v3toArray(xAxis),
       yAxis: v3toArray(yAxis)
@@ -671,6 +678,14 @@ function buildPocketRecord({
   const plug = floorFace
     ? computePluggedBody(occt, floorFace, depth, axis)
     : null;
+  if (plug?.solid && occt) {
+    try {
+      occt.release(plug.solid);
+    } catch {
+      /* ignore */
+    }
+    plug.solid = null;
+  }
 
   let width = plug?.width || footprint.width;
   let length = plug?.length || footprint.length;
@@ -731,6 +746,21 @@ function buildPocketRecord({
     method: 'brep-aag',
     source: 'brep'
   };
+}
+
+/**
+ * Build a solid prism that fills a recognized pocket (for iterative AAG union).
+ * Caller must occt.release() the returned handle when done.
+ */
+export function buildPocketFillSolid(occt, pocket, aag) {
+  if (!occt || !aag || pocket?.floorFaceId == null) return null;
+  const floorNode = aag.nodes[pocket.floorFaceId];
+  if (!floorNode?.faceHandle) return null;
+  const depth = pocket.depth ?? pocket.maxDepth ?? 0;
+  if (!(depth > 0.05)) return null;
+  const axis = toVec3(pocket.axis) || toVec3(pocket.floorNormal) || floorNode.axis;
+  const plug = computePluggedBody(occt, floorNode, depth, axis);
+  return plug?.solid ?? null;
 }
 
 /**

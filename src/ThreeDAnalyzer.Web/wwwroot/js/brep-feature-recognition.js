@@ -353,6 +353,8 @@ export async function buildAAG(shapeHandle, occt, onProgress = null) {
   for (let i = 0; i < faces.length; i++) {
     if (i % 20 === 0) {
       report(`Reading face surfaces… ${i + 1} / ${faces.length}`, 10 + Math.round((i / Math.max(faces.length, 1)) * 35));
+      // Yield so worker progress messages flush (face surface queries are heavy WASM).
+      await new Promise((r) => setTimeout(r, 0));
     }
     const face = faces[i];
     const surf = getSurfaceInfo(occt, face);

@@ -12,8 +12,9 @@ import { plugHoles, pickTargetSolid } from './pocket-body-preparation.js?v=1.21.
 import {
   recognizePockets,
   recognizePocketFromFloor,
-  findFloorCandidates
-} from './brep-pocket-recognition.js?v=1.21.21';
+  findFloorCandidates,
+  buildPocketFillSolid
+} from './brep-pocket-recognition.js?v=1.21.33';
 import { detectPocketsByHullSubtraction } from './pocket-hull-subtraction.js?v=1.21.12';
 import { detectPocketsBySlicing } from './pocket-slicing.js?v=1.21.2';
 import { detectPocketsByMorphologicalClosing } from './pocket-morphological-closing.js?v=1.21.24';
@@ -282,7 +283,12 @@ function tagAagPockets(pockets) {
     toolAxis: p.axis ?? p.floorNormal ?? null,
     accessType: p.isThrough ? 'through' : 'single-axis',
     isFullyEnclosed: false,
-    flagged: p.isPatched ? 'patched-floor' : null,
+    flagged:
+      (p.aagWalkPass ?? 1) > 1
+        ? `aag-pass-${p.aagWalkPass}`
+        : p.isPatched
+          ? 'patched-floor'
+          : null,
     wallSurfaceArea: null,
     minCornerRadius: null
   }));
@@ -436,6 +442,156 @@ function filterPluggedHoleGhostPockets(pockets, holes, onProgress = null) {
   return kept;
 }
 
+const AAG_WALK_MAX_PASSES = 20;
+
+function pocketCenterDist(a, b) {
+  const c0 = toVec3(a?.center) || toVec3(a?.floorLocation);
+  const c1 = toVec3(b?.center) || toVec3(b?.floorLocation);
+  if (!c0 || !c1) return Infinity;
+  return Math.hypot(c0.x - c1.x, c0.y - c1.y, c0.z - c1.z);
+}
+
+function isDuplicatePocket(candidate, existing) {
+  const vol = candidate.maxBoundedVolume ?? candidate.volume ?? 0;
+  for (const e of existing) {
+    const ev = e.maxBoundedVolume ?? e.volume ?? 0;
+    if (Math.abs(ev - vol) > Math.max(1, vol * 0.02)) continue;
+    if (pocketCenterDist(candidate, e) < 2) return true;
+  }
+  return false;
+}
+
+/**
+ * Iterative AAG walk: detect floor pockets, union fill solids into the working
+ * body, rebuild AAG, repeat until no new pockets (exposes through / wall-only
+ * cavities that appear after earlier voids are filled).
+ */
+async function detectPocketsByAagWalkIterative(occt, body2, onProgress = null) {
+  const allPockets = [];
+  let workingBody = body2;
+  let workingOwned = false;
+
+  for (let pass = 1; pass <= AAG_WALK_MAX_PASSES; pass++) {
+    const pctBase = 10 + Math.round(((pass - 1) / AAG_WALK_MAX_PASSES) * 75);
+    let aag;
+    if (pass === 1 && workingBody === body2 && session?.aag2) {
+      report(onProgress, `Pass ${pass}: using cached Body 2 AAG…`, pctBase);
+      await new Promise((r) => setTimeout(r, 0));
+      aag = session.aag2;
+    } else {
+      report(
+        onProgress,
+        `AAG face-walk pass ${pass} — building adjacency…`,
+        pctBase
+      );
+      await new Promise((r) => setTimeout(r, 0));
+      aag = await buildAAG(workingBody, occt, ({ message, percent }) => {
+        report(
+          onProgress,
+          `Pass ${pass}: ${message}`,
+          pctBase + Math.round((percent / 100) * (70 / AAG_WALK_MAX_PASSES))
+        );
+      });
+    }
+
+    report(onProgress, `Pass ${pass}: recognizing floor pockets…`, pctBase + 8);
+    const rawBatch = recognizePockets(aag, {
+      onProgress: (p) =>
+        report(onProgress, `Pass ${pass}: ${p.message}`, pctBase + 8 + Math.round((p.percent / 100) * 6)),
+      holeFaceIndices: new Set(),
+      occt
+    });
+
+    const batch = rawBatch.filter((p) => !isDuplicatePocket(p, allPockets));
+    if (!batch.length) {
+      report(onProgress, `Pass ${pass}: no new pockets — done`, pctBase + 12);
+      break;
+    }
+
+    for (const p of batch) {
+      p.aagWalkPass = pass;
+    }
+    allPockets.push(...batch);
+    report(
+      onProgress,
+      `Pass ${pass}: found ${batch.length} pocket(s) — unioning fill volume…`,
+      pctBase + 14
+    );
+
+    let fusedBody = workingBody;
+    let fusedBodyOwned = workingOwned;
+    let fusedAny = false;
+    for (let i = 0; i < batch.length; i++) {
+      const pocket = batch[i];
+      const fill = buildPocketFillSolid(occt, pocket, aag);
+      if (!fill) continue;
+      if (!fusedBodyOwned) {
+        fusedBody = occt.copy(workingBody);
+        fusedBodyOwned = true;
+      }
+      try {
+        const next = occt.fuse(fusedBody, fill);
+        occt.release(fill);
+        if (occt.isNull(next)) continue;
+        if (fusedBodyOwned) {
+          try {
+            occt.release(fusedBody);
+          } catch {
+            /* ignore */
+          }
+        }
+        fusedBody = next;
+        fusedBodyOwned = true;
+        fusedAny = true;
+      } catch (err) {
+        try {
+          occt.release(fill);
+        } catch {
+          /* ignore */
+        }
+        console.warn('AAG walk pocket fuse failed', err);
+      }
+      report(
+        onProgress,
+        `Pass ${pass}: fused pocket ${i + 1}/${batch.length}`,
+        pctBase + 14 + Math.round(((i + 1) / batch.length) * 4)
+      );
+    }
+
+    if (!fusedAny) {
+      if (fusedBodyOwned && fusedBody !== workingBody) {
+        try {
+          occt.release(fusedBody);
+        } catch {
+          /* ignore */
+        }
+      }
+      report(onProgress, `Pass ${pass}: could not fuse fills — stopping`, pctBase + 18);
+      break;
+    }
+
+    if (workingOwned) {
+      try {
+        occt.release(workingBody);
+      } catch {
+        /* ignore */
+      }
+    }
+    workingBody = fusedBody;
+    workingOwned = fusedBodyOwned;
+  }
+
+  if (workingOwned) {
+    try {
+      occt.release(workingBody);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return tagAagPockets(allPockets);
+}
+
 /**
  * Run one automatic pocket method against Body 2.
  * @param {'aag-walk'|'slicing'|'hull-subtract'|'stock-subtraction'|'morphological-closing'|'voxel-flood-fill'} method
@@ -470,13 +626,8 @@ export async function detectPocketsOnBody2(method, params = {}, onProgress = nul
     report(onProgress, 'Voxelizing and flood-filling…', 10);
     pockets = await detectPocketsByVoxelFloodFill(occt, body2, params, onProgress);
   } else {
-    // default: aag-walk
-    const aag = await ensureAag2(onProgress);
-    report(onProgress, 'AAG face-walk pocket recognition…', 65);
-    // Holes already plugged on Body 2 — no hole-face exclusion needed
-    pockets = tagAagPockets(
-      recognizePockets(aag, { onProgress, holeFaceIndices: new Set(), occt })
-    );
+    report(onProgress, 'Iterative AAG face-walk (fill & re-walk)…', 8);
+    pockets = await detectPocketsByAagWalkIterative(occt, body2, onProgress);
   }
 
   report(

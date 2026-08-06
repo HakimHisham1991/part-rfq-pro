@@ -4,6 +4,30 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.33] - 2026-08-06
+
+### Fixed
+
+- **Iterative AAG walk stuck at 24%** — `buildPocketFillSolid` passed pocket axis as `[x,y,z]` arrays; `v3normalize` expected `{x,y,z}` objects, producing NaN extrusion vectors that hung OCCT. Axis is coerced before extrude; plug solids from recognition are released after tessellation.
+
+---
+
+## [1.21.32] - 2026-08-06
+
+### Fixed
+
+- **Iterative AAG walk stuck at 8%** — pass 1 reuses the Body 2 AAG built at Plug Holes instead of rebuilding adjacency; face-enumeration yields to the worker event loop; progress throttle always forwards rising percent values so the UI advances past the initial message.
+
+---
+
+## [1.21.31] - 2026-08-06
+
+### Changed
+
+- **AAG Face Walk (method #1)** — iterative fill-and-re-walk: each pass detects floor-anchored pockets, unions their fill prisms into a working Body 2 copy, rebuilds the AAG, and runs again until no new pockets are found (up to 20 passes). Exposes through / wall-only cavities that were hidden while an adjacent floored pocket remained open. Original Body 2 mesh in the viewer is unchanged.
+
+---
+
 ## [1.21.30] - 2026-08-06
 
 ### Fixed

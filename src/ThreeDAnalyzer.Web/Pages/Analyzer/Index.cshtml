@@ -119,7 +119,12 @@
                             </select>
                         </div>
                         <div id="pocket-params-aag-walk" class="pocket-method-params">
-                            <div class="surface-selection-status">Floor-anchored cavities on the hole-plugged body (Body 2).</div>
+                            <div class="surface-selection-status">
+                                Iterative floor-anchored AAG walk on Body 2: each pass unions
+                                detected pocket fills into a working copy and re-walks so
+                                through / wall-only cavities can appear after earlier voids
+                                are filled (up to 20 passes).
+                            </div>
                         </div>
                         <div id="pocket-params-hull-subtract" class="pocket-method-params" hidden>
                             <div class="pocket-method-note">

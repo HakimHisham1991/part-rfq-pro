@@ -11,14 +11,25 @@ import {
   hintCalculate,
   hintSuggestAxis,
   hintSuggestPocketFloor
-} from './pocket-detection-pipeline.js?v=1.21.30';
+} from './pocket-detection-pipeline.js?v=1.21.31';
 
 function progressSink(requestId) {
   let lastProgressAt = 0;
+  let lastPercent = -1;
+  let lastMessage = '';
   return ({ message, percent }) => {
     const now = performance.now();
-    if (percent < 100 && now - lastProgressAt < 80) return;
+    if (
+      percent < 100 &&
+      now - lastProgressAt < 80 &&
+      percent <= lastPercent &&
+      message === lastMessage
+    ) {
+      return;
+    }
     lastProgressAt = now;
+    lastPercent = percent;
+    lastMessage = message;
     self.postMessage({ type: 'progress', requestId, message, percent });
   };
 }
