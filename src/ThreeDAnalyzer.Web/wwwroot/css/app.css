@@ -255,7 +255,7 @@ body {
 }
 
 .feature-side-panels {
-  width: 528px; /* 440 × 1.2 */
+  width: 634px; /* 528 × 1.2 — room for pocket table columns without horizontal scroll */
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
@@ -697,6 +697,30 @@ body {
   background: var(--color-primary-light);
 }
 
+.holes-table .col-show {
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
+  text-align: center;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.holes-table thead th.col-show {
+  text-align: center;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.holes-table .feature-show-cb {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  vertical-align: middle;
+  accent-color: var(--color-primary);
+}
+
 .holes-table .col-name {
   font-weight: 600;
   color: var(--color-primary);
@@ -707,8 +731,24 @@ body {
 .holes-table .col-quality,
 .holes-table .col-shape,
 .holes-table .col-size,
+.holes-table .col-rcorner-min,
+.holes-table .col-rfloor,
 .holes-table .col-volume {
   text-align: right;
+  font-size: 11px;
+}
+
+#pocket-panel .holes-table thead th {
+  font-size: 9px;
+  letter-spacing: 0.2px;
+  padding: 6px 4px;
+}
+
+#pocket-panel .holes-table tbody td {
+  padding: 7px 4px;
+}
+
+#pocket-panel .holes-table .col-name {
   font-size: 11px;
 }
 

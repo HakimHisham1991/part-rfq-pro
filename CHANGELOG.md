@@ -4,6 +4,39 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.39] - 2026-08-06
+
+### Changed
+
+- **Detected Pockets** — column **R_min** renamed to **R_corner_min**.
+
+---
+
+## [1.21.38] - 2026-08-06
+
+### Changed
+
+- **Detected Pockets** — column **R_floor** renamed to **R_floor_min**.
+- **Hole / Pocket Detection panels** — sidebar width increased 20% (528px → 634px) and pocket table header padding tightened to reduce horizontal scrolling on desktop.
+
+---
+
+## [1.21.37] - 2026-08-06
+
+### Changed
+
+- **Detected Pockets table** — renamed **Max Depth** to **Ap_max**; added **R_min** (minimum wall–wall corner fillet) and **R_floor** (minimum floor–wall fillet) columns computed from AAG blend faces.
+
+---
+
+## [1.21.36] - 2026-08-06
+
+### Added
+
+- **Detected Pockets / Holes tables** — column 1 checkbox toggles each pink cavity or hole volume in the 3D view; header checkbox shows or hides all (default: all visible).
+
+---
+
 ## [1.21.35] - 2026-08-06
 
 ### Fixed

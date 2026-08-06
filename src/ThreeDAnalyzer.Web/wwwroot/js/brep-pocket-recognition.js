@@ -764,6 +764,111 @@ function estimateFootprintSize(wallFaces, cylindricalWalls, planarWalls, floorFa
   return { width, length, cornerRadii, cornerRadius };
 }
 
+function blendFaceRadius(faceNode, occt) {
+  if (!faceNode) return null;
+  if (faceNode.radius != null && faceNode.radius > 0 && faceNode.radius < 80) {
+    return faceNode.radius;
+  }
+  if (!occt || !faceNode.faceHandle) return null;
+
+  if (faceNode.surfaceType === 'cylinder') {
+    try {
+      const cyl = occt.getFaceCylinderData(faceNode.faceHandle);
+      if (cyl?.radius > 0 && cyl.radius < 80) return cyl.radius;
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  if (
+    faceNode.surfaceType === 'torus' ||
+    faceNode.surfaceType === 'cone' ||
+    faceNode.surfaceType === 'bspline' ||
+    faceNode.surfaceType === 'bezier'
+  ) {
+    try {
+      const uv = faceNode.uv || occt.uvBounds(faceNode.faceHandle);
+      const uMid = (uv.uMin + uv.uMax) * 0.5;
+      const vMid = (uv.vMin + uv.vMax) * 0.5;
+      const curv = occt.surfaceCurvature(faceNode.faceHandle, uMid, vMid);
+      const k = Math.max(Math.abs(curv.max), Math.abs(curv.min));
+      if (k > 1e-9) {
+        const r = 1 / k;
+        if (r > 0 && r < 80) return r;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return null;
+}
+
+function isPlanarWallFace(faceIdx, nodes, floorIdSet) {
+  const f = nodes[faceIdx];
+  if (!f || f.surfaceType !== 'plane' || !f.axis) return false;
+  return !floorIdSet.has(faceIdx);
+}
+
+/**
+ * R_floor_min — min fillet radius between floor and wall.
+ * R_corner_min — min corner radius between two walls.
+ */
+function estimatePocketRadii(floorIdx, faces, nodes, aag, occt) {
+  const floorIdSet = new Set(
+    faces.filter((i) => isFloorCandidate(i, aag))
+  );
+  if (floorIdx != null) floorIdSet.add(floorIdx);
+
+  const floorRadii = [];
+  const wallWallRadii = [];
+  const faceSet = new Set(faces);
+
+  for (const faceIdx of faces) {
+    const f = nodes[faceIdx];
+    if (!f) continue;
+    const r = blendFaceRadius(f, occt);
+    if (!(r > 0)) continue;
+
+    const neighbors = aag.adjacency[faceIdx] ?? [];
+    const touchesFloor = neighbors.some(
+      (e) =>
+        floorIdSet.has(e.to) &&
+        (e.classification === 'smooth' || e.classification === 'concave')
+    );
+
+    let planarWallCount = 0;
+    for (const e of neighbors) {
+      if (!faceSet.has(e.to)) continue;
+      if (isPlanarWallFace(e.to, nodes, floorIdSet)) planarWallCount++;
+    }
+
+    const isBlend =
+      f.surfaceType === 'torus' ||
+      f.surfaceType === 'cylinder' ||
+      f.surfaceType === 'cone' ||
+      f.surfaceType === 'bspline' ||
+      f.surfaceType === 'bezier';
+
+    if (!isBlend || floorIdSet.has(faceIdx)) continue;
+
+    if (touchesFloor) {
+      floorRadii.push(r);
+    } else if (planarWallCount >= 2) {
+      wallWallRadii.push(r);
+    } else if (planarWallCount >= 1 && f.surfaceType === 'torus') {
+      // Vertical corner torus between wall and ceiling/rim — wall-wall corner
+      wallWallRadii.push(r);
+    }
+  }
+
+  return {
+    rFloorMin: floorRadii.length ? Math.min(...floorRadii) : null,
+    rCornerMin: wallWallRadii.length ? Math.min(...wallWallRadii) : null
+  };
+}
+
 function computeMaxBoundedVolume(shape, width, length, depth, cornerRadius) {
   if (!(depth > 0)) return 0;
   if (shape === 'circular') {
@@ -929,6 +1034,8 @@ function buildPocketRecord({
     floorFaces.length > 1 ||
     !!plug;
 
+  const { rFloorMin, rCornerMin } = estimatePocketRadii(floorIdx, faces, nodes, aag, occt);
+
   return {
     id: `brep-pocket-${Math.random().toString(36).slice(2, 9)}`,
     floorFaceId: floorIdx,
@@ -951,6 +1058,8 @@ function buildPocketRecord({
     shape,
     cornerRadii: footprint.cornerRadii.slice(),
     cornerRadius,
+    rCornerMin,
+    rFloorMin,
     filletedFloor,
     isThrough: !!isThrough,
     isPatched,

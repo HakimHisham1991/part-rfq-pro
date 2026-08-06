@@ -14,7 +14,7 @@ import {
   recognizePocketFromFloor,
   findFloorCandidates,
   buildPocketFillSolid
-} from './brep-pocket-recognition.js?v=1.21.35';
+} from './brep-pocket-recognition.js?v=1.21.39';
 import { detectPocketsByHullSubtraction } from './pocket-hull-subtraction.js?v=1.21.12';
 import { detectPocketsBySlicing } from './pocket-slicing.js?v=1.21.2';
 import { detectPocketsByMorphologicalClosing } from './pocket-morphological-closing.js?v=1.21.24';
@@ -290,7 +290,7 @@ function tagAagPockets(pockets) {
           ? 'patched-floor'
           : null,
     wallSurfaceArea: null,
-    minCornerRadius: null
+    minCornerRadius: p.rCornerMin ?? p.rMin ?? p.minCornerRadius ?? null
   }));
 }
 

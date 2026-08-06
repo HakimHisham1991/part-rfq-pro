@@ -20,7 +20,7 @@ import {
 } from './pocket-state.js';
 
 /** Cache-bust only our JS workers — never append ?v= to .wasm (breaks OCCT on some hosts). */
-const JS_ASSET_V = '1.21.35';
+const JS_ASSET_V = '1.21.39';
 /** Reject hole-plug discs when picking a pocket floor on Body 2 (mm). */
 const HINT_MIN_FLOOR_PICK_SPAN_MM = 40;
 
@@ -1014,6 +1014,8 @@ let activeFeatureJob = null;
 let activeHoleId = null;
 let activeHoleGroupKey = null;
 const highlightedHoleIds = new Set();
+/** Hole volume meshes hidden via Detected Holes table (empty = all visible). */
+const hiddenHoleIds = new Set();
 let holeDetectionRunning = false;
 let holeProgressPanelHidden = false;
 const holeMethodHint = document.getElementById('hole-method-hint');
@@ -1024,6 +1026,8 @@ let detectedPockets = [];
 let pocketVisualGroup = null;
 let activePocketId = null;
 const highlightedPocketIds = new Set();
+/** Pocket volume meshes hidden via Detected Pockets table (empty = all visible). */
+const hiddenPocketIds = new Set();
 /** Original occt-import-js meshes kept when Body 2 replaces the display. */
 let body1PartGroupBackup = null;
 /** faceGroups triples from Body 2 meshShape: [triStart, triCount, faceHash] */
@@ -3805,6 +3809,7 @@ function handleHoleWorkerMessage(event) {
 
 function applyDetectedHoles(holes) {
   detectedHoles = holes;
+  hiddenHoleIds.clear();
   clearHoleHighlightState();
   renderHoleVisuals();
   renderHolesList();
@@ -3816,6 +3821,7 @@ function applyDetectedHoles(holes) {
 
 function clearHoleDetection() {
   detectedHoles = [];
+  hiddenHoleIds.clear();
   clearHoleHighlightState();
   disposeHoleVisuals();
   if (holesList) holesList.innerHTML = '';
@@ -3888,6 +3894,7 @@ function applyDetectedPockets(pockets) {
     );
   }
   detectedPockets = filtered;
+  hiddenPocketIds.clear();
   clearPocketHighlightState();
   renderPocketVisuals();
   renderPocketsList();
@@ -3897,6 +3904,7 @@ function applyDetectedPockets(pockets) {
 
 function clearPocketDetection() {
   detectedPockets = [];
+  hiddenPocketIds.clear();
   clearPocketHighlightState();
   disposePocketVisuals();
   if (pocketsList) pocketsList.innerHTML = '';
@@ -4064,10 +4072,35 @@ function renderHoleVisuals() {
 
   holeVisualGroup = new THREE.Group();
   for (const hole of detectedHoles) {
-    holeVisualGroup.add(createHoleVisual(hole));
+    const group = createHoleVisual(hole);
+    group.visible = !hiddenHoleIds.has(hole.id);
+    holeVisualGroup.add(group);
   }
   scene.add(holeVisualGroup);
   updateHoleVisualHighlights();
+}
+
+function updateHoleVisualVisibility() {
+  if (!holeVisualGroup) return;
+  holeVisualGroup.children.forEach((group) => {
+    const id = group.userData.holeId;
+    if (id != null) group.visible = !hiddenHoleIds.has(id);
+  });
+}
+
+function syncHoleShowHeaderCheckbox(headerCb) {
+  if (!headerCb || detectedHoles.length === 0) return;
+  const visibleCount = detectedHoles.filter((h) => !hiddenHoleIds.has(h.id)).length;
+  headerCb.checked = visibleCount === detectedHoles.length;
+  headerCb.indeterminate = visibleCount > 0 && visibleCount < detectedHoles.length;
+}
+
+function setAllHoleVolumesVisible(visible) {
+  hiddenHoleIds.clear();
+  if (!visible) {
+    for (const hole of detectedHoles) hiddenHoleIds.add(hole.id);
+  }
+  updateHoleVisualVisibility();
 }
 
 function updateHoleVisualHighlights() {
@@ -4154,13 +4187,30 @@ function renderHolesList() {
   table.className = 'holes-table';
 
   const thead = document.createElement('thead');
-  thead.innerHTML =
-    '<tr>' +
-    '<th class="col-name">Name</th>' +
-    '<th class="col-diameter">Diameter</th>' +
-    '<th class="col-depth">Depth</th>' +
-    '<th class="col-quality">Quality</th>' +
-    '</tr>';
+  const headerRow = document.createElement('tr');
+
+  const showHeader = document.createElement('th');
+  showHeader.className = 'col-show';
+  const showAllCb = document.createElement('input');
+  showAllCb.type = 'checkbox';
+  showAllCb.className = 'feature-show-cb';
+  showAllCb.title = 'Show or hide all hole volumes';
+  showAllCb.checked = true;
+  syncHoleShowHeaderCheckbox(showAllCb);
+  showAllCb.addEventListener('change', () => {
+    setAllHoleVolumesVisible(showAllCb.checked);
+    renderHolesList();
+  });
+  showHeader.appendChild(showAllCb);
+  headerRow.appendChild(showHeader);
+
+  ['Name', 'Diameter', 'Depth', 'Quality'].forEach((label, i) => {
+    const th = document.createElement('th');
+    th.className = ['col-name', 'col-diameter', 'col-depth', 'col-quality'][i];
+    th.textContent = label;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
@@ -4168,6 +4218,23 @@ function renderHolesList() {
     const row = document.createElement('tr');
     row.dataset.holeId = hole.id;
     if (hole.id === activeHoleId) row.classList.add('hole-row-active');
+
+    const showCell = document.createElement('td');
+    showCell.className = 'col-show';
+    const showCb = document.createElement('input');
+    showCb.type = 'checkbox';
+    showCb.className = 'feature-show-cb';
+    showCb.checked = !hiddenHoleIds.has(hole.id);
+    showCb.title = 'Show or hide this hole volume';
+    showCb.addEventListener('click', (e) => e.stopPropagation());
+    showCb.addEventListener('change', () => {
+      if (showCb.checked) hiddenHoleIds.delete(hole.id);
+      else hiddenHoleIds.add(hole.id);
+      updateHoleVisualVisibility();
+      syncHoleShowHeaderCheckbox(showAllCb);
+    });
+    showCell.appendChild(showCb);
+    row.appendChild(showCell);
 
     const nameCell = document.createElement('td');
     nameCell.className = 'col-name';
@@ -4557,10 +4624,35 @@ function renderPocketVisuals() {
 
   pocketVisualGroup = new THREE.Group();
   for (const pocket of detectedPockets) {
-    pocketVisualGroup.add(createPocketVisual(pocket));
+    const group = createPocketVisual(pocket);
+    group.visible = !hiddenPocketIds.has(pocket.id);
+    pocketVisualGroup.add(group);
   }
   scene.add(pocketVisualGroup);
   updatePocketVisualHighlights();
+}
+
+function updatePocketVisualVisibility() {
+  if (!pocketVisualGroup) return;
+  pocketVisualGroup.children.forEach((group) => {
+    const id = group.userData.pocketId;
+    if (id != null) group.visible = !hiddenPocketIds.has(id);
+  });
+}
+
+function syncPocketShowHeaderCheckbox(headerCb) {
+  if (!headerCb || detectedPockets.length === 0) return;
+  const visibleCount = detectedPockets.filter((p) => !hiddenPocketIds.has(p.id)).length;
+  headerCb.checked = visibleCount === detectedPockets.length;
+  headerCb.indeterminate = visibleCount > 0 && visibleCount < detectedPockets.length;
+}
+
+function setAllPocketVolumesVisible(visible) {
+  hiddenPocketIds.clear();
+  if (!visible) {
+    for (const pocket of detectedPockets) hiddenPocketIds.add(pocket.id);
+  }
+  updatePocketVisualVisibility();
 }
 
 function updatePocketVisualHighlights() {
@@ -4601,6 +4693,10 @@ function formatPocketBoundedSize(pocket) {
   return `${formatNum(w, 2)} × ${formatNum(l, 2)} mm`;
 }
 
+function formatPocketRadius(value) {
+  return value != null && value > 0 ? `${formatNum(value, 2)} mm` : '—';
+}
+
 function renderPocketsList() {
   if (!pocketsList) return;
   pocketsList.innerHTML = '';
@@ -4617,13 +4713,46 @@ function renderPocketsList() {
   table.className = 'holes-table';
 
   const thead = document.createElement('thead');
-  thead.innerHTML =
-    '<tr>' +
-    '<th class="col-name">Name</th>' +
-    '<th class="col-size">Max Bounded Size</th>' +
-    '<th class="col-depth">Max Depth</th>' +
-    '<th class="col-volume">Cavity Volume</th>' +
-    '</tr>';
+  const headerRow = document.createElement('tr');
+
+  const showHeader = document.createElement('th');
+  showHeader.className = 'col-show';
+  const showAllCb = document.createElement('input');
+  showAllCb.type = 'checkbox';
+  showAllCb.className = 'feature-show-cb';
+  showAllCb.title = 'Show or hide all pocket volumes';
+  showAllCb.checked = true;
+  syncPocketShowHeaderCheckbox(showAllCb);
+  showAllCb.addEventListener('change', () => {
+    setAllPocketVolumesVisible(showAllCb.checked);
+    renderPocketsList();
+  });
+  showHeader.appendChild(showAllCb);
+  headerRow.appendChild(showHeader);
+
+  const pocketHeaderLabels = [
+    'Name',
+    'Max Bounded Size',
+    'Ap_max',
+    'R_corner_min',
+    'R_floor_min',
+    'Cavity Volume'
+  ];
+  const pocketHeaderClasses = [
+    'col-name',
+    'col-size',
+    'col-depth',
+    'col-rcorner-min',
+    'col-rfloor',
+    'col-volume'
+  ];
+  pocketHeaderLabels.forEach((label, i) => {
+    const th = document.createElement('th');
+    th.className = pocketHeaderClasses[i];
+    th.textContent = label;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
@@ -4632,6 +4761,23 @@ function renderPocketsList() {
     const row = document.createElement('tr');
     row.dataset.pocketId = pocket.id;
     if (pocket.id === activePocketId) row.classList.add('hole-row-active');
+
+    const showCell = document.createElement('td');
+    showCell.className = 'col-show';
+    const showCb = document.createElement('input');
+    showCb.type = 'checkbox';
+    showCb.className = 'feature-show-cb';
+    showCb.checked = !hiddenPocketIds.has(pocket.id);
+    showCb.title = 'Show or hide this pocket volume';
+    showCb.addEventListener('click', (e) => e.stopPropagation());
+    showCb.addEventListener('change', () => {
+      if (showCb.checked) hiddenPocketIds.delete(pocket.id);
+      else hiddenPocketIds.add(pocket.id);
+      updatePocketVisualVisibility();
+      syncPocketShowHeaderCheckbox(showAllCb);
+    });
+    showCell.appendChild(showCb);
+    row.appendChild(showCell);
 
     const nameCell = document.createElement('td');
     nameCell.className = 'col-name';
@@ -4655,6 +4801,16 @@ function renderPocketsList() {
     depthCell.textContent =
       pocket.isThrough || !(depthVal > 0) ? '—' : `${formatNum(depthVal, 2)} mm`;
 
+    const rCornerMinCell = document.createElement('td');
+    rCornerMinCell.className = 'col-rcorner-min';
+    rCornerMinCell.textContent = formatPocketRadius(
+      pocket.rCornerMin ?? pocket.rMin ?? pocket.minCornerRadius
+    );
+
+    const rFloorCell = document.createElement('td');
+    rFloorCell.className = 'col-rfloor';
+    rFloorCell.textContent = formatPocketRadius(pocket.rFloorMin ?? pocket.rFloor);
+
     const volumeCell = document.createElement('td');
     volumeCell.className = 'col-volume';
     const vol = pocket.maxBoundedVolume ?? pocket.volume ?? 0;
@@ -4664,6 +4820,8 @@ function renderPocketsList() {
     row.appendChild(nameCell);
     row.appendChild(sizeCell);
     row.appendChild(depthCell);
+    row.appendChild(rCornerMinCell);
+    row.appendChild(rFloorCell);
     row.appendChild(volumeCell);
 
     row.addEventListener('click', () => {
@@ -4679,7 +4837,8 @@ function renderPocketsList() {
   const totalRow = document.createElement('tr');
   totalRow.className = 'pocket-volume-total-row';
   totalRow.innerHTML =
-    '<td class="col-name" colspan="3">Total</td>' +
+    '<td class="col-show"></td>' +
+    '<td class="col-name" colspan="5">Total</td>' +
     `<td class="col-volume">${formatNum(cavityVolumeTotal, 1)} mm³</td>`;
   tfoot.appendChild(totalRow);
   table.appendChild(tfoot);
@@ -4742,26 +4901,28 @@ function exportDetectedPocketsCsv() {
     `Pocket ${index + 1}${pocket.isPatched ? ' (patched)' : ''}`,
     formatPocketBoundedSize(pocket),
     formatNum(pocket.maxDepth ?? pocket.depth, 2),
+    formatNum(pocket.rCornerMin ?? pocket.rMin ?? pocket.minCornerRadius ?? 0, 2),
+    formatNum(pocket.rFloorMin ?? pocket.rFloor ?? 0, 2),
     formatNum(pocket.maxBoundedVolume ?? pocket.volume ?? 0, 1),
-    pocket.isPatched ? 'yes' : 'no',
-    formatNum(pocket.cornerRadius ?? 0, 2)
+    pocket.isPatched ? 'yes' : 'no'
   ]);
 
   const cavityTotal = detectedPockets.reduce(
     (sum, p) => sum + (p.maxBoundedVolume ?? p.volume ?? 0),
     0
   );
-  rows.push(['Total', '', '', formatNum(cavityTotal, 1), '', '']);
+  rows.push(['Total', '', '', '', '', formatNum(cavityTotal, 1), '']);
 
   downloadCsv(
     `${holeCsvFilePrefix()}_detected-pockets.csv`,
     [
       'Name',
       'MaxBoundedSize',
-      'MaxDepth_mm',
+      'Ap_max_mm',
+      'R_corner_min_mm',
+      'R_floor_min_mm',
       'CavityVolume_mm3',
-      'Patched',
-      'CornerRadius_mm'
+      'Patched'
     ],
     rows
   );
