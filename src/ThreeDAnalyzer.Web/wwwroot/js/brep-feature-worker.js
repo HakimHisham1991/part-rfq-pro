@@ -2,15 +2,16 @@
  * Web Worker for B-Rep feature recognition (holes + pocket methods).
  * Offloads OCCT WASM STEP import + AAG / hull / slicing from the main thread.
  */
-import { analyzeStepFileFeatures } from './brep-feature-recognition.js?v=1.21.13';
+import { analyzeStepFileFeatures } from './brep-feature-recognition.js?v=1.21.21';
 import {
   prepareBody2FromStep,
   detectPocketsOnBody2,
   resetPocketPipelineSession,
   hintDetectWalls,
   hintCalculate,
-  hintSuggestAxis
-} from './pocket-detection-pipeline.js?v=1.21.13';
+  hintSuggestAxis,
+  hintSuggestPocketFloor
+} from './pocket-detection-pipeline.js?v=1.21.21';
 
 function progressSink(requestId) {
   let lastProgressAt = 0;
@@ -89,6 +90,12 @@ self.onmessage = async (event) => {
     if (type === 'hintSuggestAxis') {
       const axis = await hintSuggestAxis(payload?.floorHashes ?? [], payload?.wallHashes ?? []);
       self.postMessage({ type: 'hint-axis', requestId, axis });
+      return;
+    }
+
+    if (type === 'hintSuggestFloor') {
+      const result = await hintSuggestPocketFloor(progressSink(requestId));
+      self.postMessage({ type: 'hint-floor-suggest', requestId, ...result });
       return;
     }
 

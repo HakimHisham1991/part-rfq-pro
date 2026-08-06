@@ -20,7 +20,9 @@ import {
 } from './pocket-state.js';
 
 /** Cache-bust only our JS workers — never append ?v= to .wasm (breaks OCCT on some hosts). */
-const JS_ASSET_V = '1.21.13';
+const JS_ASSET_V = '1.21.21';
+/** Reject hole-plug discs when picking a pocket floor on Body 2 (mm). */
+const HINT_MIN_FLOOR_PICK_SPAN_MM = 40;
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('three-canvas');
@@ -102,9 +104,11 @@ const btnGotoHoleDetection = document.getElementById('btn-goto-hole-detection');
 const btnSelectFloor = document.getElementById('btn-select-floor');
 const btnClearFloor = document.getElementById('btn-clear-floor');
 const floorSelectionCount = document.getElementById('floor-selection-count');
+const floorSelectionList = document.getElementById('floor-selection-list');
 const btnSelectWalls = document.getElementById('btn-select-walls');
 const btnDetectWalls = document.getElementById('btn-detect-walls');
 const wallSelectionCount = document.getElementById('wall-selection-count');
+const wallSelectionList = document.getElementById('wall-selection-list');
 const hintWallStep = document.getElementById('hint-wall-step');
 const hintDetectWallOptions = document.getElementById('hint-detect-wall-options');
 const hintIncludeFillets = document.getElementById('hint-include-fillets');
@@ -1024,6 +1028,8 @@ let hintPickMode = null;
 const hintFloorHashes = new Set();
 const hintWallHashes = new Set();
 let hintAxis = null;
+/** Last floor|wall hash key we already requested an auto-axis for. */
+let hintAxisSuggestKey = '';
 let hintHighlightGroup = null;
 
 // Rectangle surface selection state
@@ -1202,9 +1208,12 @@ function showPartBboxWireframe(bboxData) {
   scene.add(partBboxMesh);
 }
 
-function createShadedMeshWithEdges(geometry) {
+/** Light green tint for hole-plugged Body 2 (no edge overlay — avoids circular plug-cap rims). */
+const BODY2_MESH_COLOR = 0x9fd89f;
+
+function createShadedMesh(geometry, { color = 0xa5d4ff, withEdges = true, edgeThreshold = 30 } = {}) {
   const material = new THREE.MeshStandardMaterial({
-    color: 0xa5d4ff,
+    color,
     metalness: 0.15,
     roughness: 0.65,
     side: THREE.DoubleSide,
@@ -1212,13 +1221,19 @@ function createShadedMeshWithEdges(geometry) {
   });
   const mesh = new THREE.Mesh(geometry, material);
 
-  const edgesGeometry = new THREE.EdgesGeometry(geometry, 30);
-  const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x7c7c7c });
-  const edgeLines = new THREE.LineSegments(edgesGeometry, edgeMaterial);
-  edgeLines.raycast = () => {};
-  mesh.add(edgeLines);
+  if (withEdges) {
+    const edgesGeometry = new THREE.EdgesGeometry(geometry, edgeThreshold);
+    const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x7c7c7c });
+    const edgeLines = new THREE.LineSegments(edgesGeometry, edgeMaterial);
+    edgeLines.raycast = () => {};
+    mesh.add(edgeLines);
+  }
 
   return mesh;
+}
+
+function createShadedMeshWithEdges(geometry) {
+  return createShadedMesh(geometry);
 }
 
 function disposePartGroup() {
@@ -2329,6 +2344,32 @@ function getBrepHoleWorker() {
           'is-error'
         );
         startMeshHoleDetection(holeWorkerRequestId);
+        return;
+      }
+      if (
+        holeDetectionRunning &&
+        (activeFeatureJob === 'hintWalls' ||
+          activeFeatureJob === 'hintCalc' ||
+          activeFeatureJob === 'hintAxis' ||
+          activeFeatureJob === 'pockets' ||
+          activeFeatureJob === 'prepareBody2')
+      ) {
+        setHoleDetectionBusy(false);
+        const job = activeFeatureJob;
+        activeFeatureJob = null;
+        setHoleProgressPercent(100);
+        appendHoleProgressLog(`Worker error (${job}): ${err.message || err}`, 'is-error');
+        setStatus(`Worker error: ${err.message || err}`);
+        if (job === 'prepareBody2') {
+          setPocketBodyState({
+            status: 'failed',
+            skippedHoles: [],
+            holeCount: detectedHoles.length,
+            error: String(err.message || err),
+            note: null
+          });
+          refreshPocketGateUI();
+        }
       }
     };
   }
@@ -2579,15 +2620,55 @@ function resetHintWorkflow() {
   hintFloorHashes.clear();
   hintWallHashes.clear();
   hintAxis = null;
+  hintAxisSuggestKey = '';
   disposeHintHighlight();
-  if (floorSelectionCount) floorSelectionCount.textContent = '0 face(s) selected';
-  if (wallSelectionCount) wallSelectionCount.textContent = '0 face(s)';
-  if (hintWallStep) hintWallStep.dataset.disabled = 'true';
-  if (hintPlugStep) hintPlugStep.dataset.disabled = 'true';
-  if (hintCalculateStep) hintCalculateStep.dataset.disabled = 'true';
+  updateHintStepUI();
   if (hintDetectWallOptions) hintDetectWallOptions.hidden = true;
   if (btnHintNewPocket) btnHintNewPocket.hidden = true;
-  if (hintAxisPreview) hintAxisPreview.textContent = '';
+}
+
+function hintSelectionKey() {
+  const floors = [...hintFloorHashes].map(Number).sort((a, b) => a - b).join(',');
+  const walls = [...hintWallHashes].map(Number).sort((a, b) => a - b).join(',');
+  return `${floors}|${walls}`;
+}
+
+/**
+ * Auto-suggest tool axis once floor + walls are selected (manual pick or Detect Walls).
+ * Does not lock the UI — Calculate is enabled from floor+walls alone.
+ */
+function requestHintAxisSuggestIfNeeded() {
+  if (!hintFloorHashes.size || !hintWallHashes.size) return;
+  if (hintAxisMode?.value === 'manual') {
+    hintAxis = [
+      Number(hintAxisX?.value ?? 0),
+      Number(hintAxisY?.value ?? 0),
+      Number(hintAxisZ?.value ?? 1)
+    ];
+    return;
+  }
+  const key = hintSelectionKey();
+  // One suggest request per floor+wall selection (avoid canceling in-flight replies)
+  if (key === hintAxisSuggestKey) return;
+  hintAxisSuggestKey = key;
+
+  if (!isHolePlugsActive()) return;
+  try {
+    const requestId = ++holeWorkerRequestId;
+    activeFeatureJob = 'hintAxis';
+    getBrepHoleWorker().postMessage({
+      type: 'hintSuggestAxis',
+      requestId,
+      payload: {
+        floorHashes: [...hintFloorHashes],
+        wallHashes: [...hintWallHashes]
+      }
+    });
+    if (hintAxisPreview && !hintAxis) hintAxisPreview.textContent = 'axis: suggesting…';
+  } catch (err) {
+    console.warn('hintSuggestAxis failed', err);
+    if (!hintAxis) hintAxis = [0, 0, 1];
+  }
 }
 
 function syncPocketMethodParamsUI() {
@@ -2718,7 +2799,15 @@ function refreshPocketGateUI() {
   }
 }
 
-function restoreBody1Mesh({ clearSelection = true } = {}) {
+function stashBody1ForBody2Prep() {
+  if (!partGroup || partGroup.userData?.isBody2 || body1PartGroupBackup) return false;
+  body1PartGroupBackup = partGroup;
+  scene.remove(partGroup);
+  partGroup = null;
+  return true;
+}
+
+function restoreBody1Mesh({ clearSelection = true, restoreHoleVisuals = true } = {}) {
   if (!body1PartGroupBackup) return false;
   if (partGroup) {
     scene.remove(partGroup);
@@ -2733,9 +2822,13 @@ function restoreBody1Mesh({ clearSelection = true } = {}) {
   }
   partGroup = body1PartGroupBackup;
   body1PartGroupBackup = null;
+  partGroup.visible = true;
   scene.add(partGroup);
   body2FaceGroups = null;
   if (clearSelection) clearSurfaceSelection();
+  if (restoreHoleVisuals && detectedHoles.length > 0) {
+    renderHoleVisuals();
+  }
   return true;
 }
 
@@ -2795,6 +2888,9 @@ function prepareBody2() {
   if (pocketDetectionMethod) pocketDetectionMethod.disabled = true;
   if (btnRunPocketDetection) btnRunPocketDetection.disabled = true;
 
+  stashBody1ForBody2Prep();
+  disposeHoleVisuals();
+
   const requestId = ++holeWorkerRequestId;
   activeFeatureJob = 'prepareBody2';
   setHoleDetectionBusy(true);
@@ -2816,6 +2912,7 @@ function prepareBody2() {
   } catch (err) {
     setHoleDetectionBusy(false);
     activeFeatureJob = null;
+    restoreBody1Mesh({ clearSelection: false });
     setPocketBodyState({
       status: 'failed',
       skippedHoles: [],
@@ -2859,18 +2956,19 @@ function applyBody2Mesh(meshPayload) {
 
   body2FaceGroups = meshPayload.faceGroups || null;
 
-  const mesh = createShadedMeshWithEdges(geometry);
+  disposeHoleVisuals();
+
+  const mesh = createShadedMesh(geometry, { color: BODY2_MESH_COLOR, withEdges: false });
   mesh.userData.meshIndex = 0;
   mesh.userData.isBody2 = true;
-  // Slightly different tint so Body 2 is visually distinct
-  if (mesh.material && mesh.material.color) {
-    mesh.material.color.setHex(0xb8c8e0);
-  }
 
   partGroup = new THREE.Group();
   partGroup.userData.isBody2 = true;
   partGroup.add(mesh);
   scene.add(partGroup);
+  if (body1PartGroupBackup) {
+    body1PartGroupBackup.visible = false;
+  }
   clearSurfaceSelection();
   setStatus('Showing Body 2 (holes plugged) — ready for pocket detection');
 }
@@ -2886,13 +2984,179 @@ function faceHashFromTriangle(triIndex) {
   return null;
 }
 
+/** Light orange for floor faces; slightly deeper orange for walls. */
+const HINT_FLOOR_HIGHLIGHT = 0xffb347;
+const HINT_WALL_HIGHLIGHT = 0xff9a3c;
+
+function triangleIndicesForFaceHashes(hashSet) {
+  const triIndices = [];
+  if (!body2FaceGroups?.length || !hashSet?.size) return triIndices;
+  const want = new Set([...hashSet].map((h) => Number(h)));
+  for (let i = 0; i + 2 < body2FaceGroups.length; i += 3) {
+    const triStart = body2FaceGroups[i];
+    const triCount = body2FaceGroups[i + 1];
+    const faceHash = body2FaceGroups[i + 2];
+    if (!want.has(Number(faceHash))) continue;
+    for (let t = 0; t < triCount; t++) triIndices.push(triStart + t);
+  }
+  return triIndices;
+}
+
+/** Approximate B-Rep face span (mm) from tessellated triangles — for pick validation. */
+function estimateMeshFaceFootprintMm(faceHash) {
+  const triIndices = triangleIndicesForFaceHashes(new Set([faceHash]));
+  if (!triIndices.length || !partGroup) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+
+  partGroup.children.forEach((child) => {
+    if (!child.isMesh || !child.geometry) return;
+    const pos = child.geometry.attributes.position;
+    const index = child.geometry.index;
+    for (const faceIdx of triIndices) {
+      for (let k = 0; k < 3; k++) {
+        const vi = index ? index.getX(faceIdx * 3 + k) : faceIdx * 3 + k;
+        const x = pos.getX(vi);
+        const y = pos.getY(vi);
+        const z = pos.getZ(vi);
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (z < minZ) minZ = z;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+        if (z > maxZ) maxZ = z;
+      }
+    }
+  });
+
+  if (!Number.isFinite(minX)) return null;
+  const dx = maxX - minX;
+  const dy = maxY - minY;
+  const dz = maxZ - minZ;
+  return Math.max(dx, dy, dz);
+}
+
+function requestHintSuggestFloor() {
+  if (!getPocketBodyState() || getPocketBodyState().status !== 'ready') return;
+  const requestId = ++holeWorkerRequestId;
+  getBrepHoleWorker().postMessage({ type: 'hintSuggestFloor', requestId });
+}
+
+function addHintHighlightMesh(triIndices, colorHex) {
+  if (!triIndices.length || !partGroup || !hintHighlightGroup) return;
+
+  partGroup.children.forEach((child) => {
+    if (!child.isMesh || !child.geometry) return;
+    // Body 2 is a single mesh (meshIndex 0)
+    const geo = child.geometry;
+    const posAttr = geo.attributes.position;
+    const index = geo.index;
+    const highlightPositions = [];
+
+    for (const faceIdx of triIndices) {
+      let i0;
+      let i1;
+      let i2;
+      if (index) {
+        i0 = index.getX(faceIdx * 3);
+        i1 = index.getX(faceIdx * 3 + 1);
+        i2 = index.getX(faceIdx * 3 + 2);
+      } else {
+        i0 = faceIdx * 3;
+        i1 = faceIdx * 3 + 1;
+        i2 = faceIdx * 3 + 2;
+      }
+
+      const v0 = new THREE.Vector3().fromBufferAttribute(posAttr, i0);
+      const v1 = new THREE.Vector3().fromBufferAttribute(posAttr, i1);
+      const v2 = new THREE.Vector3().fromBufferAttribute(posAttr, i2);
+      child.localToWorld(v0);
+      child.localToWorld(v1);
+      child.localToWorld(v2);
+      highlightPositions.push(v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
+    }
+
+    if (!highlightPositions.length) return;
+
+    const highlightGeo = new THREE.BufferGeometry();
+    highlightGeo.setAttribute('position', new THREE.Float32BufferAttribute(highlightPositions, 3));
+    const highlightMat = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const highlightMesh = new THREE.Mesh(highlightGeo, highlightMat);
+    highlightMesh.raycast = () => {};
+    hintHighlightGroup.add(highlightMesh);
+  });
+}
+
 function rebuildHintHighlight() {
   disposeHintHighlight();
   if (!partGroup || (!hintFloorHashes.size && !hintWallHashes.size)) return;
-  // Highlight by recoloring is hard without per-face materials; use status text primarily.
-  // Soft overlay: outline whole Body 2 when selecting.
+
   hintHighlightGroup = new THREE.Group();
+  addHintHighlightMesh(triangleIndicesForFaceHashes(hintFloorHashes), HINT_FLOOR_HIGHLIGHT);
+  addHintHighlightMesh(triangleIndicesForFaceHashes(hintWallHashes), HINT_WALL_HIGHLIGHT);
   scene.add(hintHighlightGroup);
+}
+
+function renderHintFaceList(container, hashes, role) {
+  if (!container) return;
+  container.replaceChildren();
+  const list = [...hashes];
+  list.forEach((hash, i) => {
+    const row = document.createElement('div');
+    row.className = `hint-face-list-item${role === 'wall' ? ' is-wall' : ''}`;
+    row.setAttribute('role', 'listitem');
+    row.dataset.faceHash = String(hash);
+    row.dataset.hintRole = role;
+
+    const label = document.createElement('span');
+    label.className = 'hint-face-list-label';
+    label.title = `B-Rep face hash ${hash}`;
+    label.textContent = `${role === 'wall' ? 'Wall' : 'Floor'} ${i + 1} · ${hash}`;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'hint-face-list-remove';
+    removeBtn.title = 'Remove surface';
+    removeBtn.setAttribute('aria-label', `Remove ${role} face ${hash}`);
+    removeBtn.textContent = '×';
+
+    row.append(label, removeBtn);
+    container.appendChild(row);
+  });
+}
+
+function removeHintFace(role, hash) {
+  const n = Number(hash);
+  if (!Number.isFinite(n)) return;
+  if (role === 'floor') {
+    hintFloorHashes.delete(n);
+    if (hintFloorHashes.size === 0) {
+      hintWallHashes.clear();
+      hintAxis = null;
+    }
+  } else if (role === 'wall') {
+    hintWallHashes.delete(n);
+    if (hintWallHashes.size === 0) hintAxis = null;
+  }
+  hintAxisSuggestKey = '';
+  hintAxis = null;
+  updateHintStepUI();
+  setStatus(
+    role === 'floor'
+      ? `Floor: ${hintFloorHashes.size} face(s)`
+      : `Walls: ${hintWallHashes.size} face(s)`
+  );
 }
 
 function updateHintStepUI() {
@@ -2902,16 +3166,25 @@ function updateHintStepUI() {
   if (wallSelectionCount) {
     wallSelectionCount.textContent = `${hintWallHashes.size} face(s)`;
   }
+  renderHintFaceList(floorSelectionList, hintFloorHashes, 'floor');
+  renderHintFaceList(wallSelectionList, hintWallHashes, 'wall');
+  rebuildHintHighlight();
+
   if (hintWallStep) hintWallStep.dataset.disabled = hintFloorHashes.size === 0 ? 'true' : 'false';
   if (hintPlugStep) hintPlugStep.dataset.disabled = hintWallHashes.size === 0 ? 'true' : 'false';
-  const axisOk = hintAxis && hintAxis.length === 3;
+  // Calculate needs floor + walls only. Axis is auto-suggested (or derived in worker).
   if (hintCalculateStep) {
     hintCalculateStep.dataset.disabled =
-      hintFloorHashes.size === 0 || hintWallHashes.size === 0 || !axisOk ? 'true' : 'false';
+      hintFloorHashes.size === 0 || hintWallHashes.size === 0 ? 'true' : 'false';
   }
-  if (hintAxisPreview && hintAxis) {
-    hintAxisPreview.textContent = `axis [${hintAxis.map((v) => v.toFixed(3)).join(', ')}]`;
+  if (hintAxisPreview) {
+    hintAxisPreview.textContent = hintAxis
+      ? `axis [${hintAxis.map((v) => v.toFixed(3)).join(', ')}]`
+      : hintFloorHashes.size && hintWallHashes.size
+        ? 'axis: auto (pending)'
+        : '';
   }
+  requestHintAxisSuggestIfNeeded();
 }
 
 /**
@@ -2945,6 +3218,7 @@ function stopHoleDetection() {
   if (stoppedJob === 'pockets' || stoppedJob === 'hintCalc' || stoppedJob === 'hintWalls') {
     clearPocketDetection();
   } else if (stoppedJob === 'prepareBody2') {
+    restoreBody1Mesh({ clearSelection: false });
     setPocketBodyState({
       status: 'not-ready',
       skippedHoles: [],
@@ -2996,6 +3270,27 @@ function handleHoleWorkerMessage(event) {
       'is-done'
     );
     refreshPocketGateUI();
+    requestHintSuggestFloor();
+    return;
+  }
+
+  if (type === 'hint-floor-suggest') {
+    if (data?.floorHash != null) {
+      hintFloorHashes.clear();
+      hintWallHashes.clear();
+      hintAxis = null;
+      hintAxisSuggestKey = '';
+      hintFloorHashes.add(Number(data.floorHash));
+      updateHintStepUI();
+      const span = data.span ? ` (~${Math.round(data.span)} mm)` : '';
+      appendHoleProgressLog(
+        `Suggested pocket floor pre-selected${span} — use Detect Walls or pick walls manually`,
+        'is-done'
+      );
+      setStatus(
+        `Pocket floor suggested${span} — Step 1 ready; pick walls or run Detect Walls`
+      );
+    }
     return;
   }
 
@@ -3003,25 +3298,25 @@ function handleHoleWorkerMessage(event) {
     setHoleDetectionBusy(false);
     activeFeatureJob = null;
     hintWallHashes.clear();
-    for (const h of data.wallHashes ?? []) hintWallHashes.add(h);
-    updateHintStepUI();
-    setStatus(`Detected ${data.wallCount ?? 0} wall face(s)`);
-    // Auto-suggest axis
-    try {
-      const worker = getBrepHoleWorker();
-      const rid = ++holeWorkerRequestId;
-      activeFeatureJob = 'hintAxis';
-      worker.postMessage({
-        type: 'hintSuggestAxis',
-        requestId: rid,
-        payload: {
-          floorHashes: [...hintFloorHashes],
-          wallHashes: [...hintWallHashes]
-        }
-      });
-    } catch {
-      /* ignore */
+    for (const h of data.wallHashes ?? []) {
+      const n = Number(h);
+      if (Number.isFinite(n)) hintWallHashes.add(n);
     }
+    hintAxisSuggestKey = ''; // force axis re-suggest for new wall set
+    try {
+      updateHintStepUI(); // enables Calculate + requests axis
+    } catch (err) {
+      console.error('Failed to update hint wall UI/highlight', err);
+      appendHoleProgressLog(`Wall highlight error: ${err?.message ?? err}`, 'is-error');
+    }
+    const nWalls = data.wallCount ?? hintWallHashes.size;
+    setHoleProgressPercent(100);
+    appendHoleProgressLog(`Detected ${nWalls} wall face(s)`, nWalls > 0 ? 'is-done' : 'is-error');
+    setStatus(
+      nWalls > 0
+        ? `Detected ${nWalls} wall face(s)`
+        : 'No walls found — pick the large center pocket floor first'
+    );
     return;
   }
 
@@ -3055,6 +3350,7 @@ function handleHoleWorkerMessage(event) {
       setHoleDetectionBusy(false);
       activeHoleDetectionSource = null;
       activeFeatureJob = null;
+      restoreBody1Mesh({ clearSelection: false });
       setPocketBodyState({
         status: 'failed',
         skippedHoles: [],
@@ -3075,7 +3371,7 @@ function handleHoleWorkerMessage(event) {
       activeFeatureJob = null;
       setHoleProgressPercent(100);
       appendHoleProgressLog(`Error: ${message}`, 'is-error');
-      setStatus(`Pocket detection error: ${message}`);
+      setStatus(message || 'Pocket detection error');
       return;
     }
 
@@ -4378,17 +4674,36 @@ function handleSurfaceSelectClick(e) {
       setStatus('Face hash unavailable — wait for Body 2 mesh with face groups');
       return;
     }
+    const hashNum = Number(faceHash);
+    if (!Number.isFinite(hashNum)) {
+      setStatus('Invalid face hash from mesh');
+      return;
+    }
+    if (hintPickMode === 'floor') {
+      const span = estimateMeshFaceFootprintMm(hashNum);
+      if (span != null && span < HINT_MIN_FLOOR_PICK_SPAN_MM) {
+        setStatus(
+          `Too small (~${span.toFixed(0)} mm) — that's a hole plug. Click the large recessed pocket floor in the center.`
+        );
+        return;
+      }
+    }
     const set = hintPickMode === 'floor' ? hintFloorHashes : hintWallHashes;
-    if (set.has(faceHash)) set.delete(faceHash);
-    else set.add(faceHash);
+    if (set.has(hashNum)) set.delete(hashNum);
+    else set.add(hashNum);
     if (hintPickMode === 'floor') {
       hintWallHashes.clear();
       hintAxis = null;
+      hintAxisSuggestKey = '';
+    } else {
+      // Wall set changed — re-suggest axis
+      hintAxis = null;
+      hintAxisSuggestKey = '';
     }
     updateHintStepUI();
     setStatus(
       hintPickMode === 'floor'
-        ? `Floor: ${hintFloorHashes.size} face(s)`
+        ? `Floor: ${hintFloorHashes.size} face(s) — highlighted light orange`
         : `Walls: ${hintWallHashes.size} face(s)`
     );
     return;
@@ -4626,11 +4941,25 @@ function bindHoleDetectionEvents() {
   btnSelectFloor?.addEventListener('click', () => {
     hintPickMode = 'floor';
     setSurfaceSelectMode(true);
-    setStatus('Click faces to define the pocket floor');
+    setStatus('Click faces to define the pocket floor (light orange highlight)');
   });
   btnClearFloor?.addEventListener('click', () => {
     resetHintWorkflow();
     setStatus('Floor selection cleared');
+  });
+  floorSelectionList?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.hint-face-list-remove');
+    if (!btn) return;
+    const row = btn.closest('.hint-face-list-item');
+    if (!row?.dataset.faceHash) return;
+    removeHintFace('floor', row.dataset.faceHash);
+  });
+  wallSelectionList?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.hint-face-list-remove');
+    if (!btn) return;
+    const row = btn.closest('.hint-face-list-item');
+    if (!row?.dataset.faceHash) return;
+    removeHintFace('wall', row.dataset.faceHash);
   });
   btnSelectWalls?.addEventListener('click', () => {
     if (!hintFloorHashes.size) return;
@@ -4668,17 +4997,10 @@ function bindHoleDetectionEvents() {
   hintAxisMode?.addEventListener('change', () => {
     const mode = hintAxisMode.value;
     if (hintAxisManual) hintAxisManual.hidden = mode !== 'manual';
-    if (mode === 'auto' && hintFloorHashes.size && hintWallHashes.size) {
-      const requestId = ++holeWorkerRequestId;
-      activeFeatureJob = 'hintAxis';
-      getBrepHoleWorker().postMessage({
-        type: 'hintSuggestAxis',
-        requestId,
-        payload: {
-          floorHashes: [...hintFloorHashes],
-          wallHashes: [...hintWallHashes]
-        }
-      });
+    if (mode === 'auto') {
+      hintAxisSuggestKey = '';
+      requestHintAxisSuggestIfNeeded();
+      updateHintStepUI();
     } else if (mode === 'manual') {
       hintAxis = [
         Number(hintAxisX?.value ?? 0),
@@ -4702,6 +5024,17 @@ function bindHoleDetectionEvents() {
 
   btnHintCalculate?.addEventListener('click', () => {
     if (!hintFloorHashes.size || !hintWallHashes.size) return;
+    // Axis optional — worker derives from floor normal when missing
+    const axis =
+      hintAxis?.length === 3
+        ? hintAxis
+        : hintAxisMode?.value === 'manual'
+          ? [
+              Number(hintAxisX?.value ?? 0),
+              Number(hintAxisY?.value ?? 0),
+              Number(hintAxisZ?.value ?? 1)
+            ]
+          : null;
     const requestId = ++holeWorkerRequestId;
     activeFeatureJob = 'hintCalc';
     setHoleDetectionBusy(true);
@@ -4713,7 +5046,7 @@ function bindHoleDetectionEvents() {
         payload: {
           floorHashes: [...hintFloorHashes],
           wallHashes: [...hintWallHashes],
-          axis: hintAxis
+          axis
         }
       });
     } catch (err) {

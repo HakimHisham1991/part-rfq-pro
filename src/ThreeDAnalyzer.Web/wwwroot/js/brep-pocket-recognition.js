@@ -734,6 +734,34 @@ function buildPocketRecord({
 }
 
 /**
+ * Build one pocket record from a user-selected (or auto) floor face index.
+ * Uses the same AAG walk + NX-style outer-wire extrude as recognizePockets.
+ */
+export function recognizePocketFromFloor(aag, floorIdx, occt = null) {
+  if (floorIdx == null || floorIdx < 0 || floorIdx >= aag.nodes.length) {
+    throw new Error('Invalid floor face index');
+  }
+  const { faces, rimEdges, patchOpenings } = collectPocketFaces(floorIdx, aag, null);
+  if (rimEdges.length === 0 && patchOpenings.length === 0) {
+    throw new Error('No pocket rim found from the selected floor face');
+  }
+  const record = buildPocketRecord({
+    floorIdx,
+    faces,
+    rimEdges,
+    patchOpenings,
+    nodes: aag.nodes,
+    aag,
+    isThrough: false,
+    occt
+  });
+  if (!(record.depth > 0.05) || !(record.maxBoundedVolume > 0)) {
+    throw new Error('Could not compute a cavity volume from the selected floor');
+  }
+  return record;
+}
+
+/**
  * Through-pockets — opt-in only (off by default).
  */
 export function recognizeThroughPockets(aag, alreadyVisited, holeFaceSet = null) {

@@ -168,14 +168,16 @@
                             <div class="prop-group">
                                 <div class="prop-label">Step 1 — Floor</div>
                                 <button id="btn-select-floor" type="button" class="info-panel-btn-inline">Select Floor</button>
-                                <span id="floor-selection-count" class="hint-selection-count">0 face(s) selected</span>
                                 <button id="btn-clear-floor" type="button" class="info-panel-btn-inline info-panel-btn-secondary">Clear</button>
+                                <span id="floor-selection-count" class="hint-selection-count">0 face(s) selected</span>
+                                <div id="floor-selection-list" class="hint-face-list" role="list" aria-label="Selected floor faces"></div>
                             </div>
                             <div class="prop-group" id="hint-wall-step" data-disabled="true">
                                 <div class="prop-label">Step 2 — Walls</div>
                                 <button id="btn-select-walls" type="button" class="info-panel-btn-inline">Select Walls</button>
                                 <button id="btn-detect-walls" type="button" class="info-panel-btn-inline">Detect Walls</button>
                                 <span id="wall-selection-count" class="hint-selection-count">0 face(s)</span>
+                                <div id="wall-selection-list" class="hint-face-list" role="list" aria-label="Selected wall faces"></div>
                                 <div id="hint-detect-wall-options" hidden>
                                     <div class="prop-group">
                                         <label><input id="hint-include-fillets" type="checkbox" checked /> Include Fillets</label>

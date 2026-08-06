@@ -7,17 +7,20 @@
  * Shape handles stay in this module; only meshes / serializable results leave.
  */
 
-import { loadOcct, buildAAG, recognizeHoles } from './brep-feature-recognition.js?v=1.21.13';
+import { loadOcct, buildAAG, recognizeHoles } from './brep-feature-recognition.js?v=1.21.21';
 import { plugHoles, pickTargetSolid } from './pocket-body-preparation.js?v=1.21.2';
-import { recognizePockets } from './brep-pocket-recognition.js?v=1.21.13';
-import { detectPocketsByHullSubtraction, computeDepthAlongAxis } from './pocket-hull-subtraction.js?v=1.21.12';
+import {
+  recognizePockets,
+  recognizePocketFromFloor,
+  findFloorCandidates
+} from './brep-pocket-recognition.js?v=1.21.21';
+import { detectPocketsByHullSubtraction } from './pocket-hull-subtraction.js?v=1.21.12';
 import { detectPocketsBySlicing } from './pocket-slicing.js?v=1.21.2';
 import {
   detectWallsFromFloor,
   suggestAxisFromFaces,
-  buildHintedPocketRecord
-} from './pocket-user-hinted.js?v=1.21.2';
-import { sewFaces } from './brep-sew-utils.js?v=1.21.2';
+  extrudeFloorCavity
+} from './pocket-user-hinted.js?v=1.21.21';
 import { OCCT_HASH_UPPER } from './occt-hash.js?v=1.21.2';
 
 /** @type {null | {
@@ -108,7 +111,14 @@ export async function prepareBody2FromStep(arrayBuffer, options = {}) {
       report(onProgress, p.message, p.percent)
     );
 
-    report(onProgress, 'Tessellating Body 2 for viewer…', 70);
+    // Prebuild Body 2 AAG so User-Hinted "Detect Walls" / AAG walk don't
+    // appear stuck rebuilding adjacency after Plug Holes.
+    report(onProgress, 'Building AAG on Body 2…', 58);
+    const aag2 = await buildAAG(body2, occt, ({ message, percent }) => {
+      report(onProgress, message, 58 + Math.round((percent / 100) * 22));
+    });
+
+    report(onProgress, 'Tessellating Body 2 for viewer…', 82);
     const mesh = occt.meshShape(body2, {
       linearDeflection: 0.15,
       angularDeflection: 0.35
@@ -121,7 +131,7 @@ export async function prepareBody2FromStep(arrayBuffer, options = {}) {
       mark,
       body1,
       body2,
-      aag2: null,
+      aag2,
       holes,
       skipped,
       note,
@@ -369,7 +379,8 @@ function resolveHashes(hashes) {
   const handles = [];
   const missing = [];
   for (const h of hashes) {
-    const face = session.faceHashToHandle.get(h);
+    const key = Number(h);
+    const face = session.faceHashToHandle.get(key) ?? session.faceHashToHandle.get(h);
     if (face == null) missing.push(h);
     else handles.push(face);
   }
@@ -379,40 +390,152 @@ function resolveHashes(hashes) {
 function nodeIndicesForHashes(hashes) {
   const aag = session.aag2;
   if (!aag) return [];
-  const set = new Set(hashes);
+  // Coerce to number — postMessage / UI datasets can stringify hashes.
+  const set = new Set((hashes ?? []).map((h) => Number(h)).filter((h) => Number.isFinite(h)));
   const idxs = [];
   for (let i = 0; i < aag.nodes.length; i++) {
-    if (set.has(aag.nodes[i].faceHash)) idxs.push(i);
+    if (set.has(Number(aag.nodes[i].faceHash))) idxs.push(i);
   }
   return idxs;
+}
+
+const HINT_MIN_POCKET_FLOOR_SPAN_MM = 40;
+
+function footprintSpanFromNode(node) {
+  const uv = node?.uv;
+  if (!uv) return { span: 0, minSpan: 0, area: 0 };
+  const uw = Math.abs((uv.uMax ?? 0) - (uv.uMin ?? 0));
+  const vw = Math.abs((uv.vMax ?? 0) - (uv.vMin ?? 0));
+  return { span: Math.max(uw, vw), minSpan: Math.min(uw, vw), area: uw * vw };
+}
+
+/**
+ * Reject hole-plug discs and exterior stock faces — user must pick the recessed pocket floor.
+ */
+function assertHintFloorSelection(floorHashes, aag) {
+  const floorIdxs = nodeIndicesForHashes(floorHashes);
+  if (!floorIdxs.length) {
+    throw new Error(
+      `Selected floor face(s) not found on Body 2 AAG (${(floorHashes ?? []).length} hash(es) sent) — re-run Plug Holes`
+    );
+  }
+
+  const candidates = new Set(findFloorCandidates(aag, new Set()));
+  for (const idx of floorIdxs) {
+    const node = aag.nodes[idx];
+    const { span } = footprintSpanFromNode(node);
+    const walls = detectWallsFromFloor([idx], aag).length;
+    if (candidates.has(idx) && walls > 0) continue;
+
+    if (span < HINT_MIN_POCKET_FLOOR_SPAN_MM) {
+      throw new Error(
+        `Selected face is only ~${span.toFixed(0)} mm across — that's a hole plug, not the pocket. ` +
+          `Click the large recessed floor in the center (~230×130 mm).`
+      );
+    }
+    throw new Error(
+      `Selected face (~${span.toFixed(0)} mm) is not a pocket floor (no rising walls found). ` +
+        `Pick the recessed floor inside the pocket, not the outer flat top of the part.`
+    );
+  }
+  return floorIdxs;
+}
+
+/** Largest AAG pocket floor — pre-select after Plug Holes. */
+export async function hintSuggestPocketFloor(onProgress = null) {
+  const aag = await ensureAag2(onProgress);
+  const floors = findFloorCandidates(aag, new Set());
+  if (!floors.length) return null;
+
+  let bestIdx = floors[0];
+  let bestSpan = 0;
+  for (const idx of floors) {
+    const span = footprintSpanFromNode(aag.nodes[idx]).span;
+    if (span > bestSpan) {
+      bestSpan = span;
+      bestIdx = idx;
+    }
+  }
+
+  const wallCount = detectWallsFromFloor([bestIdx], aag).length;
+  return {
+    floorHash: aag.nodes[bestIdx].faceHash,
+    span: bestSpan,
+    wallCount
+  };
+}
+
+/** Resolve AAG floor node index from UI hash and/or OCCT face handle. */
+function nodeIndexForFloor(floorHash, floorHandle, occt) {
+  const fromHash = nodeIndicesForHashes([floorHash]);
+  if (fromHash.length) return fromHash[0];
+  const aag = session?.aag2;
+  if (!aag || floorHandle == null) return -1;
+  try {
+    const h = occt.hashCode(floorHandle, OCCT_HASH_UPPER);
+    const i = aag.nodes.findIndex((n) => Number(n.faceHash) === Number(h));
+    if (i >= 0) return i;
+  } catch {
+    /* ignore */
+  }
+  return -1;
 }
 
 /**
  * User-hinted: detect walls from floor face hashes.
  */
 export async function hintDetectWalls(floorHashes, opts = {}, onProgress = null) {
+  report(onProgress, 'Preparing Body 2 AAG…', 20);
   const aag = await ensureAag2(onProgress);
-  const floorIdxs = nodeIndicesForHashes(floorHashes);
-  if (!floorIdxs.length) throw new Error('Selected floor face(s) not found on Body 2 AAG');
+  report(onProgress, 'Validating pocket floor…', 45);
+  const floorIdxs = assertHintFloorSelection(floorHashes, aag);
+  report(onProgress, 'Walking walls from floor…', 70);
   const walls = detectWallsFromFloor(floorIdxs, aag, opts);
+  if (!walls.length) {
+    throw new Error(
+      'No pocket walls found from the selected floor — pick the large recessed center floor, then retry Detect Walls.'
+    );
+  }
   const wallHashes = walls.map((i) => aag.nodes[i].faceHash);
+  report(
+    onProgress,
+    `Detected ${wallHashes.length} wall face(s) from ${floorIdxs.length} floor face(s)`,
+    100
+  );
   return { wallHashes, wallCount: walls.length, floorCount: floorIdxs.length };
 }
 
 /**
- * User-hinted: sew floor+walls+opening cap and return metrics.
+ * User-hinted cavity volume:
+ *  1) Prefer direct floor outer-wire extrude using wall height (works with 1 wall)
+ *  2) Also try AAG walk when the floor hash is on Body 2 AAG; keep the larger volume
  */
 export async function hintCalculate(payload, onProgress = null) {
   if (!session?.body2) throw new Error('Body 2 is not ready');
-  const { occt, body2 } = session;
-  report(onProgress, 'Resolving selected faces…', 20);
+  const { occt } = session;
+  report(onProgress, 'Resolving selected faces…', 15);
 
   const floorHashes = payload.floorHashes ?? [];
   const wallHashes = payload.wallHashes ?? [];
-  const { handles: floorHandles } = resolveHashes(floorHashes);
-  const { handles: wallHandles } = resolveHashes(wallHashes);
-  if (!floorHandles.length) throw new Error('No floor faces resolved');
-  if (!wallHandles.length) throw new Error('No wall faces resolved');
+
+  report(onProgress, 'Validating pocket floor…', 22);
+  const aagForFloor = await ensureAag2(onProgress);
+  assertHintFloorSelection(floorHashes, aagForFloor);
+
+  const { handles: floorHandles, missing: missingFloors } = resolveHashes(floorHashes);
+  const { handles: wallHandles, missing: missingWalls } = resolveHashes(wallHashes);
+  if (!floorHandles.length) {
+    throw new Error(
+      `No floor faces resolved on Body 2` +
+        (missingFloors.length ? ` (hash ${missingFloors[0]} missing — re-run Plug Holes)` : '')
+    );
+  }
+  if (!wallHandles.length) {
+    throw new Error(
+      `Select at least one pocket wall face` +
+        (missingWalls.length ? ` (wall hash missing — re-run Plug Holes)` : '')
+    );
+  }
 
   let axis = payload.axis;
   if (!axis || !Array.isArray(axis) || axis.length !== 3) {
@@ -421,50 +544,95 @@ export async function hintCalculate(payload, onProgress = null) {
   const L = Math.hypot(axis[0], axis[1], axis[2]) || 1;
   axis = [axis[0] / L, axis[1] / L, axis[2] / L];
 
-  report(onProgress, 'Enclosing cavity…', 45);
-  let solid = null;
-  let flagged = null;
+  // AAG depth / volume when the floor is a real pocket (even if wall pick is partial)
+  let depthHint = null;
+  let aagRec = null;
   try {
-    // Cap: extrude floor outer wire along axis, then common with a large prism —
-    // preferred path: sew selected faces after building a planar opening cap
-    // from the free boundary is complex; use floor-wire extrude ∩ body gap approx:
-    const floorFace = floorHandles[0];
-    const wire = occt.outerWire(floorFace);
-    const bb = occt.getBoundingBox(body2, true);
-    const diag =
-      Math.hypot(bb.xmax - bb.xmin, bb.ymax - bb.ymin, bb.zmax - bb.zmin) * 1.5;
-    const prism = occt.extrude(wire, axis[0] * diag, axis[1] * diag, axis[2] * diag);
-    // Build solid from floor+walls via sew; if that fails use extruded prism cut
-    try {
-      solid = sewFaces(occt, [...floorHandles, ...wallHandles], 1e-3);
-      // Clip to extruded region
-      solid = occt.common(solid, prism);
-    } catch {
-      // Fallback: plug volume ≈ extruded floor clipped somehow — use prism volume
-      // against cut of a bbox solid is unreliable; just use the extruded face solidify
-      solid = occt.sewAndSolidify([floorFace, ...wallHandles], 1e-3);
-      flagged = 'axis-extrusion-fallback';
+    report(onProgress, 'Analyzing floor on Body 2 AAG…', 35);
+    const aag = await ensureAag2(onProgress);
+    const floorIdx = nodeIndexForFloor(floorHashes[0], floorHandles[0], occt);
+    if (floorIdx >= 0) {
+      try {
+        aagRec = recognizePocketFromFloor(aag, floorIdx, occt);
+        if (aagRec?.depth > 0.2) depthHint = aagRec.depth;
+      } catch {
+        /* floor may be plug / incomplete rim — extrude still tries */
+      }
     }
+  } catch {
+    /* AAG optional */
+  }
+
+  report(onProgress, 'Extruding floor outer wire (plugged cavity)…', 55);
+  let extruded = null;
+  let extrudeErr = null;
+  try {
+    extruded = extrudeFloorCavity(occt, floorHandles[0], wallHandles, axis, depthHint);
   } catch (err) {
-    throw new Error(`Enclosure failed: ${err?.message ?? err}`);
+    extrudeErr = err;
   }
 
-  if (occt.isNull(solid) || !(Math.abs(occt.getVolume(solid)) > 0)) {
-    throw new Error('Enclosed solid is empty');
+  // Retry AAG record if extrude failed but we didn't try recognize yet
+  if (!aagRec && !extruded) {
+    try {
+      const aag = session.aag2 ?? (await ensureAag2(onProgress));
+      const floorIdx = nodeIndexForFloor(floorHashes[0], floorHandles[0], occt);
+      if (floorIdx >= 0) {
+        aagRec = recognizePocketFromFloor(aag, floorIdx, occt);
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
-  report(onProgress, 'Computing volume / depth…', 80);
-  const record = buildHintedPocketRecord(occt, solid, {
+  const vol = (r) => r?.maxBoundedVolume ?? r?.volume ?? 0;
+  let best = null;
+  if (extruded && aagRec) {
+    best = vol(aagRec) >= vol(extruded) * 0.9 ? aagRec : extruded;
+  } else {
+    best = extruded || aagRec;
+  }
+
+  if (!best || !(vol(best) > 0)) {
+    throw new Error(
+      extrudeErr?.message ||
+        'Could not build a cavity from the selection. Select the large pocket floor (center of the part), not a small hole-plug disc, plus at least one rising wall.'
+    );
+  }
+
+  // Guard: tiny “plug” selections
+  const span = Math.max(best.width || 0, best.length || 0, best.maxBoundedSize?.width || 0);
+  if (vol(best) < 100 && span < 40) {
+    throw new Error(
+      `Cavity only ${vol(best).toFixed(1)} mm³ — that looks like a hole plug, not the pocket. Click the large recessed floor in the middle (≈230×130 mm), then a side wall.`
+    );
+  }
+
+  report(onProgress, 'Computing volume / depth…', 90);
+  const record = {
+    ...best,
+    id: `hint-${Date.now()}`,
+    detectionMethod: 'user-hinted',
+    toolAxis: axis,
     axis,
-    faceHandles: [...floorHandles, ...wallHandles],
-    faceHashes: [...floorHashes, ...wallHashes],
     accessType: 'single-axis',
-    flagged
-  });
-  // Prefer axis-aligned depth
-  record.maxDepth = computeDepthAlongAxis(occt, solid, axis);
-  record.depth = record.maxDepth;
-  report(onProgress, 'Done', 100);
+    volume: vol(best),
+    maxBoundedVolume: vol(best),
+    faceHashes: [
+      ...floorHashes.map((h) => Number(h)),
+      ...wallHashes.map((h) => Number(h))
+    ].filter((h) => Number.isFinite(h))
+  };
+
+  if (!record.plugMesh?.positions?.length) {
+    throw new Error('Cavity solid has no mesh to display');
+  }
+
+  report(
+    onProgress,
+    `Cavity volume ${Math.round(record.volume)} mm³ (depth ${Number(record.depth).toFixed(2)} mm)`,
+    100
+  );
   return record;
 }
 

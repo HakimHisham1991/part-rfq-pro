@@ -385,6 +385,9 @@ export async function buildAAG(shapeHandle, occt, onProgress = null) {
         `Classifying adjacency… ${i + 1} / ${nodes.length}`,
         50 + Math.round((i / Math.max(nodes.length, 1)) * 40)
       );
+      // Yield so worker progress messages flush to the UI (tight WASM loops
+      // otherwise look "stuck" near the end of classification).
+      await new Promise((r) => setTimeout(r, 0));
     }
     const neighbors = occt.adjacentFaces(shapeHandle, nodes[i].faceHandle);
     for (const neigh of neighbors) {
@@ -411,7 +414,7 @@ export async function buildAAG(shapeHandle, occt, onProgress = null) {
     }
   }
 
-  report('AAG complete', 95);
+  report('AAG complete', 100);
   return { nodes, adjacency, shapeHandle };
 }
 
@@ -718,7 +721,7 @@ export function recognizeHoles(aag, options = {}) {
  */
 async function recognizeFeaturesFromAag(aag, onProgress, features = 'holes', occt = null) {
   if (features === 'pockets') {
-    const { recognizePockets } = await import('./brep-pocket-recognition.js?v=1.21.13');
+    const { recognizePockets } = await import('./brep-pocket-recognition.js?v=1.21.19');
     // Exclude cylindrical/conical hole *walls* only — planar hole bottoms may
     // still be circular pockets (NX plugged-body style).
     const holesForExclude = recognizeHoles(aag, { onProgress: null });

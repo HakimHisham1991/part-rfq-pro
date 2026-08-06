@@ -4,6 +4,70 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.21] - 2026-08-06
+
+### Fixed
+
+- **User-Hinted wall detect / Calculate failed** when the floor pick was a hole plug (~13 mm disc) or exterior stock face instead of the recessed pocket floor. Floor picks under 40 mm are rejected in the viewer; worker validates against AAG pocket floors and returns a clear error. After Plug Holes, the largest pocket floor is **auto-suggested** (highlighted) for Step 1.
+
+---
+
+## [1.21.20] - 2026-08-06
+
+### Changed
+
+- **Plug Holes display** — Body 1 is hidden as soon as plugging starts; only **Body 2** is shown when ready, tinted **light green** with **no edge lines** (plugged holes appear solid, not outlined). Orange hole overlays are hidden while plugs are active. **Clear Hole Plugs** removes Body 2 and restores Body 1 with hole visuals.
+
+---
+
+## [1.21.19] - 2026-08-06
+
+### Fixed
+
+- **User-Hinted depth estimation** failed when the floor normal and UI axis disagreed (walls above the floor projected negative). Depth now uses bidirectional span along the floor normal; extrusion points toward the selected wall(s). AAG floor depth is applied as a hint when the picked floor is a real pocket.
+
+---
+
+## [1.21.18] - 2026-08-06
+
+### Fixed
+
+- **User-Hinted Calculate failed** with “Could not compute a cavity volume” on manual floor+wall picks: volume no longer depends on a full AAG floor walk. It **extrudes the floor outer wire** using depth from the selected wall(s) (works with a single wall). Tiny hole-plug selections get a clear error asking for the large pocket floor.
+
+---
+
+## [1.21.17] - 2026-08-06
+
+### Fixed
+
+- **User-Hinted Calculate stayed greyed out** after manually selecting floor + walls: the button required a suggested axis that was only requested after Detect Walls. Calculate now enables whenever floor and walls are selected, and Auto-suggest axis runs on manual wall picks too.
+
+---
+
+## [1.21.16] - 2026-08-06
+
+### Fixed
+
+- **User-Hinted Calculate** used sew(floor+walls), which with incomplete walls produced tiny/wrong volumes and no visible cavity. It now uses the same NX-style **floor outer-wire extrude** as AAG Face Walk (~596k mm³ on `002 - HOLES_POCKET.stp`) and always returns a magenta `plugMesh`. Detect Walls reuses the AAG pocket face walk so all pocket walls/fillets are found from the floor.
+
+---
+
+## [1.21.15] - 2026-08-06
+
+### Fixed
+
+- **User-Hinted Detect Walls looked stuck** at “Classifying adjacency…”: Body 2 AAG is now built during **Plug Holes**, classification yields so progress keeps updating, Detect Walls finishes the progress log at 100% and highlights walls, and floor hash matching coerces numeric hashes from the viewer.
+
+---
+
+## [1.21.14] - 2026-08-06
+
+### Changed
+
+- **User-Hinted pocket picking:** selected floor faces highlight in light orange in the viewer; Step 1 (Floor) and Step 2 (Walls) show a scrollable list of each selected surface with an × to remove it.
+
+---
+
 ## [1.21.13] - 2026-08-03
 
 ### Fixed
