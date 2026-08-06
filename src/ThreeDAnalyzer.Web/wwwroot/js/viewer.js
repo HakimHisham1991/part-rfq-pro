@@ -20,7 +20,7 @@ import {
 } from './pocket-state.js';
 
 /** Cache-bust only our JS workers — never append ?v= to .wasm (breaks OCCT on some hosts). */
-const JS_ASSET_V = '1.21.21';
+const JS_ASSET_V = '1.21.22';
 /** Reject hole-plug discs when picking a pocket floor on Body 2 (mm). */
 const HINT_MIN_FLOOR_PICK_SPAN_MM = 40;
 
@@ -99,6 +99,8 @@ const pocketDetectionMethod = document.getElementById('pocket-detection-method')
 const pocketParamsAagWalk = document.getElementById('pocket-params-aag-walk');
 const pocketParamsHullSubtract = document.getElementById('pocket-params-hull-subtract');
 const pocketParamsSlicing = document.getElementById('pocket-params-slicing');
+const pocketParamsMorphClosing = document.getElementById('pocket-params-morphological-closing');
+const pocketParamsVoxelFloodFill = document.getElementById('pocket-params-voxel-flood-fill');
 const pocketParamsUserHinted = document.getElementById('pocket-params-user-hinted');
 const btnGotoHoleDetection = document.getElementById('btn-goto-hole-detection');
 const btnSelectFloor = document.getElementById('btn-select-floor');
@@ -2545,6 +2547,21 @@ function runPocketDetection() {
       sliceStep: Number(document.getElementById('pocket-slice-step')?.value ?? 0.5),
       minContourArea: Number(document.getElementById('pocket-min-contour-area')?.value ?? 1)
     };
+  } else if (method === 'morphological-closing') {
+    params = {
+      offsetMm: Number(document.getElementById('pocket-morph-offset')?.value ?? 1.0),
+      minVolume: Number(document.getElementById('pocket-morph-min-volume')?.value ?? 1),
+      minOpeningWidth: Number(document.getElementById('pocket-morph-min-opening')?.value ?? 0.5),
+      stepDownRetries: Number(document.getElementById('pocket-morph-retries')?.value ?? 2)
+    };
+  } else if (method === 'voxel-flood-fill') {
+    params = {
+      voxelSize: Number(document.getElementById('pocket-voxel-size')?.value ?? 1.0),
+      paddingMm: Number(document.getElementById('pocket-voxel-padding')?.value ?? 2.0),
+      minVolume: Number(document.getElementById('pocket-voxel-min-volume')?.value ?? 1),
+      classifyBy: document.getElementById('pocket-voxel-classify-by')?.value || 'meshParity',
+      maxVoxelCount: Number(document.getElementById('pocket-voxel-max-count')?.value ?? 500000)
+    };
   }
 
   // Serialize holes the viewer already detected so the worker can filter plug ghosts
@@ -2676,6 +2693,8 @@ function syncPocketMethodParamsUI() {
   if (pocketParamsAagWalk) pocketParamsAagWalk.hidden = method !== 'aag-walk';
   if (pocketParamsHullSubtract) pocketParamsHullSubtract.hidden = method !== 'hull-subtract';
   if (pocketParamsSlicing) pocketParamsSlicing.hidden = method !== 'slicing';
+  if (pocketParamsMorphClosing) pocketParamsMorphClosing.hidden = method !== 'morphological-closing';
+  if (pocketParamsVoxelFloodFill) pocketParamsVoxelFloodFill.hidden = method !== 'voxel-flood-fill';
   if (pocketParamsUserHinted) pocketParamsUserHinted.hidden = method !== 'user-hinted';
   if (btnRunPocketDetection) btnRunPocketDetection.hidden = method === 'user-hinted';
 }

@@ -1,7 +1,7 @@
 /**
  * Pocket detection pipeline (worker-side):
  *  1. prepareBody2 — import STEP, recognize holes, plug → Body 2 (kept alive)
- *  2. detectPockets — aag-walk | hull-subtract | slicing on Body 2
+ *  2. detectPockets — aag-walk | hull-subtract | slicing | morphological-closing | voxel-flood-fill on Body 2
  *  3. user-hinted helpers that operate on the live Body 2 / AAG
  *
  * Shape handles stay in this module; only meshes / serializable results leave.
@@ -16,6 +16,8 @@ import {
 } from './brep-pocket-recognition.js?v=1.21.21';
 import { detectPocketsByHullSubtraction } from './pocket-hull-subtraction.js?v=1.21.12';
 import { detectPocketsBySlicing } from './pocket-slicing.js?v=1.21.2';
+import { detectPocketsByMorphologicalClosing } from './pocket-morphological-closing.js?v=1.21.22';
+import { detectPocketsByVoxelFloodFill } from './pocket-voxel-flood-fill.js?v=1.21.22';
 import {
   detectWallsFromFloor,
   suggestAxisFromFaces,
@@ -332,7 +334,7 @@ function filterPluggedHoleGhostPockets(pockets, holes, onProgress = null) {
 
 /**
  * Run one automatic pocket method against Body 2.
- * @param {'aag-walk'|'hull-subtract'|'slicing'} method
+ * @param {'aag-walk'|'hull-subtract'|'slicing'|'morphological-closing'|'voxel-flood-fill'} method
  */
 export async function detectPocketsOnBody2(method, params = {}, onProgress = null) {
   if (!session?.body2) {
@@ -354,6 +356,12 @@ export async function detectPocketsOnBody2(method, params = {}, onProgress = nul
   } else if (method === 'slicing') {
     report(onProgress, 'Slicing-based detection…', 10);
     pockets = await detectPocketsBySlicing(occt, body2, params, onProgress);
+  } else if (method === 'morphological-closing') {
+    report(onProgress, 'Morphological closing (dilate → erode)…', 10);
+    pockets = await detectPocketsByMorphologicalClosing(occt, body2, params, onProgress);
+  } else if (method === 'voxel-flood-fill') {
+    report(onProgress, 'Voxelizing and flood-filling…', 10);
+    pockets = await detectPocketsByVoxelFloodFill(occt, body2, params, onProgress);
   } else {
     // default: aag-walk
     const aag = await ensureAag2(onProgress);

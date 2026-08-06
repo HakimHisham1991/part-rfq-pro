@@ -4,6 +4,15 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.22] - 2026-08-06
+
+### Added
+
+- **Pocket Detection Method #5 — Morphological Closing** (`morphological-closing`): dilate Body 2 outward, erode back by the same offset, subtract to find filled narrow cavities. Step-down retries on failed B-Rep offsets; UI params for offset, min volume, min opening width, and retries.
+- **Pocket Detection Method #6 — Voxelize + Flood-Fill** (`voxel-flood-fill`): rasterize Body 2, flood-fill exterior empty voxels, keep unreachable empty components as enclosed cavities. Mesh-parity (fast) or exact `containsPoint` classification; auto-coarsening when grid exceeds max voxel count; blocky cavity meshes flagged `voxel-approximate`.
+
+---
+
 ## [1.21.21] - 2026-08-06
 
 ### Fixed

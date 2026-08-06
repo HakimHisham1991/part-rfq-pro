@@ -11,7 +11,7 @@ import {
   hintCalculate,
   hintSuggestAxis,
   hintSuggestPocketFloor
-} from './pocket-detection-pipeline.js?v=1.21.21';
+} from './pocket-detection-pipeline.js?v=1.21.22';
 
 function progressSink(requestId) {
   let lastProgressAt = 0;

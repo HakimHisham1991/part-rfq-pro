@@ -112,6 +112,8 @@
                                 <option value="aag-walk">AAG Face Walk (recommended)</option>
                                 <option value="hull-subtract">Convex Hull Subtraction</option>
                                 <option value="slicing">Slicing-Based (2.5D)</option>
+                                <option value="morphological-closing">Morphological Closing (Dilate → Erode)</option>
+                                <option value="voxel-flood-fill">Voxelize + Flood-Fill (Robust)</option>
                                 <option value="user-hinted">User-Hinted (Manual/Assisted)</option>
                             </select>
                         </div>
@@ -159,6 +161,63 @@
                             <div class="prop-group">
                                 <div class="prop-label">Min Contour Area (mm²)</div>
                                 <input id="pocket-min-contour-area" type="number" class="hole-input" value="1" min="0" step="0.5" />
+                            </div>
+                        </div>
+                        <div id="pocket-params-morphological-closing" class="pocket-method-params" hidden>
+                            <div class="pocket-method-note">
+                                Grows Body 2 outward, then shrinks it back by the same amount. Fills
+                                any gap narrower than 2× the offset while leaving wider outer
+                                concavities untouched. Offset must exceed half the widest cavity
+                                opening to seal it, and stay under half the thinnest wall to avoid
+                                bridging features together.
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Closing Offset (mm)</div>
+                                <input id="pocket-morph-offset" type="number" class="hole-input" value="1.0" min="0.05" step="0.05" />
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Min Cavity Volume (mm³)</div>
+                                <input id="pocket-morph-min-volume" type="number" class="hole-input" value="1" min="0" step="0.5" />
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Min Opening Width (mm)</div>
+                                <input id="pocket-morph-min-opening" type="number" class="hole-input" value="0.5" min="0.1" step="0.1" />
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Offset Step-Down Retries</div>
+                                <input id="pocket-morph-retries" type="number" class="hole-input" value="2" min="0" step="1" title="If the exact B-Rep offset fails at the requested distance, retry at smaller distances this many times before giving up" />
+                            </div>
+                        </div>
+                        <div id="pocket-params-voxel-flood-fill" class="pocket-method-params" hidden>
+                            <div class="pocket-method-note">
+                                Rasterizes Body 2 into a voxel grid, flood-fills from outside the
+                                part, and keeps whatever voxels the flood never reaches as enclosed
+                                cavities. Most robust option on messy or self-intersecting geometry;
+                                results are a blocky (staircase) approximation, not exact B-Rep.
+                                Best for fully enclosed internal voids — open pockets may be missed.
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Voxel Size (mm)</div>
+                                <input id="pocket-voxel-size" type="number" class="hole-input" value="1.0" min="0.05" step="0.05" />
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Padding (mm)</div>
+                                <input id="pocket-voxel-padding" type="number" class="hole-input" value="2.0" min="0" step="0.5" />
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Min Cavity Volume (mm³)</div>
+                                <input id="pocket-voxel-min-volume" type="number" class="hole-input" value="1" min="0" step="0.5" />
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Classification Method</div>
+                                <select id="pocket-voxel-classify-by" class="hole-select">
+                                    <option value="meshParity">Mesh Parity (fast)</option>
+                                    <option value="containsPoint">Exact B-Rep Point Test (slow, robust)</option>
+                                </select>
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Max Voxel Count (safety cap)</div>
+                                <input id="pocket-voxel-max-count" type="number" class="hole-input" value="500000" min="1000" step="1000" title="Voxel size is auto-coarsened if the grid would exceed this" />
                             </div>
                         </div>
                         <div id="pocket-params-user-hinted" class="pocket-method-params" hidden>
