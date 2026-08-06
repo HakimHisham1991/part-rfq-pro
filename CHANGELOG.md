@@ -4,6 +4,67 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.30] - 2026-08-06
+
+### Fixed
+
+- **User-Hinted orange highlights** — worker now sends `[triStart, triCount]` face ranges via AAG `faceId` (independent of hash matching); highlights attach in local mesh space as a child overlay.
+- **Clear Pockets hidden for method #7 (Voxelize)** — tall pocket-method param panels scroll inside the detection section; results area and **Clear Pockets** stay reachable (`pocket-tall-params-active` layout).
+
+---
+
+## [1.21.29] - 2026-08-06
+
+### Fixed
+
+- **User-Hinted orange highlights still missing** — AAG face hashes did not resolve to `meshShape` triangle groups (handle-based map was empty). Body 2 prep now builds a robust **AAG hash → faceGroup index** map; Suggest Floor / Detect Walls also return **precomputed triangle indices** from the worker. Highlights render as a child of the Body 2 mesh with `depthTest: false` so they stay visible over the green plugged body.
+
+---
+
+## [1.21.28] - 2026-08-06
+
+### Fixed
+
+- **User-Hinted 3D highlights (Suggest Largest Floor / Detect Walls)** — worker AAG face hashes did not match `meshShape` `faceGroups` hashes, so suggested floors and detected walls appeared in the list but never highlighted. Body 2 preparation now builds an AAG↔mesh hash map; highlights and manual picks use it to resolve the correct tessellated faces.
+
+---
+
+## [1.21.27] - 2026-08-06
+
+### Fixed
+
+- **User-Hinted 3D highlights** — floor and wall surfaces listed in Step 1/2 now render as **light orange** overlays on Body 2. Highlights are lifted slightly above the mesh and use polygon offset so they stay visible over the green plugged-body tessellation.
+
+---
+
+## [1.21.26] - 2026-08-06
+
+### Fixed
+
+- **User-Hinted pocket panel layout** — Detected Pockets table no longer gets squished when many floor/wall surfaces are listed. User-hinted controls scroll inside a capped section; pocket results keep a larger minimum height on desktop and mobile (hole-panel dual-open height cap applies only to Detected Holes).
+
+---
+
+## [1.21.25] - 2026-08-06
+
+### Fixed
+
+- **Delta-Volume Decomposition (method #4)** used the full Body 2 bbox (plus Stock Offsets), which left zero-thickness exterior shells and “leaking” removal regions. Stock is now **Body 2 bbox shrunk inward by 0.2 mm per face** before subtracting Body 2, matching the hull-shrink approach so only real cavity volume remains.
+
+---
+
+## [1.21.24] - 2026-08-06
+
+### Added
+
+- **Pocket Detection Method #4 — Subtraction (Delta-Volume) Decomposition** (`stock-subtraction`): builds a stock solid from Body 2's bbox + Stock Offsets panel, subtracts Body 2, splits removal volume into regions; open pockets (touching stock envelope) sorted first. Params: min volume, min opening, touch tolerance, bbox vs exact-face open classification.
+
+### Changed
+
+- **Pocket detection dropdown** renumbered and reordered: (1) AAG Face Walk, (2) Slicing, (3) Convex Hull, (4) Delta-Volume Decomposition, (5) User-Hinted, (6) Morphological Closing, (7) Voxel Flood-Fill.
+
+---
+
 ## [1.21.23] - 2026-08-06
 
 ### Fixed

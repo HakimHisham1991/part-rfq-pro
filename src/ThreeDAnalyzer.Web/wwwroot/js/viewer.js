@@ -20,7 +20,7 @@ import {
 } from './pocket-state.js';
 
 /** Cache-bust only our JS workers — never append ?v= to .wasm (breaks OCCT on some hosts). */
-const JS_ASSET_V = '1.21.23';
+const JS_ASSET_V = '1.21.30';
 /** Reject hole-plug discs when picking a pocket floor on Body 2 (mm). */
 const HINT_MIN_FLOOR_PICK_SPAN_MM = 40;
 
@@ -99,6 +99,7 @@ const pocketDetectionMethod = document.getElementById('pocket-detection-method')
 const pocketParamsAagWalk = document.getElementById('pocket-params-aag-walk');
 const pocketParamsHullSubtract = document.getElementById('pocket-params-hull-subtract');
 const pocketParamsSlicing = document.getElementById('pocket-params-slicing');
+const pocketParamsStockSubtraction = document.getElementById('pocket-params-stock-subtraction');
 const pocketParamsMorphClosing = document.getElementById('pocket-params-morphological-closing');
 const pocketParamsVoxelFloodFill = document.getElementById('pocket-params-voxel-flood-fill');
 const pocketParamsUserHinted = document.getElementById('pocket-params-user-hinted');
@@ -1027,6 +1028,21 @@ const highlightedPocketIds = new Set();
 let body1PartGroupBackup = null;
 /** faceGroups triples from Body 2 meshShape: [triStart, triCount, faceHash] */
 let body2FaceGroups = null;
+/** AAG faceHash ↔ mesh faceGroups hash (meshShape uses a different hash than AAG). */
+let body2AagToMeshFaceHash = null;
+let body2MeshToAagFaceHash = null;
+/** AAG hash → meshShape faceGroups triple index (0-based face group). */
+let body2AagHashToGroupIdx = null;
+let body2MeshHashToGroupIdx = null;
+/** Tessellated triangle indices from worker (authoritative when hash map missing). */
+let hintFloorTriIndices = [];
+let hintWallTriIndices = [];
+/** [triStart, triCount] pairs from worker — work even when viewer faceGroups is empty. */
+let hintFloorFaceRanges = [];
+let hintWallFaceRanges = [];
+/** meshShape faceGroup indices (AAG node faceId). */
+let hintFloorGroupIndices = [];
+let hintWallGroupIndices = [];
 /** 'floor' | 'wall-select' | null */
 let hintPickMode = null;
 const hintFloorHashes = new Set();
@@ -1046,6 +1062,11 @@ const _faceCenter = new THREE.Vector3();
 const _faceNormal = new THREE.Vector3();
 const _projPoint = new THREE.Vector3();
 const _viewDir = new THREE.Vector3();
+const _hintV0 = new THREE.Vector3();
+const _hintV1 = new THREE.Vector3();
+const _hintV2 = new THREE.Vector3();
+const _hintEdge1 = new THREE.Vector3();
+const _hintEdge2 = new THREE.Vector3();
 
 const MEASUREMENT_TOOLS = new Set(['distance', 'angle', 'radius']);
 
@@ -1471,6 +1492,12 @@ function resetAnalyzerSession() {
   loadedFileName = '';
   lastLoadedArrayBuffer = null;
   body2FaceGroups = null;
+  body2AagToMeshFaceHash = null;
+  body2MeshToAagFaceHash = null;
+  body2AagHashToGroupIdx = null;
+  body2MeshHashToGroupIdx = null;
+  hintFloorTriIndices = [];
+  hintWallTriIndices = [];
   activePartContext.projectId = null;
   activePartContext.partId = null;
 
@@ -1926,6 +1953,12 @@ async function loadStepFile(arrayBuffer, fileName) {
     disposeHintHighlight();
     resetHintWorkflow();
     body2FaceGroups = null;
+    body2AagToMeshFaceHash = null;
+    body2MeshToAagFaceHash = null;
+    body2AagHashToGroupIdx = null;
+    body2MeshHashToGroupIdx = null;
+    hintFloorTriIndices = [];
+    hintWallTriIndices = [];
     resetPocketSessionFlags();
     resetPocketWorkerSession();
     refreshPocketGateUI();
@@ -2538,18 +2571,26 @@ function runPocketDetection() {
   activeHoleDetectionSource = 'brep';
 
   let params = {};
-  if (method === 'hull-subtract') {
+  if (method === 'slicing') {
+    params = {
+      axisOverride: document.getElementById('pocket-slicing-axis')?.value || 'auto',
+      sliceStep: Number(document.getElementById('pocket-slice-step')?.value ?? 0.5),
+      minContourArea: Number(document.getElementById('pocket-min-contour-area')?.value ?? 1)
+    };
+  } else if (method === 'hull-subtract') {
     params = {
       minVolume: Number(document.getElementById('pocket-min-volume')?.value ?? 1),
       minOpeningWidth: Number(document.getElementById('pocket-min-opening')?.value ?? 0.5),
       hullDeflection: Number(document.getElementById('pocket-hull-deflection')?.value ?? 0.3),
       hullShrinkMm: Number(document.getElementById('pocket-hull-shrink')?.value ?? 0.2)
     };
-  } else if (method === 'slicing') {
+  } else if (method === 'stock-subtraction') {
     params = {
-      axisOverride: document.getElementById('pocket-slicing-axis')?.value || 'auto',
-      sliceStep: Number(document.getElementById('pocket-slice-step')?.value ?? 0.5),
-      minContourArea: Number(document.getElementById('pocket-min-contour-area')?.value ?? 1)
+      stockInsetMm: 0.2,
+      minVolume: Number(document.getElementById('pocket-stock-min-volume')?.value ?? 1),
+      minOpeningWidth: Number(document.getElementById('pocket-stock-min-opening')?.value ?? 0.5),
+      openTouchTolerance: Number(document.getElementById('pocket-stock-touch-tol')?.value ?? 0.05),
+      openClassifyBy: document.getElementById('pocket-stock-classify-by')?.value || 'bbox'
     };
   } else if (method === 'morphological-closing') {
     params = {
@@ -2631,7 +2672,7 @@ function disposeBody1Backup() {
 
 function disposeHintHighlight() {
   if (!hintHighlightGroup) return;
-  scene.remove(hintHighlightGroup);
+  if (hintHighlightGroup.parent) hintHighlightGroup.parent.remove(hintHighlightGroup);
   disposeObject(hintHighlightGroup);
   hintHighlightGroup = null;
 }
@@ -2643,6 +2684,7 @@ function resetHintWorkflow() {
   hintAxis = null;
   hintAxisSuggestKey = '';
   hintSuggestedFloorHash = null;
+  clearHintHighlightCache();
   disposeHintHighlight();
   updateHintStepUI();
   if (hintDetectWallOptions) hintDetectWallOptions.hidden = true;
@@ -2698,10 +2740,21 @@ function syncPocketMethodParamsUI() {
   if (pocketParamsAagWalk) pocketParamsAagWalk.hidden = method !== 'aag-walk';
   if (pocketParamsHullSubtract) pocketParamsHullSubtract.hidden = method !== 'hull-subtract';
   if (pocketParamsSlicing) pocketParamsSlicing.hidden = method !== 'slicing';
+  if (pocketParamsStockSubtraction) {
+    pocketParamsStockSubtraction.hidden = method !== 'stock-subtraction';
+  }
   if (pocketParamsMorphClosing) pocketParamsMorphClosing.hidden = method !== 'morphological-closing';
   if (pocketParamsVoxelFloodFill) pocketParamsVoxelFloodFill.hidden = method !== 'voxel-flood-fill';
   if (pocketParamsUserHinted) pocketParamsUserHinted.hidden = method !== 'user-hinted';
   if (btnRunPocketDetection) btnRunPocketDetection.hidden = method === 'user-hinted';
+  pocketPanel?.classList.toggle('user-hinted-active', method === 'user-hinted');
+  pocketPanel?.classList.toggle(
+    'pocket-tall-params-active',
+    method === 'user-hinted' ||
+      method === 'stock-subtraction' ||
+      method === 'morphological-closing' ||
+      method === 'voxel-flood-fill'
+  );
 }
 
 function isHolePlugsActive() {
@@ -2849,6 +2902,12 @@ function restoreBody1Mesh({ clearSelection = true, restoreHoleVisuals = true } =
   partGroup.visible = true;
   scene.add(partGroup);
   body2FaceGroups = null;
+  body2AagToMeshFaceHash = null;
+  body2MeshToAagFaceHash = null;
+  body2AagHashToGroupIdx = null;
+  body2MeshHashToGroupIdx = null;
+  hintFloorTriIndices = [];
+  hintWallTriIndices = [];
   if (clearSelection) clearSurfaceSelection();
   if (restoreHoleVisuals && detectedHoles.length > 0) {
     renderHoleVisuals();
@@ -2979,6 +3038,7 @@ function applyBody2Mesh(meshPayload) {
   }
 
   body2FaceGroups = meshPayload.faceGroups || null;
+  loadBody2FaceHashMaps(meshPayload);
 
   disposeHoleVisuals();
 
@@ -3014,22 +3074,263 @@ function faceHashFromTriangle(triIndex) {
   return null;
 }
 
-/** Light orange for floor faces; slightly deeper orange for walls. */
-const HINT_FLOOR_HIGHLIGHT = 0xffb347;
-const HINT_WALL_HIGHLIGHT = 0xff9a3c;
+/** Light orange for all user-hinted floor/wall picks in the 3D view. */
+const HINT_SURFACE_HIGHLIGHT = 0xffb347;
+/** Lift highlights above Body 2 tessellation (Body 2 mesh uses polygon offset). */
+const HINT_HIGHLIGHT_SURFACE_OFFSET_MM = 0.08;
+
+function createHintHighlightMaterial() {
+  return new THREE.MeshBasicMaterial({
+    color: HINT_SURFACE_HIGHLIGHT,
+    transparent: true,
+    opacity: 0.7,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    depthTest: false
+  });
+}
+
+function clearHintHighlightCache() {
+  hintFloorTriIndices = [];
+  hintWallTriIndices = [];
+  hintFloorFaceRanges = [];
+  hintWallFaceRanges = [];
+  hintFloorGroupIndices = [];
+  hintWallGroupIndices = [];
+}
+
+function parseFaceRanges(ranges) {
+  if (!Array.isArray(ranges)) return [];
+  const out = [];
+  for (const pair of ranges) {
+    if (!Array.isArray(pair) || pair.length < 2) continue;
+    const triStart = Number(pair[0]);
+    const triCount = Number(pair[1]);
+    if (!Number.isFinite(triStart) || !Number.isFinite(triCount) || triCount <= 0) continue;
+    out.push([triStart, triCount]);
+  }
+  return out;
+}
+
+function triIndicesFromFaceRanges(ranges) {
+  const tris = [];
+  const seen = new Set();
+  for (const [triStart, triCount] of ranges ?? []) {
+    for (let t = 0; t < triCount; t++) {
+      const tri = triStart + t;
+      if (!seen.has(tri)) {
+        seen.add(tri);
+        tris.push(tri);
+      }
+    }
+  }
+  return tris;
+}
+
+function buildHintHighlightMesh(bodyMesh, triIndices) {
+  if (!bodyMesh?.geometry || !triIndices.length) return null;
+
+  const geo = bodyMesh.geometry;
+  const posAttr = geo.attributes.position;
+  const index = geo.index;
+  const verts = [];
+  const idxs = [];
+  let vi = 0;
+  const nudge = HINT_HIGHLIGHT_SURFACE_OFFSET_MM;
+
+  for (const tri of triIndices) {
+    const i0 = index ? index.getX(tri * 3) : tri * 3;
+    const i1 = index ? index.getX(tri * 3 + 1) : tri * 3 + 1;
+    const i2 = index ? index.getX(tri * 3 + 2) : tri * 3 + 2;
+
+    _hintV0.set(posAttr.getX(i0), posAttr.getY(i0), posAttr.getZ(i0));
+    _hintV1.set(posAttr.getX(i1), posAttr.getY(i1), posAttr.getZ(i1));
+    _hintV2.set(posAttr.getX(i2), posAttr.getY(i2), posAttr.getZ(i2));
+
+    _hintEdge1.subVectors(_hintV1, _hintV0);
+    _hintEdge2.subVectors(_hintV2, _hintV0);
+    _faceNormal.crossVectors(_hintEdge1, _hintEdge2);
+    if (_faceNormal.lengthSq() > 1e-18) {
+      _faceNormal.normalize().multiplyScalar(nudge);
+      _hintV0.add(_faceNormal);
+      _hintV1.add(_faceNormal);
+      _hintV2.add(_faceNormal);
+    }
+
+    verts.push(
+      _hintV0.x,
+      _hintV0.y,
+      _hintV0.z,
+      _hintV1.x,
+      _hintV1.y,
+      _hintV1.z,
+      _hintV2.x,
+      _hintV2.y,
+      _hintV2.z
+    );
+    idxs.push(vi, vi + 1, vi + 2);
+    vi += 3;
+  }
+
+  if (!verts.length) return null;
+
+  const highlightGeo = new THREE.BufferGeometry();
+  highlightGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  highlightGeo.setIndex(idxs);
+  const highlightMesh = new THREE.Mesh(highlightGeo, createHintHighlightMaterial());
+  highlightMesh.renderOrder = 999;
+  highlightMesh.raycast = () => {};
+  return highlightMesh;
+}
+
+function loadBody2FaceHashMaps(meshPayload) {
+  body2AagToMeshFaceHash = new Map();
+  body2MeshToAagFaceHash = new Map();
+  body2AagHashToGroupIdx = new Map();
+  body2MeshHashToGroupIdx = new Map();
+  if (!meshPayload) return;
+
+  for (const [key, value] of Object.entries(meshPayload.aagToMeshFaceHash ?? {})) {
+    const aagHash = Number(key);
+    const meshHash = Number(value);
+    if (!Number.isFinite(aagHash) || !Number.isFinite(meshHash)) continue;
+    body2AagToMeshFaceHash.set(aagHash, meshHash);
+  }
+  for (const [key, value] of Object.entries(meshPayload.meshToAagFaceHash ?? {})) {
+    const meshHash = Number(key);
+    const aagHash = Number(value);
+    if (!Number.isFinite(aagHash) || !Number.isFinite(meshHash)) continue;
+    body2MeshToAagFaceHash.set(meshHash, aagHash);
+  }
+  for (const [key, value] of Object.entries(meshPayload.aagHashToGroupIdx ?? {})) {
+    const aagHash = Number(key);
+    const groupIdx = Number(value);
+    if (!Number.isFinite(aagHash) || !Number.isInteger(groupIdx)) continue;
+    body2AagHashToGroupIdx.set(aagHash, groupIdx);
+  }
+
+  if (body2FaceGroups?.length) {
+    const groupCount = body2FaceGroups.length / 3;
+    for (let g = 0; g < groupCount; g++) {
+      const meshHash = Number(body2FaceGroups[g * 3 + 2]);
+      if (Number.isFinite(meshHash)) body2MeshHashToGroupIdx.set(meshHash, g);
+    }
+  }
+}
+
+function triIndicesForGroupIdx(groupIdx) {
+  const gi = groupIdx * 3;
+  if (!body2FaceGroups || gi + 2 >= body2FaceGroups.length) return [];
+  const triStart = body2FaceGroups[gi];
+  const triCount = body2FaceGroups[gi + 1];
+  const tris = [];
+  for (let t = 0; t < triCount; t++) tris.push(triStart + t);
+  return tris;
+}
+
+function resolveGroupIdxForHintHash(hash) {
+  const n = Number(hash);
+  if (!Number.isFinite(n)) return null;
+  const aagHash = toAagHintFaceHash(n);
+  if (aagHash != null && body2AagHashToGroupIdx?.has(aagHash)) {
+    return body2AagHashToGroupIdx.get(aagHash);
+  }
+  if (body2MeshHashToGroupIdx?.has(n)) return body2MeshHashToGroupIdx.get(n);
+  if (aagHash != null && body2MeshHashToGroupIdx?.has(aagHash)) {
+    return body2MeshHashToGroupIdx.get(aagHash);
+  }
+  return null;
+}
+
+/** Canonical AAG hash stored in hint floor/wall sets (worker protocol). */
+function toAagHintFaceHash(hash) {
+  const n = Number(hash);
+  if (!Number.isFinite(n)) return null;
+  if (body2AagToMeshFaceHash?.has(n)) return n;
+  return body2MeshToAagFaceHash?.get(n) ?? n;
+}
+
+/** meshShape faceGroups hash used for tessellation highlight lookup. */
+function toMeshHintFaceHash(hash) {
+  const n = Number(hash);
+  if (!Number.isFinite(n)) return null;
+  if (body2MeshToAagFaceHash?.has(n)) return n;
+  return body2AagToMeshFaceHash?.get(n) ?? n;
+}
 
 function triangleIndicesForFaceHashes(hashSet) {
-  const triIndices = [];
-  if (!body2FaceGroups?.length || !hashSet?.size) return triIndices;
-  const want = new Set([...hashSet].map((h) => Number(h)));
+  const seen = new Set();
+  const tris = [];
+
+  const addTri = (tri) => {
+    if (!seen.has(tri)) {
+      seen.add(tri);
+      tris.push(tri);
+    }
+  };
+
+  for (const h of hashSet ?? []) {
+    const groupIdx = resolveGroupIdxForHintHash(h);
+    if (groupIdx == null) continue;
+    for (const tri of triIndicesForGroupIdx(groupIdx)) addTri(tri);
+  }
+  if (tris.length) return tris;
+
+  const want = new Set(
+    [...(hashSet ?? [])]
+      .map((h) => toMeshHintFaceHash(h))
+      .filter((h) => h != null && Number.isFinite(h))
+  );
+  if (!body2FaceGroups?.length || !want.size) return tris;
   for (let i = 0; i + 2 < body2FaceGroups.length; i += 3) {
     const triStart = body2FaceGroups[i];
     const triCount = body2FaceGroups[i + 1];
     const faceHash = body2FaceGroups[i + 2];
     if (!want.has(Number(faceHash))) continue;
-    for (let t = 0; t < triCount; t++) triIndices.push(triStart + t);
+    for (let t = 0; t < triCount; t++) addTri(triStart + t);
   }
-  return triIndices;
+  return tris;
+}
+
+function collectHintHighlightTriIndices() {
+  const fromRanges = triIndicesFromFaceRanges([
+    ...hintFloorFaceRanges,
+    ...hintWallFaceRanges
+  ]);
+  if (fromRanges.length) return fromRanges;
+
+  const fromWorkerTris = [...hintFloorTriIndices, ...hintWallTriIndices];
+  if (fromWorkerTris.length) {
+    const seen = new Set();
+    return fromWorkerTris.filter((tri) => {
+      if (seen.has(tri)) return false;
+      seen.add(tri);
+      return true;
+    });
+  }
+
+  const fromGroups = triIndicesForGroupIndexList([
+    ...hintFloorGroupIndices,
+    ...hintWallGroupIndices
+  ]);
+  if (fromGroups.length) return fromGroups;
+
+  return triangleIndicesForFaceHashes(new Set([...hintFloorHashes, ...hintWallHashes]));
+}
+
+function triIndicesForGroupIndexList(groupIndices) {
+  if (!body2FaceGroups?.length) return [];
+  const tris = [];
+  const seen = new Set();
+  for (const groupIdx of groupIndices ?? []) {
+    for (const tri of triIndicesForGroupIdx(groupIdx)) {
+      if (!seen.has(tri)) {
+        seen.add(tri);
+        tris.push(tri);
+      }
+    }
+  }
+  return tris;
 }
 
 /** Approximate B-Rep face span (mm) from tessellated triangles — for pick validation. */
@@ -3088,8 +3389,20 @@ function applyHintFloorSuggest(data, { clearWalls = true, logToProgress = false 
     hintAxis = null;
     hintAxisSuggestKey = '';
   }
-  hintSuggestedFloorHash = Number(data.floorHash);
+  hintSuggestedFloorHash = toAagHintFaceHash(data.floorHash);
+  if (hintSuggestedFloorHash == null) return false;
   hintFloorHashes.add(hintSuggestedFloorHash);
+  hintFloorTriIndices = Array.isArray(data.floorTriIndices)
+    ? data.floorTriIndices.map((t) => Number(t)).filter((t) => Number.isFinite(t))
+    : [];
+  hintFloorFaceRanges = parseFaceRanges(data.floorFaceRanges);
+  hintFloorGroupIndices =
+    data.floorGroupIndex != null && Number.isInteger(Number(data.floorGroupIndex))
+      ? [Number(data.floorGroupIndex)]
+      : [];
+  hintWallTriIndices = [];
+  hintWallFaceRanges = [];
+  hintWallGroupIndices = [];
   updateHintStepUI();
   const span = data.span ? ` (~${Math.round(data.span)} mm)` : '';
   const msg = `Pocket floor suggested${span} — pick walls or run Detect Walls`;
@@ -3141,67 +3454,32 @@ function pickHintFaceHash(hits, role) {
   return null;
 }
 
-function addHintHighlightMesh(triIndices, colorHex) {
-  if (!triIndices.length || !partGroup || !hintHighlightGroup) return;
-
-  partGroup.children.forEach((child) => {
-    if (!child.isMesh || !child.geometry) return;
-    // Body 2 is a single mesh (meshIndex 0)
-    const geo = child.geometry;
-    const posAttr = geo.attributes.position;
-    const index = geo.index;
-    const highlightPositions = [];
-
-    for (const faceIdx of triIndices) {
-      let i0;
-      let i1;
-      let i2;
-      if (index) {
-        i0 = index.getX(faceIdx * 3);
-        i1 = index.getX(faceIdx * 3 + 1);
-        i2 = index.getX(faceIdx * 3 + 2);
-      } else {
-        i0 = faceIdx * 3;
-        i1 = faceIdx * 3 + 1;
-        i2 = faceIdx * 3 + 2;
-      }
-
-      const v0 = new THREE.Vector3().fromBufferAttribute(posAttr, i0);
-      const v1 = new THREE.Vector3().fromBufferAttribute(posAttr, i1);
-      const v2 = new THREE.Vector3().fromBufferAttribute(posAttr, i2);
-      child.localToWorld(v0);
-      child.localToWorld(v1);
-      child.localToWorld(v2);
-      highlightPositions.push(v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
-    }
-
-    if (!highlightPositions.length) return;
-
-    const highlightGeo = new THREE.BufferGeometry();
-    highlightGeo.setAttribute('position', new THREE.Float32BufferAttribute(highlightPositions, 3));
-    const highlightMat = new THREE.MeshBasicMaterial({
-      color: colorHex,
-      transparent: true,
-      opacity: 0.55,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      depthTest: true
-    });
-    const highlightMesh = new THREE.Mesh(highlightGeo, highlightMat);
-    highlightMesh.renderOrder = 10;
-    highlightMesh.raycast = () => {};
-    hintHighlightGroup.add(highlightMesh);
-  });
-}
-
 function rebuildHintHighlight() {
   disposeHintHighlight();
-  if (!partGroup || (!hintFloorHashes.size && !hintWallHashes.size)) return;
+  if (!partGroup) return;
+
+  const hasSelection =
+    hintFloorHashes.size > 0 ||
+    hintWallHashes.size > 0 ||
+    hintFloorFaceRanges.length > 0 ||
+    hintWallFaceRanges.length > 0 ||
+    hintFloorTriIndices.length > 0 ||
+    hintWallTriIndices.length > 0;
+  if (!hasSelection) return;
+
+  const triIndices = collectHintHighlightTriIndices();
+  if (!triIndices.length) return;
+
+  const bodyMesh = partGroup.children.find((c) => c.isMesh && c.geometry);
+  if (!bodyMesh) return;
+
+  const highlightMesh = buildHintHighlightMesh(bodyMesh, triIndices);
+  if (!highlightMesh) return;
 
   hintHighlightGroup = new THREE.Group();
-  addHintHighlightMesh(triangleIndicesForFaceHashes(hintFloorHashes), HINT_FLOOR_HIGHLIGHT);
-  addHintHighlightMesh(triangleIndicesForFaceHashes(hintWallHashes), HINT_WALL_HIGHLIGHT);
-  scene.add(hintHighlightGroup);
+  hintHighlightGroup.renderOrder = 999;
+  hintHighlightGroup.add(highlightMesh);
+  bodyMesh.add(hintHighlightGroup);
 }
 
 function renderHintFaceList(container, hashes, role) {
@@ -3237,12 +3515,21 @@ function removeHintFace(role, hash) {
   if (!Number.isFinite(n)) return;
   if (role === 'floor') {
     hintFloorHashes.delete(n);
+    hintFloorTriIndices = [];
+    hintFloorFaceRanges = [];
+    hintFloorGroupIndices = [];
     if (hintFloorHashes.size === 0) {
       hintWallHashes.clear();
+      hintWallTriIndices = [];
+      hintWallFaceRanges = [];
+      hintWallGroupIndices = [];
       hintAxis = null;
     }
   } else if (role === 'wall') {
     hintWallHashes.delete(n);
+    hintWallTriIndices = [];
+    hintWallFaceRanges = [];
+    hintWallGroupIndices = [];
     if (hintWallHashes.size === 0) hintAxis = null;
   }
   hintAxisSuggestKey = '';
@@ -3380,9 +3667,16 @@ function handleHoleWorkerMessage(event) {
     activeFeatureJob = null;
     hintWallHashes.clear();
     for (const h of data.wallHashes ?? []) {
-      const n = Number(h);
-      if (Number.isFinite(n)) hintWallHashes.add(n);
+      const n = toAagHintFaceHash(h);
+      if (n != null && Number.isFinite(n)) hintWallHashes.add(n);
     }
+    hintWallTriIndices = Array.isArray(data.wallTriIndices)
+      ? data.wallTriIndices.map((t) => Number(t)).filter((t) => Number.isFinite(t))
+      : [];
+    hintWallFaceRanges = parseFaceRanges(data.wallFaceRanges);
+    hintWallGroupIndices = Array.isArray(data.wallGroupIndices)
+      ? data.wallGroupIndices.map((g) => Number(g)).filter((g) => Number.isInteger(g) && g >= 0)
+      : [];
     hintAxisSuggestKey = ''; // force axis re-suggest for new wall set
     try {
       updateHintStepUI(); // enables Calculate + requests axis
@@ -4842,20 +5136,27 @@ function selectHintFacesInScreenRect(minX, minY, maxX, maxY, canvasW, canvasH) {
     hintWallHashes.clear();
     hintAxis = null;
     hintAxisSuggestKey = '';
-    for (const h of valid) hintFloorHashes.add(h);
+    clearHintHighlightCache();
+    for (const h of valid) {
+      const aagHash = toAagHintFaceHash(h);
+      if (aagHash != null) hintFloorHashes.add(aagHash);
+    }
     return valid.length;
   }
 
   let added = 0;
   for (const h of hashSet) {
-    if (!hintWallHashes.has(h)) {
-      hintWallHashes.add(h);
-      added++;
-    }
+    const aagHash = toAagHintFaceHash(h);
+    if (aagHash == null || hintWallHashes.has(aagHash)) continue;
+    hintWallHashes.add(aagHash);
+    added++;
   }
   if (added > 0) {
     hintAxis = null;
     hintAxisSuggestKey = '';
+    hintWallTriIndices = [];
+    hintWallFaceRanges = [];
+    hintWallGroupIndices = [];
   }
   return added;
 }
@@ -4878,16 +5179,22 @@ function handleSurfaceSelectClick(e) {
     }
 
     const { hash: hashNum, snapped } = picked;
+    const aagHash = toAagHintFaceHash(hashNum);
+    if (aagHash == null) return;
     const set = hintPickMode === 'floor' ? hintFloorHashes : hintWallHashes;
-    if (set.has(hashNum)) set.delete(hashNum);
-    else set.add(hashNum);
+    if (set.has(aagHash)) set.delete(aagHash);
+    else set.add(aagHash);
     if (hintPickMode === 'floor') {
       hintWallHashes.clear();
       hintAxis = null;
       hintAxisSuggestKey = '';
+      clearHintHighlightCache();
     } else {
       hintAxis = null;
       hintAxisSuggestKey = '';
+      hintWallTriIndices = [];
+      hintWallFaceRanges = [];
+      hintWallGroupIndices = [];
     }
     updateHintStepUI();
     setStatus(
@@ -5170,6 +5477,9 @@ function bindHoleDetectionEvents() {
   });
   btnClearWalls?.addEventListener('click', () => {
     hintWallHashes.clear();
+    hintWallTriIndices = [];
+    hintWallFaceRanges = [];
+    hintWallGroupIndices = [];
     hintAxis = null;
     hintAxisSuggestKey = '';
     updateHintStepUI();

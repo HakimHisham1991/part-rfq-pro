@@ -1,7 +1,7 @@
 /**
  * Pocket detection pipeline (worker-side):
  *  1. prepareBody2 — import STEP, recognize holes, plug → Body 2 (kept alive)
- *  2. detectPockets — aag-walk | hull-subtract | slicing | morphological-closing | voxel-flood-fill on Body 2
+ *  2. detectPockets — aag-walk | slicing | hull-subtract | stock-subtraction | user-hinted | morphological-closing | voxel-flood-fill on Body 2
  *  3. user-hinted helpers that operate on the live Body 2 / AAG
  *
  * Shape handles stay in this module; only meshes / serializable results leave.
@@ -16,8 +16,9 @@ import {
 } from './brep-pocket-recognition.js?v=1.21.21';
 import { detectPocketsByHullSubtraction } from './pocket-hull-subtraction.js?v=1.21.12';
 import { detectPocketsBySlicing } from './pocket-slicing.js?v=1.21.2';
-import { detectPocketsByMorphologicalClosing } from './pocket-morphological-closing.js?v=1.21.22';
-import { detectPocketsByVoxelFloodFill } from './pocket-voxel-flood-fill.js?v=1.21.22';
+import { detectPocketsByMorphologicalClosing } from './pocket-morphological-closing.js?v=1.21.24';
+import { detectPocketsByVoxelFloodFill } from './pocket-voxel-flood-fill.js?v=1.21.24';
+import { detectPocketsByStockSubtraction } from './pocket-stock-subtraction.js?v=1.21.25';
 import {
   detectWallsFromFloor,
   suggestAxisFromFaces,
@@ -42,14 +43,111 @@ function report(onProgress, message, percent) {
   if (typeof onProgress === 'function') onProgress({ message, percent });
 }
 
-function meshPayload(mesh) {
-  return {
+function meshPayload(mesh, hashMaps = null) {
+  const payload = {
     positions: Array.from(mesh.positions),
     normals: mesh.normals ? Array.from(mesh.normals) : null,
     indices: Array.from(mesh.indices),
     faceGroups: mesh.faceGroups ? Array.from(mesh.faceGroups) : null,
     faceCount: mesh.faceCount ?? null
   };
+  if (hashMaps) {
+    payload.aagToMeshFaceHash = serializeHashMap(hashMaps.aagToMesh);
+    payload.meshToAagFaceHash = serializeHashMap(hashMaps.meshToAag);
+    payload.aagHashToGroupIdx = serializeHashMap(hashMaps.aagHashToGroupIdx);
+  }
+  return payload;
+}
+
+function serializeHashMap(map) {
+  const out = {};
+  for (const [key, value] of map) out[key] = value;
+  return out;
+}
+
+/**
+ * Map AAG face hashes to meshShape faceGroup indices via node.faceId
+ * (same face enumeration order as meshShape groups).
+ */
+function buildAagMeshFaceHashMaps(_occt, _body2, mesh, aag) {
+  const aagToMesh = new Map();
+  const meshToAag = new Map();
+  const aagHashToGroupIdx = new Map();
+  if (!mesh.faceGroups?.length || !aag?.nodes?.length) {
+    return { aagToMesh, meshToAag, aagHashToGroupIdx };
+  }
+
+  const groupCount = mesh.faceGroups.length / 3;
+  for (const node of aag.nodes) {
+    const aagHash = Number(node.faceHash);
+    const groupIdx = node.faceId;
+    if (!Number.isFinite(aagHash) || groupIdx == null || groupIdx < 0 || groupIdx >= groupCount) {
+      continue;
+    }
+    const meshHash = Number(mesh.faceGroups[groupIdx * 3 + 2]);
+    aagHashToGroupIdx.set(aagHash, groupIdx);
+    aagToMesh.set(aagHash, meshHash);
+    meshToAag.set(meshHash, aagHash);
+  }
+
+  return { aagToMesh, meshToAag, aagHashToGroupIdx };
+}
+
+function triIndicesForGroupIndices(groupIndices) {
+  const fg = session?.meshFaceGroups;
+  if (!fg?.length) return [];
+
+  const tris = [];
+  const seen = new Set();
+  for (const groupIdx of groupIndices ?? []) {
+    const g = Number(groupIdx);
+    if (!Number.isInteger(g) || g < 0) continue;
+    const gi = g * 3;
+    if (gi + 2 >= fg.length) continue;
+    const triStart = fg[gi];
+    const triCount = fg[gi + 1];
+    for (let t = 0; t < triCount; t++) {
+      const tri = triStart + t;
+      if (!seen.has(tri)) {
+        seen.add(tri);
+        tris.push(tri);
+      }
+    }
+  }
+  return tris;
+}
+
+function faceRangesForAagNodeIndices(nodeIndices, aag) {
+  const fg = session?.meshFaceGroups;
+  if (!fg?.length || !aag) return [];
+
+  const ranges = [];
+  for (const ni of nodeIndices ?? []) {
+    const faceId = aag.nodes[ni]?.faceId;
+    if (faceId == null || faceId < 0) continue;
+    const gi = faceId * 3;
+    if (gi + 2 >= fg.length) continue;
+    ranges.push([fg[gi], fg[gi + 1]]);
+  }
+  return ranges;
+}
+
+function triIndicesForAagNodeIndices(nodeIndices, aag) {
+  const groupIndices = (nodeIndices ?? [])
+    .map((ni) => aag?.nodes[ni]?.faceId)
+    .filter((id) => Number.isInteger(id) && id >= 0);
+  return triIndicesForGroupIndices(groupIndices);
+}
+
+function triIndicesForAagFaceHashes(hashes) {
+  const aag = session?.aag2;
+  if (!aag) return [];
+  const groupIndices = [];
+  const hashSet = new Set((hashes ?? []).map((h) => Number(h)));
+  for (const node of aag.nodes) {
+    if (hashSet.has(Number(node.faceHash))) groupIndices.push(node.faceId);
+  }
+  return triIndicesForGroupIndices(groupIndices);
 }
 
 function buildFaceHashMap(occt, shape) {
@@ -127,6 +225,8 @@ export async function prepareBody2FromStep(arrayBuffer, options = {}) {
     });
 
     const faceHashToHandle = buildFaceHashMap(occt, body2);
+    const hashMaps = buildAagMeshFaceHashMaps(occt, body2, mesh, aag2);
+    const meshFaceGroups = mesh.faceGroups ? Array.from(mesh.faceGroups) : null;
 
     session = {
       occt,
@@ -137,7 +237,11 @@ export async function prepareBody2FromStep(arrayBuffer, options = {}) {
       holes,
       skipped,
       note,
-      faceHashToHandle
+      faceHashToHandle,
+      aagToMeshFaceHash: hashMaps.aagToMesh,
+      meshToAagFaceHash: hashMaps.meshToAag,
+      aagHashToGroupIdx: hashMaps.aagHashToGroupIdx,
+      meshFaceGroups
     };
 
     report(onProgress, 'Body 2 ready', 100);
@@ -146,7 +250,7 @@ export async function prepareBody2FromStep(arrayBuffer, options = {}) {
       holeCount: holes.length,
       skippedHoles: skipped,
       note,
-      mesh: meshPayload(mesh)
+      mesh: meshPayload(mesh, hashMaps)
     };
   } catch (err) {
     try {
@@ -334,7 +438,7 @@ function filterPluggedHoleGhostPockets(pockets, holes, onProgress = null) {
 
 /**
  * Run one automatic pocket method against Body 2.
- * @param {'aag-walk'|'hull-subtract'|'slicing'|'morphological-closing'|'voxel-flood-fill'} method
+ * @param {'aag-walk'|'slicing'|'hull-subtract'|'stock-subtraction'|'morphological-closing'|'voxel-flood-fill'} method
  */
 export async function detectPocketsOnBody2(method, params = {}, onProgress = null) {
   if (!session?.body2) {
@@ -350,12 +454,15 @@ export async function detectPocketsOnBody2(method, params = {}, onProgress = nul
     [];
 
   let pockets;
-  if (method === 'hull-subtract') {
-    report(onProgress, 'Convex hull subtraction…', 10);
-    pockets = await detectPocketsByHullSubtraction(occt, body2, params, onProgress);
-  } else if (method === 'slicing') {
+  if (method === 'slicing') {
     report(onProgress, 'Slicing-based detection…', 10);
     pockets = await detectPocketsBySlicing(occt, body2, params, onProgress);
+  } else if (method === 'hull-subtract') {
+    report(onProgress, 'Convex hull subtraction…', 10);
+    pockets = await detectPocketsByHullSubtraction(occt, body2, params, onProgress);
+  } else if (method === 'stock-subtraction') {
+    report(onProgress, 'Stock subtraction (delta-volume)…', 10);
+    pockets = await detectPocketsByStockSubtraction(occt, body2, params, onProgress);
   } else if (method === 'morphological-closing') {
     report(onProgress, 'Morphological closing (dilate → erode)…', 10);
     pockets = await detectPocketsByMorphologicalClosing(occt, body2, params, onProgress);
@@ -387,19 +494,32 @@ function resolveHashes(hashes) {
   const handles = [];
   const missing = [];
   for (const h of hashes) {
-    const key = Number(h);
-    const face = session.faceHashToHandle.get(key) ?? session.faceHashToHandle.get(h);
+    const key = canonicalAagFaceHash(h);
+    const face =
+      session.faceHashToHandle.get(key) ??
+      session.faceHashToHandle.get(Number(h)) ??
+      session.faceHashToHandle.get(h);
     if (face == null) missing.push(h);
     else handles.push(face);
   }
   return { handles, missing };
 }
 
+function canonicalAagFaceHash(hash) {
+  const n = Number(hash);
+  if (!Number.isFinite(n)) return hash;
+  return session?.meshToAagFaceHash?.get(n) ?? n;
+}
+
 function nodeIndicesForHashes(hashes) {
   const aag = session.aag2;
   if (!aag) return [];
-  // Coerce to number — postMessage / UI datasets can stringify hashes.
-  const set = new Set((hashes ?? []).map((h) => Number(h)).filter((h) => Number.isFinite(h)));
+  const set = new Set();
+  for (const h of hashes ?? []) {
+    const n = Number(h);
+    if (!Number.isFinite(n)) continue;
+    set.add(canonicalAagFaceHash(n));
+  }
   const idxs = [];
   for (let i = 0; i < aag.nodes.length; i++) {
     if (set.has(Number(aag.nodes[i].faceHash))) idxs.push(i);
@@ -466,10 +586,15 @@ export async function hintSuggestPocketFloor(onProgress = null) {
   }
 
   const wallCount = detectWallsFromFloor([bestIdx], aag).length;
+  const floorHash = aag.nodes[bestIdx].faceHash;
+  const floorGroupIndex = aag.nodes[bestIdx].faceId;
   return {
-    floorHash: aag.nodes[bestIdx].faceHash,
+    floorHash,
     span: bestSpan,
-    wallCount
+    wallCount,
+    floorGroupIndex,
+    floorFaceRanges: faceRangesForAagNodeIndices([bestIdx], aag),
+    floorTriIndices: triIndicesForAagNodeIndices([bestIdx], aag)
   };
 }
 
@@ -505,12 +630,20 @@ export async function hintDetectWalls(floorHashes, opts = {}, onProgress = null)
     );
   }
   const wallHashes = walls.map((i) => aag.nodes[i].faceHash);
+  const wallGroupIndices = walls.map((i) => aag.nodes[i].faceId);
   report(
     onProgress,
     `Detected ${wallHashes.length} wall face(s) from ${floorIdxs.length} floor face(s)`,
     100
   );
-  return { wallHashes, wallCount: walls.length, floorCount: floorIdxs.length };
+  return {
+    wallHashes,
+    wallCount: walls.length,
+    floorCount: floorIdxs.length,
+    wallGroupIndices,
+    wallFaceRanges: faceRangesForAagNodeIndices(walls, aag),
+    wallTriIndices: triIndicesForAagNodeIndices(walls, aag)
+  };
 }
 
 /**

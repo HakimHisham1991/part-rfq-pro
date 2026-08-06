@@ -109,12 +109,13 @@
                         <div class="prop-group">
                             <div class="prop-label">Detection Method</div>
                             <select id="pocket-detection-method" class="hole-select" disabled>
-                                <option value="aag-walk">AAG Face Walk (recommended)</option>
-                                <option value="hull-subtract">Convex Hull Subtraction</option>
-                                <option value="slicing">Slicing-Based (2.5D)</option>
-                                <option value="morphological-closing">Morphological Closing (Dilate → Erode)</option>
-                                <option value="voxel-flood-fill">Voxelize + Flood-Fill (Robust)</option>
-                                <option value="user-hinted">User-Hinted (Manual/Assisted)</option>
+                                <option value="aag-walk">1. AAG Face Walk (recommended)</option>
+                                <option value="slicing">2. Slicing-Based (2.5D)</option>
+                                <option value="hull-subtract">3. Convex Hull Subtraction</option>
+                                <option value="stock-subtraction">4. Subtraction (Delta-Volume) Decomposition</option>
+                                <option value="user-hinted">5. User-Hinted (Manual/Assisted)</option>
+                                <option value="morphological-closing">6. Morphological Closing (Dilate → Erode)</option>
+                                <option value="voxel-flood-fill">7. Voxelize + Flood-Fill (Robust)</option>
                             </select>
                         </div>
                         <div id="pocket-params-aag-walk" class="pocket-method-params">
@@ -161,6 +162,36 @@
                             <div class="prop-group">
                                 <div class="prop-label">Min Contour Area (mm²)</div>
                                 <input id="pocket-min-contour-area" type="number" class="hole-input" value="1" min="0" step="0.5" />
+                            </div>
+                        </div>
+                        <div id="pocket-params-stock-subtraction" class="pocket-method-params" hidden>
+                            <div class="pocket-method-note">
+                                Subtracts Body 2 from a stock block equal to Body 2's bounding
+                                box shrunk inward by 0.2&nbsp;mm per face (same idea as hull
+                                shrink) so the boolean leaves only real cavity volume — not
+                                zero-thickness exterior shells. Open regions touching the inset
+                                stock face are tool-accessible pockets (reported first).
+                                Fully enclosed voids are still listed but deprioritized — use
+                                Morphological Closing or Voxel Flood-Fill for those.
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Min Cavity Volume (mm³)</div>
+                                <input id="pocket-stock-min-volume" type="number" class="hole-input" value="1" min="0" step="0.5" />
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Min Opening Width (mm)</div>
+                                <input id="pocket-stock-min-opening" type="number" class="hole-input" value="0.5" min="0.1" step="0.1" />
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Open-Face Touch Tolerance (mm)</div>
+                                <input id="pocket-stock-touch-tol" type="number" class="hole-input" value="0.05" min="0.001" step="0.01" title="How close a region must be to a stock envelope face to count as open/accessible" />
+                            </div>
+                            <div class="prop-group">
+                                <div class="prop-label">Open Classification</div>
+                                <select id="pocket-stock-classify-by" class="hole-select">
+                                    <option value="bbox">Bounding Box (fast)</option>
+                                    <option value="exactFace">Exact Face Coincidence (stricter)</option>
+                                </select>
                             </div>
                         </div>
                         <div id="pocket-params-morphological-closing" class="pocket-method-params" hidden>

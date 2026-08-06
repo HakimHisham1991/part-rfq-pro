@@ -303,10 +303,70 @@ body {
   overflow: visible;
 }
 
-.feature-side-panels:has(> #hole-panel:not(.collapsed)):has(> #pocket-panel:not(.collapsed)) .hole-panel-results {
+.feature-side-panels:has(> #hole-panel:not(.collapsed)):has(> #pocket-panel:not(.collapsed)) #hole-panel .hole-panel-results {
   flex: 0 0 auto;
   max-height: 36vh;
   min-height: 120px;
+}
+
+/* Pocket results need more vertical room (esp. User-Hinted with long floor/wall lists). */
+#pocket-panel:not(.collapsed) .hole-panel-results {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 45%;
+  min-height: 300px;
+}
+
+#pocket-panel:not(.collapsed) #pockets-list {
+  flex: 1 1 auto;
+  min-height: 200px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+#pocket-panel.pocket-tall-params-active:not(.collapsed) .hole-detection-section {
+  flex: 0 1 auto;
+  max-height: min(38vh, 420px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
+}
+
+#pocket-panel.pocket-tall-params-active:not(.collapsed) .hole-panel-results {
+  flex: 1 1 auto;
+  min-height: 240px;
+  overflow-y: auto;
+}
+
+#pocket-panel.pocket-tall-params-active:not(.collapsed) #pockets-list {
+  flex: 1 1 auto;
+  min-height: 100px;
+  max-height: min(32vh, 320px);
+  overflow-y: auto;
+}
+
+#pocket-panel.pocket-tall-params-active:not(.collapsed) #btn-clear-pockets {
+  flex-shrink: 0;
+  margin-top: 10px;
+}
+
+#pocket-panel.user-hinted-active:not(.collapsed) .hole-detection-section {
+  flex: 0 1 auto;
+  max-height: min(40vh, 440px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
+}
+
+#pocket-panel.user-hinted-active:not(.collapsed) .hole-panel-results {
+  flex: 1 1 55%;
+  min-height: 340px;
+}
+
+.feature-side-panels:has(> #hole-panel:not(.collapsed)):has(> #pocket-panel:not(.collapsed)) #pocket-panel .hole-panel-results {
+  flex: 1 1 auto;
+  min-height: 280px;
+  max-height: none;
 }
 
 .feature-panel-header {
@@ -1124,9 +1184,31 @@ body.surface-select-mode #three-canvas {
     min-height: 280px;
   }
 
+  #pocket-panel:not(.collapsed) .hole-panel-results {
+    min-height: 320px;
+    flex: 1 1 auto;
+  }
+
+  #pocket-panel.pocket-tall-params-active:not(.collapsed) .hole-detection-section {
+    max-height: min(40vh, 360px);
+  }
+
+  #pocket-panel.pocket-tall-params-active:not(.collapsed) #pockets-list {
+    max-height: min(36vh, 280px);
+  }
+
+  #pocket-panel.user-hinted-active:not(.collapsed) .hole-detection-section {
+    max-height: min(42vh, 380px);
+  }
+
+  #pocket-panel.user-hinted-active:not(.collapsed) .hole-panel-results {
+    min-height: 300px;
+  }
+
   .feature-panel:not(.collapsed) #holes-list,
-  .feature-panel:not(.collapsed) #holes-summary-list {
-    min-height: 140px;
+  .feature-panel:not(.collapsed) #holes-summary-list,
+  #pocket-panel:not(.collapsed) #pockets-list {
+    min-height: 180px;
     max-height: none;
   }
 

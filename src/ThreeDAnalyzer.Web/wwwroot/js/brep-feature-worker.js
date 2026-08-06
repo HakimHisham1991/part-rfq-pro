@@ -11,7 +11,7 @@ import {
   hintCalculate,
   hintSuggestAxis,
   hintSuggestPocketFloor
-} from './pocket-detection-pipeline.js?v=1.21.22';
+} from './pocket-detection-pipeline.js?v=1.21.30';
 
 function progressSink(requestId) {
   let lastProgressAt = 0;
@@ -95,6 +95,14 @@ self.onmessage = async (event) => {
 
     if (type === 'hintSuggestFloor') {
       const result = await hintSuggestPocketFloor(progressSink(requestId));
+      if (!result) {
+        self.postMessage({
+          type: 'error',
+          requestId,
+          message: 'No pocket floor found on Body 2 — pick a floor manually'
+        });
+        return;
+      }
       self.postMessage({ type: 'hint-floor-suggest', requestId, ...result });
       return;
     }
