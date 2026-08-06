@@ -139,6 +139,57 @@ function isSharpFloorWithHoleOpenings(idx, aag) {
 }
 
 /**
+ * Filleted rectangular pocket floor: planar face with smooth G1 links into
+ * corner tori (and typically cylindrical wall blends), plus convex rim edges
+ * to the stock opening. Interior ratio is often ~0.45–0.55 so the broken-floor
+ * heuristic rejects these; torus count is the reliable signal.
+ */
+function isFilletedPocketFloor(idx, aag) {
+  const { nodes, adjacency } = aag;
+  const n = nodes[idx];
+  if (n.surfaceType !== 'plane' || !n.axis) return false;
+  if (isLikelyStockFace(idx, aag)) return false;
+
+  const c = edgeCounts(idx, aag);
+  if (c.smooth < 2) return false;
+
+  let torusBlend = 0;
+  let interiorLinks = 0;
+  const nFloor = v3normalize(n.axis);
+
+  for (const e of adjacency[idx]) {
+    const to = nodes[e.to];
+    if (!to) continue;
+    if (e.classification === 'smooth' || e.classification === 'concave') {
+      if (to.surfaceType === 'torus') {
+        torusBlend++;
+      } else if (
+        to.surfaceType === 'cylinder' ||
+        to.surfaceType === 'cone' ||
+        to.surfaceType === 'bspline' ||
+        to.surfaceType === 'bezier'
+      ) {
+        interiorLinks++;
+      } else if (to.surfaceType === 'plane' && to.axis) {
+        if (Math.abs(v3dot(nFloor, v3normalize(to.axis))) < 0.35) {
+          interiorLinks++;
+        }
+      }
+    }
+  }
+
+  if (torusBlend < 2) return false;
+  if (interiorLinks + torusBlend < 3) return false;
+
+  if (c.convex > 0) {
+    if (c.convex > c.smooth + c.concave + 4) return false;
+    return true;
+  }
+
+  return c.concave > 0;
+}
+
+/**
  * Floor candidate:
  * - Closed filleted: no convex, smooth/concave into blends
  * - Sharp + hole openings: concave walls + convex cylinder through-cuts
@@ -171,6 +222,9 @@ function isFloorCandidate(idx, aag) {
 
   // Circular pocket / counterbore floor
   if (isCircularPocketFloor(idx, aag)) return true;
+
+  // Filleted pocket floor (corner tori + wall blends)
+  if (isFilletedPocketFloor(idx, aag)) return true;
 
   // Broken floor — exclude ordinary walls (1 convex rim + 2–3 corner blends)
   if (!fillet) return false;

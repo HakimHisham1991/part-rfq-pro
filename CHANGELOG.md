@@ -4,6 +4,14 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.34] - 2026-08-06
+
+### Fixed
+
+- **AAG walk — filleted pocket floors** — rectangular floors connected to corner tori and wall blends (floor → radius → wall) are now recognized via `isFilletedPocketFloor`; previously rejected because convex rim edges lowered the interior-edge ratio below the broken-floor threshold.
+
+---
+
 ## [1.21.33] - 2026-08-06
 
 ### Fixed

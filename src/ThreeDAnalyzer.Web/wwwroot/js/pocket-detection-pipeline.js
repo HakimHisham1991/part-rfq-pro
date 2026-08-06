@@ -14,7 +14,7 @@ import {
   recognizePocketFromFloor,
   findFloorCandidates,
   buildPocketFillSolid
-} from './brep-pocket-recognition.js?v=1.21.33';
+} from './brep-pocket-recognition.js?v=1.21.34';
 import { detectPocketsByHullSubtraction } from './pocket-hull-subtraction.js?v=1.21.12';
 import { detectPocketsBySlicing } from './pocket-slicing.js?v=1.21.2';
 import { detectPocketsByMorphologicalClosing } from './pocket-morphological-closing.js?v=1.21.24';
