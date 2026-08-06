@@ -412,6 +412,102 @@ function planeBasis(normal) {
 }
 
 /**
+ * Project walked pocket faces (floor + fillets + walls) onto the floor plane.
+ * Used to expand the plugged cavity profile out to the wall inner boundary.
+ */
+function projectWalkedFootprint(floorFace, faceIndices, nodes, occt) {
+  if (!floorFace?.location || !floorFace?.axis || !occt) return null;
+  const { xAxis, yAxis } = planeBasis(floorFace.axis);
+  const origin = floorFace.location;
+  let minU = Infinity;
+  let maxU = -Infinity;
+  let minV = Infinity;
+  let maxV = -Infinity;
+
+  const projectPoint = (c) => {
+    const d = v3sub(c, origin);
+    const u = v3dot(d, xAxis);
+    const v = v3dot(d, yAxis);
+    minU = Math.min(minU, u);
+    maxU = Math.max(maxU, u);
+    minV = Math.min(minV, v);
+    maxV = Math.max(maxV, v);
+  };
+
+  for (const i of faceIndices) {
+    const f = nodes[i];
+    if (!f?.faceHandle) continue;
+    try {
+      const bb = occt.getBoundingBox(f.faceHandle, true);
+      for (const c of [
+        { x: bb.xmin, y: bb.ymin, z: bb.zmin },
+        { x: bb.xmax, y: bb.ymin, z: bb.zmin },
+        { x: bb.xmin, y: bb.ymax, z: bb.zmin },
+        { x: bb.xmax, y: bb.ymax, z: bb.zmin },
+        { x: bb.xmin, y: bb.ymin, z: bb.zmax },
+        { x: bb.xmax, y: bb.ymin, z: bb.zmax },
+        { x: bb.xmin, y: bb.ymax, z: bb.zmax },
+        { x: bb.xmax, y: bb.ymax, z: bb.zmax }
+      ]) {
+        projectPoint(c);
+      }
+    } catch {
+      if (f.location) projectPoint(f.location);
+    }
+  }
+
+  if (!Number.isFinite(minU)) return null;
+  return {
+    width: Math.max(0, maxU - minU),
+    length: Math.max(0, maxV - minV),
+    centerU: (minU + maxU) / 2,
+    centerV: (minV + maxV) / 2,
+    xAxis,
+    yAxis
+  };
+}
+
+function bboxFootprintInPlane(floorFace, bbox) {
+  const { xAxis, yAxis } = planeBasis(floorFace.axis);
+  const origin = floorFace.location || { x: bbox.xmin, y: bbox.ymin, z: bbox.zmin };
+  let minU = Infinity;
+  let maxU = -Infinity;
+  let minV = Infinity;
+  let maxV = -Infinity;
+
+  for (const c of [
+    { x: bbox.xmin, y: bbox.ymin, z: bbox.zmin },
+    { x: bbox.xmax, y: bbox.ymin, z: bbox.zmin },
+    { x: bbox.xmin, y: bbox.ymax, z: bbox.zmin },
+    { x: bbox.xmax, y: bbox.ymax, z: bbox.zmin },
+    { x: bbox.xmin, y: bbox.ymin, z: bbox.zmax },
+    { x: bbox.xmax, y: bbox.ymin, z: bbox.zmax },
+    { x: bbox.xmin, y: bbox.ymax, z: bbox.zmax },
+    { x: bbox.xmax, y: bbox.ymax, z: bbox.zmax }
+  ]) {
+    const d = v3sub(c, origin);
+    const u = v3dot(d, xAxis);
+    const v = v3dot(d, yAxis);
+    minU = Math.min(minU, u);
+    maxU = Math.max(maxU, u);
+    minV = Math.min(minV, v);
+    maxV = Math.max(maxV, v);
+  }
+
+  return {
+    width: Math.max(0, maxU - minU),
+    length: Math.max(0, maxV - minV)
+  };
+}
+
+function filletWireOffset(floorFace, walked, baseWidth, baseLength) {
+  if (!walked) return 0;
+  const dw = walked.width - baseWidth;
+  const dl = walked.length - baseLength;
+  return Math.max(0, dw / 2, dl / 2);
+}
+
+/**
  * Depth to ceiling / stock rim. Prefer planar faces parallel to the floor
  * (true ceiling). Ignore near-floor through-cut bores (patch openings).
  */
@@ -461,22 +557,38 @@ function estimatePocketDepth(floorFace, faces, nodes, rimEdges, patchOpenings = 
 /**
  * NX-style plugged body: outer wire of the floor (inner holes patched) extruded
  * to the ceiling along the floor normal. Returns volume + tessellation for viz.
+ *
+ * When `expandToWalkedFaces` is set, offsets the floor outer wire outward so
+ * the prism reaches the fillet / wall inner boundary (filleted pocket floors).
  */
-function computePluggedBody(occt, floorNode, depth, axis) {
+function computePluggedBody(occt, floorNode, depth, axis, options = {}) {
   if (!occt || !floorNode?.faceHandle || !(depth > 0)) return null;
   const n = v3normalize(toVec3(axis) || floorNode.axis || { x: 0, y: 0, z: 1 });
   const dx = n.x * depth;
   const dy = n.y * depth;
   const dz = n.z * depth;
+  const { expandToWalkedFaces, walkedFaceIndices, nodes } = options;
+
+  const releaseQuiet = (handle) => {
+    if (handle == null) return;
+    try {
+      occt.release(handle);
+    } catch {
+      /* ignore */
+    }
+  };
 
   try {
     // Prefer outerWire (patches inner holes). Fall back to first face wire or
     // the floor face itself if outerWire throws.
     let profile = floorNode.faceHandle;
+    let outerWire = null;
+    let profileOwned = false;
     try {
-      const wire = occt.outerWire(floorNode.faceHandle);
+      outerWire = occt.outerWire(floorNode.faceHandle);
       try {
-        profile = occt.makeFace(wire);
+        profile = occt.makeFace(outerWire);
+        profileOwned = profile !== floorNode.faceHandle;
       } catch {
         /* keep face */
       }
@@ -485,7 +597,9 @@ function computePluggedBody(occt, floorNode, depth, axis) {
         const wires = occt.getSubShapes(floorNode.faceHandle, 'wire');
         if (wires.length) {
           try {
-            profile = occt.makeFace(wires[0]);
+            outerWire = wires[0];
+            profile = occt.makeFace(outerWire);
+            profileOwned = profile !== floorNode.faceHandle;
           } catch {
             /* keep face */
           }
@@ -494,7 +608,41 @@ function computePluggedBody(occt, floorNode, depth, axis) {
         /* keep face */
       }
     }
+
+    if (
+      expandToWalkedFaces &&
+      outerWire &&
+      walkedFaceIndices?.length &&
+      nodes
+    ) {
+      const walked = projectWalkedFootprint(floorNode, walkedFaceIndices, nodes, occt);
+      if (walked) {
+        let probe = null;
+        try {
+          probe = occt.extrude(profile, dx, dy, dz);
+          const bb = occt.getBoundingBox(probe, true);
+          const base = bboxFootprintInPlane(floorNode, bb);
+          const offset = filletWireOffset(floorNode, walked, base.width, base.length);
+          if (offset > 0.05 && offset < 50) {
+            try {
+              const expandedWire = occt.offsetWire2D(outerWire, offset);
+              const expandedFace = occt.makeFace(expandedWire);
+              if (profileOwned) releaseQuiet(profile);
+              profile = expandedFace;
+              profileOwned = true;
+              releaseQuiet(expandedWire);
+            } catch (err) {
+              console.warn('Filleted pocket wire offset failed', err);
+            }
+          }
+        } finally {
+          releaseQuiet(probe);
+        }
+      }
+    }
+
     const prism = occt.extrude(profile, dx, dy, dz);
+    if (profileOwned) releaseQuiet(profile);
     const volume = Math.abs(occt.getVolume(prism));
     if (!(volume > 0)) return null;
 
@@ -727,10 +875,19 @@ function buildPocketRecord({
   const axis = floorFace ? v3normalize(floorFace.axis) : { x: 0, y: 0, z: 1 };
   const { xAxis, yAxis } = planeBasis(axis);
   const cornerRadius = footprint.cornerRadius || 0;
+  const filletedFloor = floorIdx != null && isFilletedPocketFloor(floorIdx, aag);
+  const walkedFootprint =
+    filletedFloor && occt
+      ? projectWalkedFootprint(floorFace, faces, nodes, occt)
+      : null;
 
   // NX-style plugged body (outer-wire extrude patches broken floors / annuli)
   const plug = floorFace
-    ? computePluggedBody(occt, floorFace, depth, axis)
+    ? computePluggedBody(occt, floorFace, depth, axis, {
+        expandToWalkedFaces: filletedFloor,
+        walkedFaceIndices: faces,
+        nodes
+      })
     : null;
   if (plug?.solid && occt) {
     try {
@@ -743,6 +900,19 @@ function buildPocketRecord({
 
   let width = plug?.width || footprint.width;
   let length = plug?.length || footprint.length;
+  if (walkedFootprint) {
+    width = Math.max(width, walkedFootprint.width);
+    length = Math.max(length, walkedFootprint.length);
+    if (floorFace?.location) {
+      center = v3add(
+        floorFace.location,
+        v3add(
+          v3scale(walkedFootprint.xAxis, walkedFootprint.centerU),
+          v3scale(walkedFootprint.yAxis, walkedFootprint.centerV)
+        )
+      );
+    }
+  }
   let maxBoundedVolume =
     plug?.volume ||
     computeMaxBoundedVolume(shape, width, length, depth, cornerRadius);
@@ -781,6 +951,7 @@ function buildPocketRecord({
     shape,
     cornerRadii: footprint.cornerRadii.slice(),
     cornerRadius,
+    filletedFloor,
     isThrough: !!isThrough,
     isPatched,
     isStepped: stages.length > 1,
@@ -813,7 +984,13 @@ export function buildPocketFillSolid(occt, pocket, aag) {
   const depth = pocket.depth ?? pocket.maxDepth ?? 0;
   if (!(depth > 0.05)) return null;
   const axis = toVec3(pocket.axis) || toVec3(pocket.floorNormal) || floorNode.axis;
-  const plug = computePluggedBody(occt, floorNode, depth, axis);
+  const plug = computePluggedBody(occt, floorNode, depth, axis, {
+    expandToWalkedFaces:
+      pocket.filletedFloor ||
+      (pocket.floorFaceId != null && isFilletedPocketFloor(pocket.floorFaceId, aag)),
+    walkedFaceIndices: pocket.faceIndices,
+    nodes: aag.nodes
+  });
   return plug?.solid ?? null;
 }
 

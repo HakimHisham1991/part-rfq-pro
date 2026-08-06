@@ -4,6 +4,14 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.35] - 2026-08-06
+
+### Fixed
+
+- **Filleted pocket pink volume** — cavity mesh and fill solid now offset the floor outer wire outward to the walked face boundary (floor + corner tori + walls) instead of stopping at the trimmed floor face edge.
+
+---
+
 ## [1.21.34] - 2026-08-06
 
 ### Fixed
