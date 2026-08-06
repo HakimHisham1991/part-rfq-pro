@@ -20,7 +20,7 @@ import {
 } from './pocket-state.js';
 
 /** Cache-bust only our JS workers — never append ?v= to .wasm (breaks OCCT on some hosts). */
-const JS_ASSET_V = '1.21.22';
+const JS_ASSET_V = '1.21.23';
 /** Reject hole-plug discs when picking a pocket floor on Body 2 (mm). */
 const HINT_MIN_FLOOR_PICK_SPAN_MM = 40;
 
@@ -104,11 +104,13 @@ const pocketParamsVoxelFloodFill = document.getElementById('pocket-params-voxel-
 const pocketParamsUserHinted = document.getElementById('pocket-params-user-hinted');
 const btnGotoHoleDetection = document.getElementById('btn-goto-hole-detection');
 const btnSelectFloor = document.getElementById('btn-select-floor');
+const btnSuggestFloor = document.getElementById('btn-suggest-floor');
 const btnClearFloor = document.getElementById('btn-clear-floor');
 const floorSelectionCount = document.getElementById('floor-selection-count');
 const floorSelectionList = document.getElementById('floor-selection-list');
 const btnSelectWalls = document.getElementById('btn-select-walls');
 const btnDetectWalls = document.getElementById('btn-detect-walls');
+const btnClearWalls = document.getElementById('btn-clear-walls');
 const wallSelectionCount = document.getElementById('wall-selection-count');
 const wallSelectionList = document.getElementById('wall-selection-list');
 const hintWallStep = document.getElementById('hint-wall-step');
@@ -1032,6 +1034,8 @@ const hintWallHashes = new Set();
 let hintAxis = null;
 /** Last floor|wall hash key we already requested an auto-axis for. */
 let hintAxisSuggestKey = '';
+/** Worker-suggested largest pocket floor hash (for plug-click snap). */
+let hintSuggestedFloorHash = null;
 let hintHighlightGroup = null;
 
 // Rectangle surface selection state
@@ -2638,6 +2642,7 @@ function resetHintWorkflow() {
   hintWallHashes.clear();
   hintAxis = null;
   hintAxisSuggestKey = '';
+  hintSuggestedFloorHash = null;
   disposeHintHighlight();
   updateHintStepUI();
   if (hintDetectWallOptions) hintDetectWallOptions.hidden = true;
@@ -2978,6 +2983,12 @@ function applyBody2Mesh(meshPayload) {
   disposeHoleVisuals();
 
   const mesh = createShadedMesh(geometry, { color: BODY2_MESH_COLOR, withEdges: false });
+  // Reduce z-fighting between coplanar hole plugs and the pocket floor tessellation.
+  if (mesh.material) {
+    mesh.material.polygonOffset = true;
+    mesh.material.polygonOffsetFactor = 1;
+    mesh.material.polygonOffsetUnits = 1;
+  }
   mesh.userData.meshIndex = 0;
   mesh.userData.isBody2 = true;
 
@@ -3061,9 +3072,73 @@ function estimateMeshFaceFootprintMm(faceHash) {
 }
 
 function requestHintSuggestFloor() {
-  if (!getPocketBodyState() || getPocketBodyState().status !== 'ready') return;
+  if (!getPocketBodyState() || getPocketBodyState().status !== 'ready') {
+    setStatus('Plug Holes first — floor suggestion needs Body 2');
+    return;
+  }
   const requestId = ++holeWorkerRequestId;
   getBrepHoleWorker().postMessage({ type: 'hintSuggestFloor', requestId });
+}
+
+function applyHintFloorSuggest(data, { clearWalls = true, logToProgress = false } = {}) {
+  if (data?.floorHash == null) return false;
+  hintFloorHashes.clear();
+  if (clearWalls) {
+    hintWallHashes.clear();
+    hintAxis = null;
+    hintAxisSuggestKey = '';
+  }
+  hintSuggestedFloorHash = Number(data.floorHash);
+  hintFloorHashes.add(hintSuggestedFloorHash);
+  updateHintStepUI();
+  const span = data.span ? ` (~${Math.round(data.span)} mm)` : '';
+  const msg = `Pocket floor suggested${span} — pick walls or run Detect Walls`;
+  if (logToProgress) {
+    appendHoleProgressLog(`Suggested pocket floor pre-selected${span}`, 'is-done');
+  }
+  setStatus(msg);
+  return true;
+}
+
+function isValidHintFloorHash(hash) {
+  const span = estimateMeshFaceFootprintMm(hash);
+  return span == null || span >= HINT_MIN_FLOOR_PICK_SPAN_MM;
+}
+
+function raycastHintMeshHits(e) {
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  return raycaster.intersectObject(partGroup, true).filter((h) => h.face && h.faceIndex != null);
+}
+
+/**
+ * Pick a B-Rep face hash for user-hinted mode. Floor picks skip hole plugs (multi-hit)
+ * and snap to the suggested floor when the user only hits plugs.
+ */
+function pickHintFaceHash(hits, role) {
+  if (role === 'wall') {
+    for (const hit of hits) {
+      const faceHash = faceHashFromTriangle(hit.faceIndex);
+      const hashNum = Number(faceHash);
+      if (Number.isFinite(hashNum)) return { hash: hashNum, snapped: false };
+    }
+    return null;
+  }
+
+  let hitPlug = false;
+  for (const hit of hits) {
+    const faceHash = faceHashFromTriangle(hit.faceIndex);
+    const hashNum = Number(faceHash);
+    if (!Number.isFinite(hashNum)) continue;
+    if (isValidHintFloorHash(hashNum)) return { hash: hashNum, snapped: false };
+    hitPlug = true;
+  }
+  if (hitPlug && hintSuggestedFloorHash != null) {
+    return { hash: hintSuggestedFloorHash, snapped: true };
+  }
+  return null;
 }
 
 function addHintHighlightMesh(triIndices, colorHex) {
@@ -3109,9 +3184,11 @@ function addHintHighlightMesh(triIndices, colorHex) {
       transparent: true,
       opacity: 0.55,
       side: THREE.DoubleSide,
-      depthWrite: false
+      depthWrite: false,
+      depthTest: true
     });
     const highlightMesh = new THREE.Mesh(highlightGeo, highlightMat);
+    highlightMesh.renderOrder = 10;
     highlightMesh.raycast = () => {};
     hintHighlightGroup.add(highlightMesh);
   });
@@ -3294,22 +3371,7 @@ function handleHoleWorkerMessage(event) {
   }
 
   if (type === 'hint-floor-suggest') {
-    if (data?.floorHash != null) {
-      hintFloorHashes.clear();
-      hintWallHashes.clear();
-      hintAxis = null;
-      hintAxisSuggestKey = '';
-      hintFloorHashes.add(Number(data.floorHash));
-      updateHintStepUI();
-      const span = data.span ? ` (~${Math.round(data.span)} mm)` : '';
-      appendHoleProgressLog(
-        `Suggested pocket floor pre-selected${span} — use Detect Walls or pick walls manually`,
-        'is-done'
-      );
-      setStatus(
-        `Pocket floor suggested${span} — Step 1 ready; pick walls or run Detect Walls`
-      );
-    }
+    applyHintFloorSuggest(data, { clearWalls: true, logToProgress: true });
     return;
   }
 
@@ -4568,6 +4630,27 @@ function finishRectSelection(e) {
     return;
   }
 
+  if (hintPickMode === 'floor' || hintPickMode === 'wall-select') {
+    const added = selectHintFacesInScreenRect(
+      Math.min(start.x, end.x),
+      Math.min(start.y, end.y),
+      Math.max(start.x, end.x),
+      Math.max(start.y, end.y),
+      end.canvasW,
+      end.canvasH
+    );
+    updateHintStepUI();
+    setStatus(
+      hintPickMode === 'floor'
+        ? `Floor: ${hintFloorHashes.size} face(s) — highlighted light orange`
+        : `Walls: ${hintWallHashes.size} face(s)`
+    );
+    if (hintPickMode === 'floor' && added === 0) {
+      setStatus('No pocket floor in rectangle — try Suggest Largest Floor or drag over the large center floor');
+    }
+    return;
+  }
+
   const added = selectFacesInScreenRect(
     Math.min(start.x, end.x),
     Math.min(start.y, end.y),
@@ -4682,31 +4765,119 @@ function selectFacesInScreenRect(minX, minY, maxX, maxY, canvasW, canvasH) {
   return added;
 }
 
-function handleSurfaceSelectClick(e) {
-  const hit = raycastMeshFace(e);
-  if (!hit) return;
+/**
+ * User-hinted rectangle pick — maps tessellated triangles to B-Rep face hashes.
+ */
+function selectHintFacesInScreenRect(minX, minY, maxX, maxY, canvasW, canvasH) {
+  if (!partGroup || !body2FaceGroups?.length) return 0;
 
-  // User-hinted floor/wall picking on Body 2 (B-Rep face hashes via faceGroups)
-  if (hintPickMode === 'floor' || hintPickMode === 'wall-select') {
-    const faceHash = faceHashFromTriangle(hit.faceIndex);
-    if (faceHash == null) {
-      setStatus('Face hash unavailable — wait for Body 2 mesh with face groups');
-      return;
-    }
-    const hashNum = Number(faceHash);
-    if (!Number.isFinite(hashNum)) {
-      setStatus('Invalid face hash from mesh');
-      return;
-    }
-    if (hintPickMode === 'floor') {
-      const span = estimateMeshFaceFootprintMm(hashNum);
-      if (span != null && span < HINT_MIN_FLOOR_PICK_SPAN_MM) {
-        setStatus(
-          `Too small (~${span.toFixed(0)} mm) — that's a hole plug. Click the large recessed pocket floor in the center.`
-        );
-        return;
+  const hashSet = new Set();
+  const v0 = new THREE.Vector3();
+  const v1 = new THREE.Vector3();
+  const v2 = new THREE.Vector3();
+
+  partGroup.children.forEach((child) => {
+    if (!child.isMesh || !child.geometry) return;
+    const geo = child.geometry;
+    const posAttr = geo.attributes.position;
+    const index = geo.index;
+    const triCount = index ? index.count / 3 : posAttr.count / 3;
+
+    for (let faceIdx = 0; faceIdx < triCount; faceIdx++) {
+      let i0;
+      let i1;
+      let i2;
+      if (index) {
+        i0 = index.getX(faceIdx * 3);
+        i1 = index.getX(faceIdx * 3 + 1);
+        i2 = index.getX(faceIdx * 3 + 2);
+      } else {
+        i0 = faceIdx * 3;
+        i1 = faceIdx * 3 + 1;
+        i2 = faceIdx * 3 + 2;
+      }
+
+      v0.fromBufferAttribute(posAttr, i0);
+      v1.fromBufferAttribute(posAttr, i1);
+      v2.fromBufferAttribute(posAttr, i2);
+      child.localToWorld(v0);
+      child.localToWorld(v1);
+      child.localToWorld(v2);
+
+      _faceCenter.copy(v0).add(v1).add(v2).multiplyScalar(1 / 3);
+
+      _viewDir.subVectors(_faceCenter, camera.position).normalize();
+      _faceNormal.crossVectors(new THREE.Vector3().subVectors(v1, v0), new THREE.Vector3().subVectors(v2, v0));
+      if (_faceNormal.lengthSq() > 1e-12) _faceNormal.normalize();
+      if (_faceNormal.dot(_viewDir) > 0) continue;
+
+      _projPoint.copy(_faceCenter).project(camera);
+      if (_projPoint.z < -1 || _projPoint.z > 1) continue;
+
+      const sx = (_projPoint.x * 0.5 + 0.5) * canvasW;
+      const sy = (-_projPoint.y * 0.5 + 0.5) * canvasH;
+
+      if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
+        const faceHash = faceHashFromTriangle(faceIdx);
+        const hashNum = Number(faceHash);
+        if (Number.isFinite(hashNum)) hashSet.add(hashNum);
       }
     }
+  });
+
+  if (hintPickMode === 'floor') {
+    const valid = [...hashSet].filter((h) => isValidHintFloorHash(h));
+    if (!valid.length) {
+      if (hintSuggestedFloorHash != null) {
+        hintFloorHashes.clear();
+        hintWallHashes.clear();
+        hintAxis = null;
+        hintAxisSuggestKey = '';
+        hintFloorHashes.add(hintSuggestedFloorHash);
+        return 1;
+      }
+      return 0;
+    }
+    hintFloorHashes.clear();
+    hintWallHashes.clear();
+    hintAxis = null;
+    hintAxisSuggestKey = '';
+    for (const h of valid) hintFloorHashes.add(h);
+    return valid.length;
+  }
+
+  let added = 0;
+  for (const h of hashSet) {
+    if (!hintWallHashes.has(h)) {
+      hintWallHashes.add(h);
+      added++;
+    }
+  }
+  if (added > 0) {
+    hintAxis = null;
+    hintAxisSuggestKey = '';
+  }
+  return added;
+}
+
+function handleSurfaceSelectClick(e) {
+  // User-hinted floor/wall picking on Body 2 (B-Rep face hashes via faceGroups)
+  if (hintPickMode === 'floor' || hintPickMode === 'wall-select') {
+    const hits = raycastHintMeshHits(e);
+    if (!hits.length) return;
+
+    const role = hintPickMode === 'floor' ? 'floor' : 'wall';
+    const picked = pickHintFaceHash(hits, role);
+    if (!picked) {
+      setStatus(
+        role === 'floor'
+          ? 'Could not pick floor — use Suggest Largest Floor or click between hole plugs'
+          : 'Could not pick a wall face'
+      );
+      return;
+    }
+
+    const { hash: hashNum, snapped } = picked;
     const set = hintPickMode === 'floor' ? hintFloorHashes : hintWallHashes;
     if (set.has(hashNum)) set.delete(hashNum);
     else set.add(hashNum);
@@ -4715,18 +4886,22 @@ function handleSurfaceSelectClick(e) {
       hintAxis = null;
       hintAxisSuggestKey = '';
     } else {
-      // Wall set changed — re-suggest axis
       hintAxis = null;
       hintAxisSuggestKey = '';
     }
     updateHintStepUI();
     setStatus(
-      hintPickMode === 'floor'
-        ? `Floor: ${hintFloorHashes.size} face(s) — highlighted light orange`
-        : `Walls: ${hintWallHashes.size} face(s)`
+      snapped
+        ? 'Hole plug clicked — selected suggested pocket floor (light orange)'
+        : hintPickMode === 'floor'
+          ? `Floor: ${hintFloorHashes.size} face(s) — highlighted light orange`
+          : `Walls: ${hintWallHashes.size} face(s)`
     );
     return;
   }
+
+  const hit = raycastMeshFace(e);
+  if (!hit) return;
 
   const meshIndex = hit.object.userData.meshIndex ?? 0;
   const faceIndex = hit.faceIndex;
@@ -4960,7 +5135,13 @@ function bindHoleDetectionEvents() {
   btnSelectFloor?.addEventListener('click', () => {
     hintPickMode = 'floor';
     setSurfaceSelectMode(true);
-    setStatus('Click faces to define the pocket floor (light orange highlight)');
+    setStatus(
+      'Click or drag on the large pocket floor (hole plugs are ignored — use Suggest Largest Floor if needed)'
+    );
+  });
+  btnSuggestFloor?.addEventListener('click', () => {
+    hintPickMode = 'floor';
+    requestHintSuggestFloor();
   });
   btnClearFloor?.addEventListener('click', () => {
     resetHintWorkflow();
@@ -4986,6 +5167,13 @@ function bindHoleDetectionEvents() {
     if (hintDetectWallOptions) hintDetectWallOptions.hidden = true;
     setSurfaceSelectMode(true);
     setStatus('Click faces to include as pocket walls');
+  });
+  btnClearWalls?.addEventListener('click', () => {
+    hintWallHashes.clear();
+    hintAxis = null;
+    hintAxisSuggestKey = '';
+    updateHintStepUI();
+    setStatus('Wall selection cleared');
   });
   btnDetectWalls?.addEventListener('click', () => {
     if (!hintFloorHashes.size) return;

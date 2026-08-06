@@ -4,6 +4,19 @@ All notable changes to **3D Part Analyzer** are documented in this file.
 
 ---
 
+## [1.21.23] - 2026-08-06
+
+### Fixed
+
+- **User-Hinted floor picking** on perforated Body 2: raycast now skips hole-plug faces (multi-hit), rectangle drag maps to B-Rep hashes (was updating the wrong selection set), plug clicks snap to the suggested pocket floor, and Body 2 mesh uses polygon offset to reduce z-fighting on coplanar plugs.
+
+### Added
+
+- **Suggest Largest Floor** button (manual re-run of auto floor suggestion after Plug Holes).
+- **Clear Walls** button to reset wall picks without clearing the floor.
+
+---
+
 ## [1.21.22] - 2026-08-06
 
 ### Added
